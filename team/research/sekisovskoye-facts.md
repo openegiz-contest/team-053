@@ -293,27 +293,141 @@ Source URLs for the codes used in sections A and B: D1 `https://ecoportal.kz/Rub
 
 ### D1. Half-year report H1 2026 (AltynGold RNS, 29 Sep 2026)
 
-Source: `https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024`. Read through a summarising fetch: figures UNCONFIRMED until checked against the raw text.
+Primary source: `https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024` (RNS 9795024, "Unaudited Interim Results – six months to 30 June 2026", Chairman and CEO statements dated 29 September 2026). Raw HTML fetched with curl on 2026-10-13 (HTTP 200, 291,674 bytes): `sekis/altn_9795024.html`; text stripped with `sekis/_scripts/strip_html.py`: `sekis/altn_9795024.txt`.
+Also checked against raw text: Q1 2026 RNS `https://www.investegate.co.uk/announcement/bzw/altyngold--altn/1st-quarter-results/9581146` (raw `sekis/altn_9581146.html` / `.txt`; Businesswire copy dated 21 May 2026); Q3 2025 RNS `https://www.investegate.co.uk/announcement/bzw/altyngold--altn/3rd-quarter-results/9194910` (raw `sekis/altn_9194910.html` / `.txt`); FY2025 RNS `https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769` (raw `sekis/altn_9542769.txt`).
 
-| Parameter | H1 2026 | H1 2025 | Unit |
-|---|---|---|---|
-| Ore mined | 458,201 | 450,578 | t |
-| Ore processed | 498,331 | 452,593 | t |
-| Gold grade, mined | 1.81 | 2.02 | g/t |
-| Gold grade, processed | 1.76 | 2.04 | g/t |
-| Gold recovery | 84.55 | 84.75 | % |
-| Gold poured | 23,906 | 25,081 | oz |
-| Gold sold | 24,628 | 22,595 | oz |
-| Development of the two transport declines | 330 | 322 | linear m |
+Status key: CONFIRMED = found in the raw text, quote given. DERIVED = arithmetic on raw figures, not stated in any text. NOT FOUND = not in the raw text of the sources named. Period is H1 2026 vs H1 2025 unless stated; where the comparative is a balance-sheet date or a prior quarter, the Period column says so.
 
-- Expansion: review of raising processing capacity to 2.0-2.5 Mtpa continues; "no investment decision has yet been made"; update expected "by the end of 2026".
-- Near-term step: capacity of the existing plant "can be increased by approximately 200kt per annum"; new crushing and milling equipment ordered.
-- Plant ran at its 1 Mtpa nameplate capacity throughout H1 2026.
-- Tailings: expansion of Tailings Dams 2 and 3 has commenced to provide the storage needed for the planned capacity increase.
-- Declines: Decline No.1 advanced 230 linear m from -34 masl to -50 masl; Decline No.2 at 0 masl, 100 linear m completed, reaching -34 masl planned for H2 2026.
-- Additional transport equipment purchased; backfilling of voids continues; a Q1 2026 vertical gap between ore bodies was bridged, removing a temporary constraint on the mining sequence; Q1 2026 mined grade dipped from 2.04 to 1.73 g/t during upper-horizon mining (secondary summary).
-- Group AISC H1 2026: US$1,995/oz (secondary summary). FY2026 guidance 52-55 koz.
-- Expansion capex estimate about US$125m: Q3 2025 results, secondary summary only, UNCONFIRMED (`https://www.investegate.co.uk/announcement/bzw/altyngold--altn/3rd-quarter-results/9194910`).
+#### Corrections on verification
+
+1. No figure in the original D1 table was wrong. Ore mined, ore processed, mined grade, processed grade, recovery, gold poured, gold sold and decline metres all match the raw text for both years. Values unchanged.
+2. Q1 2026 grade (was: Q1 2026 mined grade dipped from 2.04 to 1.73 g/t during upper-horizon mining, secondary summary). The H1 2026 RNS does not state 2.04. The Q1 2026 RNS states "temporarily impacted the average mined grade from 2.04g/t to 1.73g/t", and its table gives 1.73 for Q1 2026 against 2.04 for Q1 2025 (-15.20%). The 2.04 is a year-on-year comparative, not the prior quarter. The H1 2026 RNS shows the sequence Q1 1.73 to Q2 1.88 g/t (mined) and 1.68 to 1.84 g/t (processed).
+3. AISC H1 2026 US$1,995/oz is confirmed, but it is on a restated basis. From the H1 2026 RNS, silver by-product revenue is now deducted and exceptional items and irrecoverable VAT are excluded. Comparatives restated: H1 2025 1,299 (was 1,357 as previously reported); FY2025 1,530 (was 1,562). Section B of this file uses FY2025 AISC 1,562, which is the old basis.
+4. Expansion capex: the earlier figure of about US$125m was secondary-only. It is now confirmed from the Q3 2025 RNS: "The estimated cost of expansion would be approximately US$125m", for expansion to 2–2.5 Mtpa "within 24 months" with "a Board decision expected in H1 2026". The H1 2026 RNS gives no new cost estimate and does not repeat the US$125m.
+5. Timing of the 2.0–2.5 Mtpa update: "by the end of 2026" is confirmed, but it is the latest of several dates. Q3 2025 RNS: Board decision expected in H1 2026. FY2025 RNS: "An update will be provided to the market by mid-year." Q1 2026 RNS: "expects to update the market in the coming months." H1 2026 RNS: "by the end of 2026". The date has moved back at each step.
+
+#### Production (H1 2026 vs H1 2025)
+
+| Parameter | Value | Comparative | Unit | Period | Source | Quote from raw text | Status |
+|---|---|---|---|---|---|---|---|
+| Ore mined | 458,201 | 450,578 | t | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Ore mined of 458,201t, up 1.7% (H1 2025: 450,578t)" | CONFIRMED |
+| Ore processed | 498,331 | 452,593 | t | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Ore processed of 498,331t, up 10.1% (H1 2025: 452,593t)" | CONFIRMED |
+| Gold grade, mined | 1.81 | 2.02 | g/t | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Key statistics table, row "Gold grade (mined)": 1.81 / 2.02 / -10.4% | CONFIRMED |
+| Gold grade, processed | 1.76 | 2.04 | g/t | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Key statistics table, row "Gold grade (processed)": 1.76 / 2.04 / -13.7% | CONFIRMED |
+| Gold recovery | 84.55 | 84.75 | % | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Key statistics table, row "Gold recovery": 84.55 / 84.75 / -0.20pp | CONFIRMED |
+| Gold poured | 23,906 | 25,081 | oz | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Key statistics table, row "Gold poured": 23,906 / 25,081 / -4.7% | CONFIRMED |
+| Gold sold | 24,628 | 22,595 | oz | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Gold sold of 24,628oz, up 9.0% (H1 2025: 22,595oz)" | CONFIRMED |
+| Ore processed minus ore mined (stockpile draw) | 40,130 | - | t | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Ore processed of 498,331t exceeded ore mined of 458,201t by 40,130t" | CONFIRMED (new) |
+| Ore processed, annualised rate | ~1.0 | - | Mtpa | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "equivalent to an annualised rate of approximately 1.0Mtpa" | CONFIRMED (new) |
+| Plant operating level | 1.0 | - | Mtpa nameplate | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "operated at its 1Mtpa nameplate capacity throughout the Period" | CONFIRMED |
+| Mined grade, Q1 vs Q2 2026 | 1.73 / 1.88 | - | g/t | Q1 2026 / Q2 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "mined grade has improved from 1.73g/t in Q1 to 1.88g/t in Q2" | CONFIRMED (new) |
+| Processed grade, Q1 vs Q2 2026 | 1.68 / 1.84 | - | g/t | Q1 2026 / Q2 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Processed grade improved from 1.68g/t in Q1 to 1.84g/t in Q2" | CONFIRMED (new) |
+| Mined grade, Q1 2026 vs Q1 2025 (the 2.04 to 1.73 statement) | 1.73 | 2.04 | g/t | Q1 2026 vs Q1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/1st-quarter-results/9581146 | "temporarily impacted the average mined grade from 2.04g/t to 1.73g/t"; table row "Gold grade": 1.73 / 2.04 / -15.20 | CONFIRMED (wording corrected, see Corrections item 2) |
+| Ore mined, Q1 2026 | 212,595 | 208,216 | t | Q1 2026 vs Q1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/1st-quarter-results/9581146 | table row "Ore mined": 212,595 / 208,216 / +2.10 | CONFIRMED (new) |
+| Ore milled, Q1 2026 | 234,625 | 204,647 | t | Q1 2026 vs Q1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/1st-quarter-results/9581146 | table row "Ore milled": 234,625 / 204,647 / +14.65 | CONFIRMED (new) |
+| Ore mined, Q2 2026 | 245,606 | - | t | Q2 2026 | H1 2026 minus Q1 2026 (9795024 and 9581146) | 458,201 - 212,595 | DERIVED (new) |
+| Ore processed, Q2 2026 | 263,706 | - | t | Q2 2026 | H1 2026 minus Q1 2026 (9795024 and 9581146) | 498,331 - 234,625 | DERIVED (new) |
+| Contained gold, mined | 26,624 | 29,284 | oz | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Key statistics table, row "Contained gold (mined)" | CONFIRMED (new) |
+| Contained gold, processed | 28,274 | 29,595 | oz | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Key statistics table, row "Contained gold (processed)" | CONFIRMED (new) |
+| Lost-time injuries | 0 | 0 | count | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "There were no lost-time injuries or other reportable safety incidents in the Period (H1 2025: nil)." | CONFIRMED (new) |
+| Full-year gold production guidance | 52–55 | - | koz | FY 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "The Company remains on track to meet its full-year production guidance of 52-55Koz." | CONFIRMED (guidance, not a result) |
+
+#### Mine development, drilling and stockpile
+
+| Parameter | Value | Comparative | Unit | Period | Source | Quote from raw text | Status |
+|---|---|---|---|---|---|---|---|
+| Capital development, two transport declines | 330 | 322 | linear m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Capital development of the two transport declines amounted to 330 linear metres (H1 2025: 322 linear metres)" | CONFIRMED |
+| Decline No.1, advance | 230 | - | linear m | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Decline No.1 advanced 230 linear metres from -34 masl to -50 masl." | CONFIRMED |
+| Decline No.2, development completed | 100 | - | linear m | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Decline No.2 remains at 0 masl, where 100 linear metres of development was completed in preparation for advancing the decline to -34 masl in the second half of the year." | CONFIRMED |
+| Decline No.2, target level | -34 | - | masl | H2 2026 (planned, not reached in H1) | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | same quote as Decline No.2 row ("in the second half of the year") | CONFIRMED (planned) |
+| Exploration drilling | 12,151 | 8,757 | m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Exploration drilling of 12,151 linear metres, up 38.8% (H1 2025: 8,757 linear metres)" | CONFIRMED (new) |
+| Blasthole drilling | 82,460 | 75,555 | m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Blasthole drilling of 82,460 linear metres, up 9.1% (H1 2025: 75,555 linear metres)" | CONFIRMED (new) |
+| Vertical gap between main ore bodies, bridging | - | - | - | Q1 2026, completed April 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "During Q1 we mined the upper horizons of ore bodies 5.5 and 6 to 8 to bridge a temporary vertical gap between the main ore bodies."; "The planned bridging work between the main ore bodies was completed in April 2026" | CONFIRMED (cost of the bridging work: NOT FOUND) |
+| Backfilling of voids | - | - | - | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Continued backfilling of voids following ore extraction." | CONFIRMED |
+| Ore stockpile, carrying value | 24.5 | 27.3 | US$m | 30 Jun 2026 vs 31 Dec 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "the carrying value of ore stockpiles reduced from US$27.3m at 31 December 2025 to US$24.5m at 30 June 2026" | CONFIRMED (new) |
+
+#### Expansion to 2.0–2.5 Mtpa, tailings and plant
+
+| Parameter | Value | Comparative | Unit | Period | Source | Quote from raw text | Status |
+|---|---|---|---|---|---|---|---|
+| Review of the increase to 2.0–2.5 Mtpa | continuing | - | - | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Continued review of the technical aspects of the increase in processing capacity to 2.0–2.5Mtpa, as previously announced." | CONFIRMED |
+| Investment decision | none yet | - | - | as at 29 Sep 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "no investment decision has yet been made" (Chairman's statement) | CONFIRMED |
+| Update on the 2.0–2.5 Mtpa project | by end of 2026 | - | - | 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "The Company expects to provide an update on the 2.0–2.5Mtpa project by the end of 2026." | CONFIRMED (see Corrections item 5) |
+| Timing history of the update | - | - | - | 2025 to 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/3rd-quarter-results/9194910; https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769; https://www.investegate.co.uk/announcement/bzw/altyngold--altn/1st-quarter-results/9581146 | Q3 2025: "with a Board decision expected in H1 2026". FY2025: "An update will be provided to the market by mid-year." Q1 2026: "expects to update the market in the coming months." | CONFIRMED (date moved) |
+| Capacity increase available at the existing plant | ~200 | - | kt per annum | H1 2026 (technical work identified) | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "the capacity of the existing processing plant can be increased by approximately 200kt per annum" | CONFIRMED |
+| Crushing and milling equipment | ordered | - | - | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "the Company has ordered new crushing and milling equipment for installation" | CONFIRMED (number of units, supplier and cost: NOT FOUND) |
+| Estimated cost of expansion to 2–2.5 Mtpa | ~125 | - | US$m | estimate in Q3 2025 RNS; not updated in H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/3rd-quarter-results/9194910 | "The estimated cost of expansion would be approximately US$125m" | CONFIRMED in Q3 2025 RNS only (H1 2026 cost: NOT FOUND) |
+| Tailings Dams 2 and 3 | expansion commenced | - | - | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Commencement of the expansion of Tailings Dams 2 and 3, which is expected to provide the additional tailings storage capacity required for the planned increase in processing capacity." | CONFIRMED |
+| Tailings dam construction cost | NOT FOUND | - | US$m | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Only "part of the cost of the tailings dam construction programme" is in non-sustaining capex; no amount | NOT FOUND (amount) |
+| Plant availability or utilisation | NOT FOUND | - | % | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Plant described only as operating "at its 1Mtpa nameplate capacity throughout the Period" | NOT FOUND (no availability figure) |
+
+#### Capex, equipment, water, power, workforce
+
+| Parameter | Value | Comparative | Unit | Period | Source | Quote from raw text | Status |
+|---|---|---|---|---|---|---|---|
+| Total capital expenditure | 26.1 | 11.7 | US$m | H1 2026 vs H1 2025 (FY2025: 28.0) | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Capital expenditure of US$26.1m was incurred in the Period (H1 2025: US$11.7m; FY 2025: US$28.0m)" | CONFIRMED |
+| Non-sustaining capex (growth and one-off development) | 20.1 | 7.1 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "The total capital expenditure in the period was US$26.1m (H1 2025: US$11.7m; FY 2025: US$28.0m), of which US$20.1m (H1 2025: US$7.1m) was deemed to be non-sustaining" | CONFIRMED (new) |
+| Sustaining capex | 6.0 | 4.6 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | AISC table row "Sustaining capital expenditure": 6,000 / 4,628 / 8,200 (US$'000; FY2025 column) | CONFIRMED (new) |
+| Cash outflow on PP&E, incl. supplier advances | 37.7 | 10.2 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Cash flow row "Purchase of property, plant and equipment": (37,679) / (10,161); "Cash outflow on property, plant and equipment, including supplier advances, was US$37.7m." | CONFIRMED (new) |
+| Non-sustaining capex, elements | listed, no amounts | - | US$m | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "The non-sustaining expenditure comprises growth capital expenditure on additional crushing and milling equipment, additional transport equipment and part of the cost of the tailings dam construction programme" | CONFIRMED (list); amount per element: NOT FOUND |
+| Additional transport equipment | purchased | - | count and type NOT FOUND | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "the Company has purchased additional transport equipment to handle the increased volumes more efficiently" | CONFIRMED (number of trucks and model: NOT FOUND) |
+| Trucks and other mobile equipment, count | NOT FOUND | - | units | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | No count in the raw text | NOT FOUND |
+| Water (supply, use, discharge) | NOT FOUND | - | - | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | No water figure in the raw text | NOT FOUND |
+| Power (demand, cost, supply) | NOT FOUND | - | - | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | No power figure in the raw text | NOT FOUND |
+| Workforce headcount | NOT FOUND | - | persons | H1 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | Only "our employees" in the Chairman's thanks; no headcount | NOT FOUND |
+
+#### Financial and unit cost figures (context for calibration)
+
+| Parameter | Value | Comparative | Unit | Period | Source | Quote from raw text | Status |
+|---|---|---|---|---|---|---|---|
+| Revenue | 115.2 | 70.0 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Revenue increased 64.6% to US$115.2m (H1 2025: US$70.0m)" | CONFIRMED (new) |
+| Average realised gold price (excl. silver) | 4,615 | 3,071 | US$/oz | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Average realised gold price of US$4,615/oz (H1 2025: US$3,071/oz)" | CONFIRMED (new) |
+| Adjusted EBITDA | 68.5 | 44.1 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Adjusted EBITDA up 55.4% to US$68.5m (H1 2025: US$44.1m)" | CONFIRMED (new) |
+| Profit after tax | 42.7 | 27.0 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "profit after taxation up 58.4% to US$42.7m (H1 2025: US$27.0m)" | CONFIRMED (new) |
+| Cash generated from operations | 52.1 | 31.6 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Cash generated from operations increased 64.7% to US$52.1m (H1 2025: US$31.6m)" | CONFIRMED (new) |
+| Cost of sales | 55.3 | 29.8 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Cost of sales was US$55.3m (H1 2025: US$29.8m)" | CONFIRMED (new) |
+| Tax paid | 15.6 | 1.2 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "after tax payments of US$15.6m (H1 2025: US$1.2m)" | CONFIRMED (new) |
+| Operating cash cost | 1,640 | 980 | US$/oz | H1 2026 vs H1 2025 (restated) | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Operating cash cost was US$1,640/oz"; restatement table "Operating cash cost – restated": 980 | CONFIRMED (new) |
+| Total cash cost | 1,752 | 1,094 | US$/oz | H1 2026 vs H1 2025 (restated) | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Total cash cost – restated": 1,094 | CONFIRMED (new) |
+| AISC, restated basis | 1,995 | 1,299 | US$/oz | H1 2026 vs H1 2025 (restated) | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "all-in sustaining cost, which includes sustaining capital expenditure of US$6.0m, US$1,995/oz"; "All-in sustaining cost – restated": 1,299 | CONFIRMED (new basis, see Corrections item 3) |
+| AISC, as previously reported | - | 1,357 | US$/oz | H1 2025 (old basis) | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "All-in sustaining cost – as previously reported": 1,357 | CONFIRMED (old basis) |
+| AISC FY2025, restated / as previously reported | 1,530 | 1,562 | US$/oz | FY 2025 (restated / previously reported) | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "All-in sustaining cost – as previously reported": 1,562; "All-in sustaining cost – restated": 1,530 | CONFIRMED (new) |
+| Silver by-product revenue | 1.6 | 0.6 | US$m | H1 2026 vs H1 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Silver by-product revenue increased to US$1.6m (H1 2025: US$0.6m)" | CONFIRMED (new) |
+| Total borrowings | 31.4 | 41.2 | US$m | 30 Jun 2026 vs 31 Dec 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Total loans and borrowings reduced by 23.8% to US$31.4m (31 December 2025: US$41.2m)" | CONFIRMED (new) |
+| Net debt | 19.3 | 18.5 | US$m | 30 Jun 2026 vs 31 Dec 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "Net debt was broadly unchanged at US$19.3m (31 December 2025: US$18.5m)" | CONFIRMED (new) |
+| Net debt / LTM adjusted EBITDA | 0.15 | 0.18 | x | 30 Jun 2026 vs 31 Dec 2025 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "approximately 0.15x (31 December 2025: 0.18x)" | CONFIRMED (new) |
+| Teren-Sai, subsoil contract extension | approved | - | - | after 30 Jun 2026; update in Q4 2026 | https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024 | "expects to update shareholders on progress during Q4 2026" | CONFIRMED (new; not Sekisovskoye) |
+
+#### Statement check (the original D1 bullets)
+
+| Original D1 statement | Result in raw text | Status |
+|---|---|---|
+| Review of the 2.0–2.5 Mtpa increase continues | "Continued review of the technical aspects..." (Operational overview) | CONFIRMED |
+| "no investment decision has yet been made" | Chairman's statement, verbatim | CONFIRMED |
+| Update expected "by the end of 2026" | "...by the end of 2026." (Operational overview and Chairman's statement) | CONFIRMED (see Corrections item 5) |
+| Capacity of existing plant can rise ~200 kt per annum | "approximately 200kt per annum" | CONFIRMED |
+| New crushing and milling equipment ordered | "has ordered new crushing and milling equipment for installation" | CONFIRMED (quantity and cost NOT FOUND) |
+| Plant ran at 1 Mtpa nameplate throughout H1 2026 | "operated at its 1Mtpa nameplate capacity throughout the Period" | CONFIRMED |
+| Tailings Dams 2 and 3 | "Commencement of the expansion of Tailings Dams 2 and 3" | CONFIRMED |
+| Decline No.1, -34 to -50 masl, 230 m | "advanced 230 linear metres from -34 masl to -50 masl" | CONFIRMED |
+| Decline No.2 at 0 masl, 100 m done, -34 masl planned for H2 2026 | "remains at 0 masl, where 100 linear metres of development was completed..." | CONFIRMED |
+| Additional transport equipment purchased | "has purchased additional transport equipment" | CONFIRMED (count NOT FOUND) |
+| Backfilling of voids continues | "Continued backfilling of voids following ore extraction." | CONFIRMED |
+| Q1 2026 vertical gap bridged, constraint removed | "removes a temporary constraint on the mining sequence" | CONFIRMED |
+| Q1 2026 grade 2.04 to 1.73 g/t | Q1 2026 RNS (not H1). 2.04 is the Q1 2025 comparative | CONFIRMED with wording corrected (see Corrections item 2) |
+| AISC H1 2026 US$1,995/oz | "US$1,995/oz" | CONFIRMED, restated basis (see Corrections item 3) |
+| FY2026 guidance 52–55 koz | "full-year production guidance of 52-55Koz" | CONFIRMED |
+| Expansion capex about US$125m | Q3 2025 RNS only: "approximately US$125m" | CONFIRMED in Q3 2025 RNS; not repeated in H1 2026 |
+
+#### Not found in the raw text (H1 2026 RNS and the Q1 2026 and Q3 2025 RNS checked)
+
+- Amount of capex per element (crushing and milling, transport equipment, tailings dams, Q1 bridging): elements are listed without amounts.
+- Number, type and cost of trucks and other transport equipment bought.
+- Number, capacity and cost of the crushing and milling equipment ordered.
+- Cost of the 2.0–2.5 Mtpa project in the H1 2026 RNS (the only estimate is US$125m in the Q3 2025 RNS).
+- Plant availability or utilisation.
+- Stockpile tonnage (only the carrying value, US$24.5m, is given).
+- Water, power, and workforce headcount.
 
 ### D2. JORC competent person's report, EY, effective 31 May 2019 (Altyn RNS, 7 Oct 2019)
 
