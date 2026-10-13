@@ -1,0 +1,3507 @@
+{
+  "_schema": {
+    "purpose": "Twin registry of the Sekisovskoye digital twin (spec sections 1.1-1.4): 22 type things and 96 things, ready to be PUT to Eclipse Ditto.",
+    "top_level": {
+      "namespace": "namespace of instances, kz.sekis",
+      "type_namespace": "namespace of type things, kz.sekis.type",
+      "policy_id": "policy of every thing, default:basic_policy",
+      "types": "list of 22 type things",
+      "things": "list of 96 instance things; parents come before their children"
+    },
+    "entry": {
+      "thingId": "full Ditto thing ID",
+      "policyId": "policy ID",
+      "attributes": "Ditto attributes object, exactly as stored in the twin (hierarchy in _parents, process links in link_* attributes, units object feature id -> unit string)",
+      "features": "Ditto features object, features.<feature_id>.properties.value only",
+      "_meta": "types only, not part of the Ditto payload; carries tier (S 2 s, M 6 s, L 20 s, on_change, on_change_and_30s). Strip before PUT. Instances inherit the tier from their type; a planned or parked unit publishes in tier L."
+    },
+    "rules": [
+      "To create a thing PUT /api/2/things/<thingId> with {policyId, attributes, features} taken from the entry (without _meta).",
+      "_parents is a thing ID string; it is absent on the root kz.sekis:enterprise.",
+      "link_* attribute values are thing IDs (string) or arrays of thing IDs. A link attribute that does not apply to a thing is absent, never null.",
+      "Every number in features is a JSON float (150.0, never 150). The string features are state, shift, decline, stope, binding_link, next_measure, label, sim_time.",
+      "attributes.units has one key per feature of the thing; string features have unit ''.",
+      "Dynamic references in string features (stope, decline) hold a thing name without the namespace (stp-p150-1, tu1), or 'none'.",
+      "Feature values in this file are the baseline at simulation start: states and quantities the spec fixes (counts of active units, supply, stock, scenario defaults, reference capacities); every other number is 0.0 and is overwritten by the first simulator publish.",
+      "Type features hold defaults: the first state token of the type, 0.0 for numbers, '' or 'none' for strings."
+    ]
+  },
+  "namespace": "kz.sekis",
+  "type_namespace": "kz.sekis.type",
+  "policy_id": "default:basic_policy",
+  "types": [
+    {
+      "thingId": "kz.sekis.type:enterprise",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Предприятие",
+        "description": "Горнодобывающее предприятие целиком: показатели по руднику, фабрике и золоту."
+      },
+      "features": {
+        "sim_time": {"properties": {"value": "2027-01-01T08:00:00"}},
+        "sim_day": {"properties": {"value": 0.0}},
+        "shift": {"properties": {"value": "A"}},
+        "ore_mined_tpd": {"properties": {"value": 0.0}},
+        "ore_milled_tpd": {"properties": {"value": 0.0}},
+        "gold_poured_oz_day": {"properties": {"value": 0.0}},
+        "gold_poured_total_oz": {"properties": {"value": 0.0}},
+        "annual_rate_ktpa": {"properties": {"value": 0.0}},
+        "binding_link": {"properties": {"value": ""}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:mine",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Подземный рудник",
+        "description": "Подземный рудник: добыча, вентиляция, водоотлив и состояние смены."
+      },
+      "features": {
+        "state": {"properties": {"value": "production"}},
+        "ore_hoisted_tph": {"properties": {"value": 0.0}},
+        "ore_hoisted_today_t": {"properties": {"value": 0.0}},
+        "ore_hoisted_total_t": {"properties": {"value": 0.0}},
+        "trucks_active": {"properties": {"value": 0.0}},
+        "diesel_kw_active": {"properties": {"value": 0.0}},
+        "air_supply_m3s": {"properties": {"value": 0.0}},
+        "air_demand_m3s": {"properties": {"value": 0.0}},
+        "air_margin_pct": {"properties": {"value": 0.0}},
+        "units_held_vent": {"properties": {"value": 0.0}},
+        "inflow_m3h": {"properties": {"value": 0.0}},
+        "pumped_m3h": {"properties": {"value": 0.0}},
+        "flood_volume_m3": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:level",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "L"},
+      "attributes": {
+        "_isType": true,
+        "name": "Горизонт",
+        "description": "Горизонт рудника с высотой отметки, ролью, подачей воздуха и водопритоком."
+      },
+      "features": {
+        "state": {"properties": {"value": "ventilation"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:stope",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Очистной блок",
+        "description": "Блок руды на горизонте: цикл бурение, взрыв, выпуск; остаток руды и содержание золота."
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "ore_remaining_t": {"properties": {"value": 0.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:decline",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Транспортный уклон",
+        "description": "Транспортный уклон: открыт или закрыт, текущий забой, движение самосвалов."
+      },
+      "features": {
+        "state": {"properties": {"value": "open"}},
+        "bottom_elevation": {"properties": {"value": 0.0}},
+        "trucks_on_ramp": {"properties": {"value": 0.0}},
+        "trucks_waiting_in_bays": {"properties": {"value": 0.0}},
+        "loaded_trips_today": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}},
+        "avg_cycle_min": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:shaft",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "L"},
+      "attributes": {
+        "_isType": true,
+        "name": "Вентиляционный ствол",
+        "description": "Вентиляционный ствол: сечение, расход и скорость воздуха."
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:raise",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "L"},
+      "attributes": {
+        "_isType": true,
+        "name": "Восстающий",
+        "description": "Вентиляционный восстающий: сечение, расход и скорость воздуха."
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:main_fan",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Главный вентилятор",
+        "description": "Вентилятор главного проветривания: расход, давление и потребляемая мощность."
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "pressure": {"properties": {"value": 0.0}},
+        "power_kw": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:pump_station",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Насосная станция",
+        "description": "Водоотливная станция: приток, откачка, уровень в зумпфе, число насосов."
+      },
+      "features": {
+        "state": {"properties": {"value": "idle"}},
+        "inflow_m3h": {"properties": {"value": 0.0}},
+        "pumped_m3h": {"properties": {"value": 0.0}},
+        "sump_level_pct": {"properties": {"value": 0.0}},
+        "pumps_running": {"properties": {"value": 0.0}},
+        "pumps_available": {"properties": {"value": 0.0}},
+        "power_kw": {"properties": {"value": 0.0}},
+        "hours_to_overflow": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:settling_pond",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "L"},
+      "attributes": {
+        "_isType": true,
+        "name": "Илоотстойник",
+        "description": "Илоотстойник шахтной воды: время отстаивания, мутность на входе и выходе, осадок."
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "inflow_m3h": {"properties": {"value": 0.0}},
+        "retention_h": {"properties": {"value": 0.0}},
+        "tss_in_mgl": {"properties": {"value": 0.0}},
+        "tss_out_mgl": {"properties": {"value": 0.0}},
+        "sludge_t_year": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:monitoring_point",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "L"},
+      "attributes": {
+        "_isType": true,
+        "name": "Пост мониторинга",
+        "description": "Выпуск или водозабор с разрешённым лимитом и фактическим расходом."
+      },
+      "features": {
+        "state": {"properties": {"value": "normal"}},
+        "discharge_m3h": {"properties": {"value": 0.0}},
+        "intake_m3h": {"properties": {"value": 0.0}},
+        "tss_mgl": {"properties": {"value": 0.0}},
+        "permit_use_pct": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:haul_truck",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "S"},
+      "attributes": {
+        "_isType": true,
+        "name": "Самосвал",
+        "description": "Подземный самосвал: рейс по уклону, груз, скорость и положение."
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:lhd",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "S"},
+      "attributes": {
+        "_isType": true,
+        "name": "ПДМ",
+        "description": "Погрузочно-доставочная машина: выпуск руды в очистном блоке и погрузка самосвала."
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:drill_rig",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Буровая установка",
+        "description": "Буровая установка: бурение в очистном блоке и переезды между блоками."
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "metres_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:rom_stockpile",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Рудный склад",
+        "description": "Склад руды перед фабрикой: запас, содержание золота, приход и расход."
+      },
+      "features": {
+        "state": {"properties": {"value": "normal"}},
+        "tonnes": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "inflow_tph": {"properties": {"value": 0.0}},
+        "outflow_tph": {"properties": {"value": 0.0}},
+        "days_of_feed": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:plant",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Обогатительная фабрика",
+        "description": "Обогатительная фабрика: питание, извлечение золота, расход воды и хвосты."
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "feed_grade": {"properties": {"value": 0.0}},
+        "recovery_pct": {"properties": {"value": 0.0}},
+        "gold_poured_oz_day": {"properties": {"value": 0.0}},
+        "capacity_ktpa": {"properties": {"value": 0.0}},
+        "lines_running": {"properties": {"value": 0.0}},
+        "water_demand_m3h": {"properties": {"value": 0.0}},
+        "tailings_tph": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:plant_line",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Технологическая линия",
+        "description": "Технологическая линия фабрики: состояние, питание и загрузка."
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "utilisation_pct": {"properties": {"value": 0.0}},
+        "milled_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:tailings_facility",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "L"},
+      "attributes": {
+        "_isType": true,
+        "name": "Хвостовое хозяйство",
+        "description": "Хвостовое хозяйство: накопленные хвосты, свободный объём и запас по годам."
+      },
+      "features": {
+        "state": {"properties": {"value": "ok"}},
+        "stored_t": {"properties": {"value": 0.0}},
+        "free_capacity_t": {"properties": {"value": 0.0}},
+        "inflow_tpd": {"properties": {"value": 0.0}},
+        "years_left": {"properties": {"value": 0.0}},
+        "reclaim_m3h": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:tailings_dam",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "L"},
+      "attributes": {
+        "_isType": true,
+        "name": "Дамба хвостохранилища",
+        "description": "Дамба хвостохранилища: ёмкость, заполнение и свободный объём."
+      },
+      "features": {
+        "state": {"properties": {"value": "active"}},
+        "stored_t": {"properties": {"value": 0.0}},
+        "fill_pct": {"properties": {"value": 0.0}},
+        "free_capacity_t": {"properties": {"value": 0.0}},
+        "inflow_tph": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:water_system",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "M"},
+      "attributes": {
+        "_isType": true,
+        "name": "Водное хозяйство",
+        "description": "Водный баланс площадки: шахтная вода, потребление, оборотная вода, сброс."
+      },
+      "features": {
+        "state": {"properties": {"value": "balanced"}},
+        "mine_water_m3h": {"properties": {"value": 0.0}},
+        "site_use_m3h": {"properties": {"value": 0.0}},
+        "plant_supply_m3h": {"properties": {"value": 0.0}},
+        "reclaim_m3h": {"properties": {"value": 0.0}},
+        "extra_intake_m3h": {"properties": {"value": 0.0}},
+        "deficit_m3h": {"properties": {"value": 0.0}},
+        "discharge_m3h": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:scenario_control",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "on_change"},
+      "attributes": {
+        "_isType": true,
+        "name": "Управляющий двойник сценария",
+        "description": "Ручки сценариев: цель, меры расширения и нарушения режима."
+      },
+      "features": {
+        "target_ktpa": {"properties": {"value": 0.0}},
+        "m_plant": {"properties": {"value": 0.0}},
+        "m_haul": {"properties": {"value": 0.0}},
+        "m_stopes": {"properties": {"value": 0.0}},
+        "m_vent": {"properties": {"value": 0.0}},
+        "m_dev": {"properties": {"value": 0.0}},
+        "m_water": {"properties": {"value": 0.0}},
+        "m_tailings": {"properties": {"value": 0.0}},
+        "tu1_closed": {"properties": {"value": 0.0}},
+        "tu2_closed": {"properties": {"value": 0.0}},
+        "fan_vs2_off": {"properties": {"value": 0.0}},
+        "pumps_failed_p150": {"properties": {"value": 0.0}},
+        "inflow_factor": {"properties": {"value": 0.0}},
+        "grade_gpt": {"properties": {"value": 0.0}},
+        "line_down": {"properties": {"value": 0.0}},
+        "revision": {"properties": {"value": 0.0}},
+        "label": {"properties": {"value": ""}}
+      }
+    },
+    {
+      "thingId": "kz.sekis.type:advisor",
+      "policyId": "default:basic_policy",
+      "_meta": {"tier": "on_change_and_30s"},
+      "attributes": {
+        "_isType": true,
+        "name": "Советник по расширению",
+        "description": "Советник по расширению: узкое место, следующая мера, мощности звеньев и золото."
+      },
+      "features": {
+        "binding_link": {"properties": {"value": ""}},
+        "next_measure": {"properties": {"value": ""}},
+        "measures_needed": {"properties": {"value": 0.0}},
+        "target_ktpa": {"properties": {"value": 0.0}},
+        "achievable_ktpa": {"properties": {"value": 0.0}},
+        "cap_haulage_ktpa": {"properties": {"value": 0.0}},
+        "cap_ventilation_ktpa": {"properties": {"value": 0.0}},
+        "cap_stopes_ktpa": {"properties": {"value": 0.0}},
+        "cap_development_ktpa": {"properties": {"value": 0.0}},
+        "cap_dewatering_ktpa": {"properties": {"value": 0.0}},
+        "dewatering_margin": {"properties": {"value": 0.0}},
+        "cap_plant_ktpa": {"properties": {"value": 0.0}},
+        "cap_water_ktpa": {"properties": {"value": 0.0}},
+        "cap_tailings_ktpa": {"properties": {"value": 0.0}},
+        "gold_koz_year": {"properties": {"value": 0.0}},
+        "gold_gain_koz_year": {"properties": {"value": 0.0}},
+        "air_demand_m3s": {"properties": {"value": 0.0}},
+        "water_deficit_m3h": {"properties": {"value": 0.0}},
+        "discharge_m3h": {"properties": {"value": 0.0}},
+        "tailings_years_left": {"properties": {"value": 0.0}},
+        "stockpile_days_left": {"properties": {"value": 0.0}},
+        "report_revision": {"properties": {"value": 0.0}}
+      }
+    }
+  ],
+  "things": [
+    {
+      "thingId": "kz.sekis:enterprise",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Предприятие «Секисовское»",
+        "_isType": false,
+        "kind": "enterprise",
+        "type": "kz.sekis.type:enterprise",
+        "units": {
+          "sim_time": "",
+          "sim_day": "day",
+          "shift": "",
+          "ore_mined_tpd": "t/d",
+          "ore_milled_tpd": "t/d",
+          "gold_poured_oz_day": "oz/d",
+          "gold_poured_total_oz": "oz",
+          "annual_rate_ktpa": "kt/yr",
+          "binding_link": ""
+        },
+        "operator": "ДТОО «ГРП BAURGOLD» (AltynGold PLC)",
+        "location": "с. Секисовка, Глубоковский район, Восточно-Казахстанская область",
+        "coordinates": "50°19'43\" N, 82°35'48\" E"
+      },
+      "features": {
+        "sim_time": {"properties": {"value": "2027-01-01T08:00:00"}},
+        "sim_day": {"properties": {"value": 0.0}},
+        "shift": {"properties": {"value": "A"}},
+        "ore_mined_tpd": {"properties": {"value": 0.0}},
+        "ore_milled_tpd": {"properties": {"value": 0.0}},
+        "gold_poured_oz_day": {"properties": {"value": 0.0}},
+        "gold_poured_total_oz": {"properties": {"value": 0.0}},
+        "annual_rate_ktpa": {"properties": {"value": 0.0}},
+        "binding_link": {"properties": {"value": "haulage"}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:mine",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Подземный рудник",
+        "_isType": false,
+        "kind": "mine",
+        "type": "kz.sekis.type:mine",
+        "_parents": "kz.sekis:enterprise",
+        "units": {
+          "state": "",
+          "ore_hoisted_tph": "t/h",
+          "ore_hoisted_today_t": "t",
+          "ore_hoisted_total_t": "t",
+          "trucks_active": "units",
+          "diesel_kw_active": "kW",
+          "air_supply_m3s": "m3/s",
+          "air_demand_m3s": "m3/s",
+          "air_margin_pct": "%",
+          "units_held_vent": "units",
+          "inflow_m3h": "m3/h",
+          "pumped_m3h": "m3/h",
+          "flood_volume_m3": "m3"
+        },
+        "design_capacity_ktpa": 1000,
+        "working_days": 360,
+        "shifts": 2,
+        "shift_h": 11
+      },
+      "features": {
+        "state": {"properties": {"value": "production"}},
+        "ore_hoisted_tph": {"properties": {"value": 0.0}},
+        "ore_hoisted_today_t": {"properties": {"value": 0.0}},
+        "ore_hoisted_total_t": {"properties": {"value": 0.0}},
+        "trucks_active": {"properties": {"value": 5.0}},
+        "diesel_kw_active": {"properties": {"value": 0.0}},
+        "air_supply_m3s": {"properties": {"value": 322.0}},
+        "air_demand_m3s": {"properties": {"value": 317.2}},
+        "air_margin_pct": {"properties": {"value": 0.0}},
+        "units_held_vent": {"properties": {"value": 0.0}},
+        "inflow_m3h": {"properties": {"value": 197.0}},
+        "pumped_m3h": {"properties": {"value": 0.0}},
+        "flood_volume_m3": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-p320",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт +320 м (вентиляционный)",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": 320,
+        "role": "ventilation",
+        "link_declines": ["kz.sekis:decline-tu1"],
+        "link_drains_to": "kz.sekis:ps-p150",
+        "link_air_intake": "kz.sekis:shaft-vs1",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "ventilation"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-p250",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт +250 м",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": 250,
+        "role": "mined_out",
+        "link_declines": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"],
+        "link_drains_to": "kz.sekis:ps-p150",
+        "link_air_intake": "kz.sekis:shaft-vs1",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "mined_out"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-p200",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт +200 м",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": 200,
+        "role": "mined_out",
+        "link_declines": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"],
+        "link_drains_to": "kz.sekis:ps-p150",
+        "link_air_intake": "kz.sekis:shaft-vs1",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "mined_out"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-p150",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт +150 м",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": 150,
+        "role": "production",
+        "link_declines": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"],
+        "link_drains_to": "kz.sekis:ps-p150",
+        "link_air_intake": "kz.sekis:shaft-vs1",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "production"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 1.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-p100",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт +100 м",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": 100,
+        "role": "production",
+        "link_declines": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"],
+        "link_drains_to": "kz.sekis:ps-m050",
+        "link_air_intake": "kz.sekis:shaft-vs2",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "production"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 1.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-p050",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт +50 м",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": 50,
+        "role": "production",
+        "link_declines": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"],
+        "link_drains_to": "kz.sekis:ps-m050",
+        "link_air_intake": "kz.sekis:shaft-vs2",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "production"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 1.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-000",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт 0 м",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": 0,
+        "role": "production",
+        "link_declines": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"],
+        "link_drains_to": "kz.sekis:ps-m050",
+        "link_air_intake": "kz.sekis:shaft-vs2",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "production"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 1.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-m050",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт −50 м",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": -50,
+        "role": "development",
+        "link_declines": ["kz.sekis:decline-tu1"],
+        "link_drains_to": "kz.sekis:ps-m050",
+        "link_air_intake": "kz.sekis:shaft-vs2",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "development"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-m100",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт −100 м (проект)",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": -100,
+        "role": "planned",
+        "link_declines": ["kz.sekis:decline-tu1"],
+        "link_drains_to": "kz.sekis:ps-m050",
+        "link_air_intake": "kz.sekis:shaft-vs2",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-m150",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт −150 м (проект)",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": -150,
+        "role": "planned",
+        "link_declines": ["kz.sekis:decline-tu1"],
+        "link_drains_to": "kz.sekis:ps-m050",
+        "link_air_intake": "kz.sekis:shaft-vs2",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-m200",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт −200 м (проект)",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": -200,
+        "role": "planned",
+        "link_declines": ["kz.sekis:decline-tu1"],
+        "link_drains_to": "kz.sekis:ps-m050",
+        "link_air_intake": "kz.sekis:shaft-vs2",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lvl-m300",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Горизонт −300 м (проект)",
+        "_isType": false,
+        "kind": "level",
+        "type": "kz.sekis.type:level",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "air_flow_m3s": "m3/s",
+          "air_required_m3s": "m3/s",
+          "diesel_kw": "kW",
+          "water_inflow_m3h": "m3/h",
+          "active_stopes": "units",
+          "ore_today_t": "t"
+        },
+        "elevation_m": -300,
+        "role": "planned",
+        "link_declines": ["kz.sekis:decline-tu1"],
+        "link_drains_to": "kz.sekis:ps-m050",
+        "link_air_intake": "kz.sekis:shaft-vs2",
+        "link_air_exhaust": "kz.sekis:raise-vhv-exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_required_m3s": {"properties": {"value": 0.0}},
+        "diesel_kw": {"properties": {"value": 0.0}},
+        "water_inflow_m3h": {"properties": {"value": 0.0}},
+        "active_stopes": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p150-1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 150-1",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p150",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "150-1",
+        "ore_initial_t": 90000,
+        "grade_gpt": 1.75,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p150",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "drilling"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 1.75}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p150-2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 150-2",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p150",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "150-2",
+        "ore_initial_t": 90000,
+        "grade_gpt": 1.75,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p150",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 1.75}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p150-3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 150-3",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p150",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "150-3",
+        "ore_initial_t": 90000,
+        "grade_gpt": 1.75,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p150",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 1.75}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p100-1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 100-1",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p100",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "100-1",
+        "ore_initial_t": 90000,
+        "grade_gpt": 1.95,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p100",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "drilling"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 1.95}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p100-2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 100-2",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p100",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "100-2",
+        "ore_initial_t": 90000,
+        "grade_gpt": 1.95,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p100",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 1.95}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p100-3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 100-3",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p100",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "100-3",
+        "ore_initial_t": 90000,
+        "grade_gpt": 1.95,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p100",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 1.95}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p050-1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 50-1",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p050",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "50-1",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.15,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p050",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "drilling"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.15}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p050-2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 50-2",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p050",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "50-2",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.15,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p050",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.15}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-p050-3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 50-3",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-p050",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "50-3",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.15,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-p050",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.15}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-000-1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 0-1",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-000",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "0-1",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.35,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-000",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "drilling"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.35}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-000-2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 0-2",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-000",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "0-2",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.35,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-000",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.35}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-000-3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок 0-3",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-000",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "0-3",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.35,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-000",
+        "link_ore_route": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.35}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-m050-1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок −50-1",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-m050",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "-50-1",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.45,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-m050",
+        "link_ore_route": ["kz.sekis:decline-tu1"]
+      },
+      "features": {
+        "state": {"properties": {"value": "preparation"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.45}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-m050-2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок −50-2",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-m050",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "-50-2",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.45,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-m050",
+        "link_ore_route": ["kz.sekis:decline-tu1"]
+      },
+      "features": {
+        "state": {"properties": {"value": "preparation"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.45}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-m050-3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок −50-3",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-m050",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "-50-3",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.45,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-m050",
+        "link_ore_route": ["kz.sekis:decline-tu1"]
+      },
+      "features": {
+        "state": {"properties": {"value": "preparation"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.45}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-m100-1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок −100-1",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-m100",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "-100-1",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.55,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-m100",
+        "link_ore_route": ["kz.sekis:decline-tu1"]
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.55}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-m100-2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок −100-2",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-m100",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "-100-2",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.55,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-m100",
+        "link_ore_route": ["kz.sekis:decline-tu1"]
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.55}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:stp-m100-3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Блок −100-3",
+        "_isType": false,
+        "kind": "stope",
+        "type": "kz.sekis.type:stope",
+        "_parents": "kz.sekis:lvl-m100",
+        "units": {
+          "state": "",
+          "ore_remaining_t": "t",
+          "broken_ore_t": "t",
+          "drilled_pct": "%",
+          "backfill_pct": "%",
+          "grade": "g/t",
+          "mucked_today_t": "t",
+          "block_no": ""
+        },
+        "block": "-100-3",
+        "ore_initial_t": 90000,
+        "grade_gpt": 2.55,
+        "sublevel_m": [13, 16],
+        "link_level": "kz.sekis:lvl-m100",
+        "link_ore_route": ["kz.sekis:decline-tu1"]
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "ore_remaining_t": {"properties": {"value": 90000.0}},
+        "broken_ore_t": {"properties": {"value": 0.0}},
+        "drilled_pct": {"properties": {"value": 0.0}},
+        "backfill_pct": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 2.55}},
+        "mucked_today_t": {"properties": {"value": 0.0}},
+        "block_no": {"properties": {"value": 1.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:decline-tu1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Транспортный уклон ТУ-1",
+        "_isType": false,
+        "kind": "decline",
+        "type": "kz.sekis.type:decline",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "bottom_elevation": "m",
+          "trucks_on_ramp": "units",
+          "trucks_waiting_in_bays": "units",
+          "loaded_trips_today": "trips",
+          "ore_today_t": "t",
+          "avg_cycle_min": "min"
+        },
+        "portal_elevation_m": 430,
+        "design_bottom_m": -300,
+        "slope_deg": 8,
+        "section_m2": 18.0,
+        "length_m": 3966,
+        "link_levels": [
+          "kz.sekis:lvl-p250",
+          "kz.sekis:lvl-p200",
+          "kz.sekis:lvl-p150",
+          "kz.sekis:lvl-p100",
+          "kz.sekis:lvl-p050",
+          "kz.sekis:lvl-000",
+          "kz.sekis:lvl-m050"
+        ],
+        "link_portal_to": "kz.sekis:rom-stockpile"
+      },
+      "features": {
+        "state": {"properties": {"value": "open"}},
+        "bottom_elevation": {"properties": {"value": -50.0}},
+        "trucks_on_ramp": {"properties": {"value": 0.0}},
+        "trucks_waiting_in_bays": {"properties": {"value": 0.0}},
+        "loaded_trips_today": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}},
+        "avg_cycle_min": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:decline-tu2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Транспортный уклон ТУ-2",
+        "_isType": false,
+        "kind": "decline",
+        "type": "kz.sekis.type:decline",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "bottom_elevation": "m",
+          "trucks_on_ramp": "units",
+          "trucks_waiting_in_bays": "units",
+          "loaded_trips_today": "trips",
+          "ore_today_t": "t",
+          "avg_cycle_min": "min"
+        },
+        "portal_elevation_m": 320,
+        "design_bottom_m": -200,
+        "slope_deg": 8,
+        "section_m2": 18.0,
+        "length_m": 2925,
+        "link_levels": [
+          "kz.sekis:lvl-p250",
+          "kz.sekis:lvl-p200",
+          "kz.sekis:lvl-p150",
+          "kz.sekis:lvl-p100",
+          "kz.sekis:lvl-p050",
+          "kz.sekis:lvl-000"
+        ],
+        "link_portal_to": "kz.sekis:rom-stockpile"
+      },
+      "features": {
+        "state": {"properties": {"value": "open"}},
+        "bottom_elevation": {"properties": {"value": -34.0}},
+        "trucks_on_ramp": {"properties": {"value": 0.0}},
+        "trucks_waiting_in_bays": {"properties": {"value": 0.0}},
+        "loaded_trips_today": {"properties": {"value": 0.0}},
+        "ore_today_t": {"properties": {"value": 0.0}},
+        "avg_cycle_min": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:shaft-vs1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Вентиляционный ствол ВС-1 (ствол «Секисовская»)",
+        "_isType": false,
+        "kind": "shaft",
+        "type": "kz.sekis.type:shaft",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "air_velocity_ms": "m/s"},
+        "section_m2": 10.86,
+        "top_elevation_m": 430,
+        "bottom_elevation_m": 325,
+        "direction": "intake",
+        "link_fan": "kz.sekis:fan-vs1"
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:shaft-vs2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Вентиляционный ствол ВС-2",
+        "_isType": false,
+        "kind": "shaft",
+        "type": "kz.sekis.type:shaft",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "air_velocity_ms": "m/s"},
+        "section_m2": 10.8,
+        "top_elevation_m": 430,
+        "bottom_elevation_m": 340,
+        "direction": "intake",
+        "link_fan": "kz.sekis:fan-vs2"
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:shaft-vs3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Вентиляционный ствол ВС-3 (мера В2, допущение)",
+        "_isType": false,
+        "kind": "shaft",
+        "type": "kz.sekis.type:shaft",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "air_velocity_ms": "m/s"},
+        "section_m2": 16,
+        "top_elevation_m": 430,
+        "bottom_elevation_m": -200,
+        "direction": "intake",
+        "link_fan": "kz.sekis:fan-vs3"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:raise-vpv",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Восстающий ВПВ",
+        "_isType": false,
+        "kind": "raise",
+        "type": "kz.sekis.type:raise",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "air_velocity_ms": "m/s"},
+        "section_m2": 7.0,
+        "top_elevation_m": 324,
+        "bottom_elevation_m": -200,
+        "direction": "intake",
+        "link_fan": "kz.sekis:fan-vpv"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:raise-vhv-tu1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Восстающий ВХВ ТУ-1",
+        "_isType": false,
+        "kind": "raise",
+        "type": "kz.sekis.type:raise",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "air_velocity_ms": "m/s"},
+        "section_m2": 5.6,
+        "top_elevation_m": 200,
+        "bottom_elevation_m": -300,
+        "direction": "intake"
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:raise-vhv-tu2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Восстающий ВХВ ТУ-2",
+        "_isType": false,
+        "kind": "raise",
+        "type": "kz.sekis.type:raise",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "air_velocity_ms": "m/s"},
+        "section_m2": 5.6,
+        "top_elevation_m": 250,
+        "bottom_elevation_m": -200,
+        "direction": "intake"
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:raise-vhv-exhaust",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Вытяжные восстающие ВХВ 7, 8, 10",
+        "_isType": false,
+        "kind": "raise",
+        "type": "kz.sekis.type:raise",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "air_velocity_ms": "m/s"},
+        "section_m2": 10.75,
+        "direction": "exhaust"
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "air_velocity_ms": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:fan-vs1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Вентилятор ВОД-16П (ВС-1)",
+        "_isType": false,
+        "kind": "main_fan",
+        "type": "kz.sekis.type:main_fan",
+        "_parents": "kz.sekis:shaft-vs1",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "model": "ВОД-16П",
+        "duty_m3s": 150,
+        "duty_max_m3s": 150,
+        "pressure_pa": 2500,
+        "link_airway": "kz.sekis:shaft-vs1"
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "air_flow_m3s": {"properties": {"value": 150.0}},
+        "pressure": {"properties": {"value": 2500.0}},
+        "power_kw": {"properties": {"value": 500.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:fan-ug-p320",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Подземная вентиляторная установка AL18-4500V",
+        "_isType": false,
+        "kind": "main_fan",
+        "type": "kz.sekis.type:main_fan",
+        "_parents": "kz.sekis:lvl-p320",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "model": "AL18-4500V",
+        "duty_m3s": 102,
+        "duty_max_m3s": 102,
+        "pressure_pa": 2500,
+        "link_airway": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "air_flow_m3s": {"properties": {"value": 102.0}},
+        "pressure": {"properties": {"value": 2500.0}},
+        "power_kw": {"properties": {"value": 340.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:fan-vs2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Вентилятор Korfmann AL17-2000 (ВС-2)",
+        "_isType": false,
+        "kind": "main_fan",
+        "type": "kz.sekis.type:main_fan",
+        "_parents": "kz.sekis:shaft-vs2",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "model": "Korfmann AL17-2000",
+        "duty_m3s": 70,
+        "duty_max_m3s": 88,
+        "pressure_pa": 3000,
+        "link_airway": "kz.sekis:shaft-vs2"
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "air_flow_m3s": {"properties": {"value": 70.0}},
+        "pressure": {"properties": {"value": 3000.0}},
+        "power_kw": {"properties": {"value": 280.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:fan-vpv",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Вентилятор ВПВ (мера В1)",
+        "_isType": false,
+        "kind": "main_fan",
+        "type": "kz.sekis.type:main_fan",
+        "_parents": "kz.sekis:raise-vpv",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "model": "unspecified",
+        "duty_m3s": 105,
+        "duty_max_m3s": 105,
+        "pressure_pa": 2500,
+        "link_airway": "kz.sekis:raise-vpv"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "pressure": {"properties": {"value": 0.0}},
+        "power_kw": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:fan-vs3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Вентилятор ВС-3 (мера В2)",
+        "_isType": false,
+        "kind": "main_fan",
+        "type": "kz.sekis.type:main_fan",
+        "_parents": "kz.sekis:shaft-vs3",
+        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "model": "unspecified",
+        "duty_m3s": 240,
+        "duty_max_m3s": 240,
+        "pressure_pa": 2500,
+        "link_airway": "kz.sekis:shaft-vs3"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "air_flow_m3s": {"properties": {"value": 0.0}},
+        "pressure": {"properties": {"value": 0.0}},
+        "power_kw": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:ps-p150",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Главная водоотливная станция, гор. +150 м",
+        "_isType": false,
+        "kind": "pump_station",
+        "type": "kz.sekis.type:pump_station",
+        "_parents": "kz.sekis:lvl-p150",
+        "units": {
+          "state": "",
+          "inflow_m3h": "m3/h",
+          "pumped_m3h": "m3/h",
+          "sump_level_pct": "%",
+          "pumps_running": "units",
+          "pumps_available": "units",
+          "power_kw": "kW",
+          "hours_to_overflow": "h"
+        },
+        "elevation_m": 150,
+        "pumps_total": 3,
+        "pumps_working": 2,
+        "pump_capacity_m3h": 300,
+        "sump_volume_m3": 1800,
+        "link_discharges_to": "kz.sekis:pond-upper"
+      },
+      "features": {
+        "state": {"properties": {"value": "idle"}},
+        "inflow_m3h": {"properties": {"value": 0.0}},
+        "pumped_m3h": {"properties": {"value": 0.0}},
+        "sump_level_pct": {"properties": {"value": 0.0}},
+        "pumps_running": {"properties": {"value": 0.0}},
+        "pumps_available": {"properties": {"value": 3.0}},
+        "power_kw": {"properties": {"value": 0.0}},
+        "hours_to_overflow": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:ps-m050",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Участковая насосная, гор. −50 м",
+        "_isType": false,
+        "kind": "pump_station",
+        "type": "kz.sekis.type:pump_station",
+        "_parents": "kz.sekis:lvl-m050",
+        "units": {
+          "state": "",
+          "inflow_m3h": "m3/h",
+          "pumped_m3h": "m3/h",
+          "sump_level_pct": "%",
+          "pumps_running": "units",
+          "pumps_available": "units",
+          "power_kw": "kW",
+          "hours_to_overflow": "h"
+        },
+        "elevation_m": -50,
+        "pumps_total": 2,
+        "pumps_working": 1,
+        "pump_capacity_m3h": 150,
+        "sump_volume_m3": 600,
+        "link_discharges_to": "kz.sekis:ps-p150"
+      },
+      "features": {
+        "state": {"properties": {"value": "idle"}},
+        "inflow_m3h": {"properties": {"value": 0.0}},
+        "pumped_m3h": {"properties": {"value": 0.0}},
+        "sump_level_pct": {"properties": {"value": 0.0}},
+        "pumps_running": {"properties": {"value": 0.0}},
+        "pumps_available": {"properties": {"value": 2.0}},
+        "power_kw": {"properties": {"value": 0.0}},
+        "hours_to_overflow": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:ps-m200",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Главная водоотливная станция, гор. −200 м (проект)",
+        "_isType": false,
+        "kind": "pump_station",
+        "type": "kz.sekis.type:pump_station",
+        "_parents": "kz.sekis:lvl-m200",
+        "units": {
+          "state": "",
+          "inflow_m3h": "m3/h",
+          "pumped_m3h": "m3/h",
+          "sump_level_pct": "%",
+          "pumps_running": "units",
+          "pumps_available": "units",
+          "power_kw": "kW",
+          "hours_to_overflow": "h"
+        },
+        "elevation_m": -200,
+        "pumps_total": 3,
+        "pumps_working": 2,
+        "pump_capacity_m3h": 300,
+        "sump_volume_m3": 1800,
+        "link_discharges_to": "kz.sekis:ps-p150"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "inflow_m3h": {"properties": {"value": 0.0}},
+        "pumped_m3h": {"properties": {"value": 0.0}},
+        "sump_level_pct": {"properties": {"value": 0.0}},
+        "pumps_running": {"properties": {"value": 0.0}},
+        "pumps_available": {"properties": {"value": 0.0}},
+        "power_kw": {"properties": {"value": 0.0}},
+        "hours_to_overflow": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-01",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD30 № 1",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD30",
+        "payload_t": 30,
+        "engine_kw": 304,
+        "link_home_decline": "kz.sekis:decline-tu2"
+      },
+      "features": {
+        "state": {"properties": {"value": "surface_haul"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 320.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-02",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD30 № 2",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD30",
+        "payload_t": 30,
+        "engine_kw": 304,
+        "link_home_decline": "kz.sekis:decline-tu2"
+      },
+      "features": {
+        "state": {"properties": {"value": "surface_haul"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 320.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-03",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD30 № 3",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD30",
+        "payload_t": 30,
+        "engine_kw": 304,
+        "link_home_decline": "kz.sekis:decline-tu2"
+      },
+      "features": {
+        "state": {"properties": {"value": "surface_haul"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 320.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-04",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD30 № 4",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD30",
+        "payload_t": 30,
+        "engine_kw": 304,
+        "link_home_decline": "kz.sekis:decline-tu2"
+      },
+      "features": {
+        "state": {"properties": {"value": "surface_haul"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 320.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-05",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD45 № 5",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD45",
+        "payload_t": 45,
+        "engine_kw": 439,
+        "link_home_decline": "kz.sekis:decline-tu1"
+      },
+      "features": {
+        "state": {"properties": {"value": "surface_haul"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 430.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-06",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD45 № 6",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD45",
+        "payload_t": 45,
+        "engine_kw": 439,
+        "link_home_decline": "kz.sekis:decline-tu1"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 430.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-07",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD45 № 7",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD45",
+        "payload_t": 45,
+        "engine_kw": 439,
+        "link_home_decline": "kz.sekis:decline-tu1"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 430.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-08",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD45 № 8",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD45",
+        "payload_t": 45,
+        "engine_kw": 439,
+        "link_home_decline": "kz.sekis:decline-tu1"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 430.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-09",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD45 № 9",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD45",
+        "payload_t": 45,
+        "engine_kw": 439,
+        "link_home_decline": "kz.sekis:decline-tu2"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 320.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-10",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD45 № 10",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD45",
+        "payload_t": 45,
+        "engine_kw": 439,
+        "link_home_decline": "kz.sekis:decline-tu2"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 320.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-11",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD45 № 11",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD45",
+        "payload_t": 45,
+        "engine_kw": 439,
+        "link_home_decline": "kz.sekis:decline-tu1"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 430.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:truck-12",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Самосвал CAT AD45 № 12",
+        "_isType": false,
+        "kind": "haul_truck",
+        "type": "kz.sekis.type:haul_truck",
+        "_parents": "kz.sekis:mine",
+        "units": {
+          "state": "",
+          "payload": "t",
+          "grade": "g/t",
+          "speed": "km/h",
+          "decline": "",
+          "chainage_m": "m",
+          "elevation": "m",
+          "pos_x": "m",
+          "pos_y": "m",
+          "pos_z": "m",
+          "trips_today": "trips",
+          "tonnes_today": "t"
+        },
+        "model": "CAT AD45",
+        "payload_t": 45,
+        "engine_kw": 439,
+        "link_home_decline": "kz.sekis:decline-tu2"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "payload": {"properties": {"value": 0.0}},
+        "grade": {"properties": {"value": 0.0}},
+        "speed": {"properties": {"value": 0.0}},
+        "decline": {"properties": {"value": "none"}},
+        "chainage_m": {"properties": {"value": 0.0}},
+        "elevation": {"properties": {"value": 320.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}},
+        "trips_today": {"properties": {"value": 0.0}},
+        "tonnes_today": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-01",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1300 № 1",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1300",
+        "bucket_t": 6.8,
+        "engine_kw": 123
+      },
+      "features": {
+        "state": {"properties": {"value": "idle"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-02",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1300 № 2",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1300",
+        "bucket_t": 6.8,
+        "engine_kw": 123
+      },
+      "features": {
+        "state": {"properties": {"value": "idle"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-03",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1300 № 3",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1300",
+        "bucket_t": 6.8,
+        "engine_kw": 123
+      },
+      "features": {
+        "state": {"properties": {"value": "idle"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-04",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1700 № 4",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1700",
+        "bucket_t": 15,
+        "engine_kw": 263
+      },
+      "features": {
+        "state": {"properties": {"value": "idle"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-05",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1700 № 5",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1700",
+        "bucket_t": 15,
+        "engine_kw": 263
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-06",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1700 № 6",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1700",
+        "bucket_t": 15,
+        "engine_kw": 263
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-07",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1700 № 7",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1700",
+        "bucket_t": 15,
+        "engine_kw": 263
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-08",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1700 № 8",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1700",
+        "bucket_t": 15,
+        "engine_kw": 263
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-09",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1700 № 9",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1700",
+        "bucket_t": 15,
+        "engine_kw": 263
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:lhd-10",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "ПДМ CAT R1700 № 10",
+        "_isType": false,
+        "kind": "lhd",
+        "type": "kz.sekis.type:lhd",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "tonnes_today": "t", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "CAT R1700",
+        "bucket_t": 15,
+        "engine_kw": 263
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "tonnes_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:rig-01",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Буровая установка Boomer S1D № 1",
+        "_isType": false,
+        "kind": "drill_rig",
+        "type": "kz.sekis.type:drill_rig",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "metres_today": "m", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "Boomer S1D"
+      },
+      "features": {
+        "state": {"properties": {"value": "tramming"}},
+        "stope": {"properties": {"value": "none"}},
+        "metres_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:rig-02",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Буровая установка Boomer T1D № 2",
+        "_isType": false,
+        "kind": "drill_rig",
+        "type": "kz.sekis.type:drill_rig",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "metres_today": "m", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "Boomer T1D"
+      },
+      "features": {
+        "state": {"properties": {"value": "tramming"}},
+        "stope": {"properties": {"value": "none"}},
+        "metres_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:rig-03",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Буровая установка Boomer S1D № 3",
+        "_isType": false,
+        "kind": "drill_rig",
+        "type": "kz.sekis.type:drill_rig",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "metres_today": "m", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "Boomer S1D"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "metres_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:rig-04",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Буровая установка Boomer S1D № 4",
+        "_isType": false,
+        "kind": "drill_rig",
+        "type": "kz.sekis.type:drill_rig",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "metres_today": "m", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "Boomer S1D"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "metres_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:rig-05",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Буровая установка Boomer S1D № 5",
+        "_isType": false,
+        "kind": "drill_rig",
+        "type": "kz.sekis.type:drill_rig",
+        "_parents": "kz.sekis:mine",
+        "units": {"state": "", "stope": "", "metres_today": "m", "pos_x": "m", "pos_y": "m", "pos_z": "m"},
+        "model": "Boomer S1D"
+      },
+      "features": {
+        "state": {"properties": {"value": "parked"}},
+        "stope": {"properties": {"value": "none"}},
+        "metres_today": {"properties": {"value": 0.0}},
+        "pos_x": {"properties": {"value": 0.0}},
+        "pos_y": {"properties": {"value": 0.0}},
+        "pos_z": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:water",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Водное хозяйство",
+        "_isType": false,
+        "kind": "water_system",
+        "type": "kz.sekis.type:water_system",
+        "_parents": "kz.sekis:enterprise",
+        "units": {
+          "state": "",
+          "mine_water_m3h": "m3/h",
+          "site_use_m3h": "m3/h",
+          "plant_supply_m3h": "m3/h",
+          "reclaim_m3h": "m3/h",
+          "extra_intake_m3h": "m3/h",
+          "deficit_m3h": "m3/h",
+          "discharge_m3h": "m3/h"
+        },
+        "link_ponds": ["kz.sekis:pond-upper", "kz.sekis:pond-lower"],
+        "link_points": ["kz.sekis:mon-volchevka", "kz.sekis:mon-sekisovka"]
+      },
+      "features": {
+        "state": {"properties": {"value": "balanced"}},
+        "mine_water_m3h": {"properties": {"value": 0.0}},
+        "site_use_m3h": {"properties": {"value": 0.0}},
+        "plant_supply_m3h": {"properties": {"value": 0.0}},
+        "reclaim_m3h": {"properties": {"value": 0.0}},
+        "extra_intake_m3h": {"properties": {"value": 0.0}},
+        "deficit_m3h": {"properties": {"value": 0.0}},
+        "discharge_m3h": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:pond-upper",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Илоотстойник верхний",
+        "_isType": false,
+        "kind": "settling_pond",
+        "type": "kz.sekis.type:settling_pond",
+        "_parents": "kz.sekis:water",
+        "units": {
+          "state": "",
+          "inflow_m3h": "m3/h",
+          "retention_h": "h",
+          "tss_in_mgl": "mg/l",
+          "tss_out_mgl": "mg/l",
+          "sludge_t_year": "t/yr"
+        },
+        "volume_m3": 2265,
+        "area_m2": 377.5,
+        "depth_m": 3,
+        "link_overflows_to": "kz.sekis:pond-lower"
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "inflow_m3h": {"properties": {"value": 0.0}},
+        "retention_h": {"properties": {"value": 0.0}},
+        "tss_in_mgl": {"properties": {"value": 39.563}},
+        "tss_out_mgl": {"properties": {"value": 0.0}},
+        "sludge_t_year": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:pond-lower",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Илоотстойник нижний",
+        "_isType": false,
+        "kind": "settling_pond",
+        "type": "kz.sekis.type:settling_pond",
+        "_parents": "kz.sekis:water",
+        "units": {
+          "state": "",
+          "inflow_m3h": "m3/h",
+          "retention_h": "h",
+          "tss_in_mgl": "mg/l",
+          "tss_out_mgl": "mg/l",
+          "sludge_t_year": "t/yr"
+        },
+        "volume_m3": 2265,
+        "area_m2": 377.5,
+        "depth_m": 3,
+        "link_overflows_to": "kz.sekis:water"
+      },
+      "features": {
+        "state": {"properties": {"value": "in_service"}},
+        "inflow_m3h": {"properties": {"value": 0.0}},
+        "retention_h": {"properties": {"value": 0.0}},
+        "tss_in_mgl": {"properties": {"value": 39.563}},
+        "tss_out_mgl": {"properties": {"value": 0.0}},
+        "sludge_t_year": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:mon-volchevka",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Выпуск № 1 в ручей Волчевка",
+        "_isType": false,
+        "kind": "monitoring_point",
+        "type": "kz.sekis.type:monitoring_point",
+        "_parents": "kz.sekis:water",
+        "units": {"state": "", "discharge_m3h": "m3/h", "intake_m3h": "m3/h", "tss_mgl": "mg/l", "permit_use_pct": "%"},
+        "water_body": "ручей Волчевка",
+        "permit_m3h": 218.8,
+        "permit_ref": "Эмиссионное разрешение 2020 г., выпуск № 1"
+      },
+      "features": {
+        "state": {"properties": {"value": "normal"}},
+        "discharge_m3h": {"properties": {"value": 0.0}},
+        "intake_m3h": {"properties": {"value": 0.0}},
+        "tss_mgl": {"properties": {"value": 0.0}},
+        "permit_use_pct": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:mon-sekisovka",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Пост на реке Секисовка",
+        "_isType": false,
+        "kind": "monitoring_point",
+        "type": "kz.sekis.type:monitoring_point",
+        "_parents": "kz.sekis:water",
+        "units": {"state": "", "discharge_m3h": "m3/h", "intake_m3h": "m3/h", "tss_mgl": "mg/l", "permit_use_pct": "%"},
+        "water_body": "р. Секисовка"
+      },
+      "features": {
+        "state": {"properties": {"value": "normal"}},
+        "discharge_m3h": {"properties": {"value": 0.0}},
+        "intake_m3h": {"properties": {"value": 0.0}},
+        "tss_mgl": {"properties": {"value": 0.0}},
+        "permit_use_pct": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:plant",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Обогатительная фабрика",
+        "_isType": false,
+        "kind": "plant",
+        "type": "kz.sekis.type:plant",
+        "_parents": "kz.sekis:enterprise",
+        "units": {
+          "state": "",
+          "feed_tph": "t/h",
+          "feed_grade": "g/t",
+          "recovery_pct": "%",
+          "gold_poured_oz_day": "oz/d",
+          "capacity_ktpa": "kt/yr",
+          "lines_running": "units",
+          "water_demand_m3h": "m3/h",
+          "tailings_tph": "t/h"
+        },
+        "nameplate_ktpa": 1000,
+        "link_tailings_to": "kz.sekis:tailings",
+        "link_water_from": "kz.sekis:water"
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "feed_grade": {"properties": {"value": 2.05}},
+        "recovery_pct": {"properties": {"value": 0.0}},
+        "gold_poured_oz_day": {"properties": {"value": 0.0}},
+        "capacity_ktpa": {"properties": {"value": 1000.0}},
+        "lines_running": {"properties": {"value": 3.0}},
+        "water_demand_m3h": {"properties": {"value": 0.0}},
+        "tailings_tph": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:rom-stockpile",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Рудный склад",
+        "_isType": false,
+        "kind": "rom_stockpile",
+        "type": "kz.sekis.type:rom_stockpile",
+        "_parents": "kz.sekis:plant",
+        "units": {
+          "state": "",
+          "tonnes": "t",
+          "grade": "g/t",
+          "inflow_tph": "t/h",
+          "outflow_tph": "t/h",
+          "days_of_feed": "days"
+        },
+        "link_feeds": [
+          "kz.sekis:plant-line-1",
+          "kz.sekis:plant-line-2",
+          "kz.sekis:plant-line-3",
+          "kz.sekis:plant-line-4",
+          "kz.sekis:plant-line-5",
+          "kz.sekis:plant-line-6"
+        ]
+      },
+      "features": {
+        "state": {"properties": {"value": "normal"}},
+        "tonnes": {"properties": {"value": 36000.0}},
+        "grade": {"properties": {"value": 2.05}},
+        "inflow_tph": {"properties": {"value": 0.0}},
+        "outflow_tph": {"properties": {"value": 0.0}},
+        "days_of_feed": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:plant-line-1",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Технологическая линия № 1",
+        "_isType": false,
+        "kind": "plant_line",
+        "type": "kz.sekis.type:plant_line",
+        "_parents": "kz.sekis:plant",
+        "units": {"state": "", "feed_tph": "t/h", "utilisation_pct": "%", "milled_today_t": "t"},
+        "rated_tph": 41.36,
+        "commissioned": "existing"
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "utilisation_pct": {"properties": {"value": 0.0}},
+        "milled_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:plant-line-2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Технологическая линия № 2",
+        "_isType": false,
+        "kind": "plant_line",
+        "type": "kz.sekis.type:plant_line",
+        "_parents": "kz.sekis:plant",
+        "units": {"state": "", "feed_tph": "t/h", "utilisation_pct": "%", "milled_today_t": "t"},
+        "rated_tph": 41.36,
+        "commissioned": "existing"
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "utilisation_pct": {"properties": {"value": 0.0}},
+        "milled_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:plant-line-3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Технологическая линия № 3",
+        "_isType": false,
+        "kind": "plant_line",
+        "type": "kz.sekis.type:plant_line",
+        "_parents": "kz.sekis:plant",
+        "units": {"state": "", "feed_tph": "t/h", "utilisation_pct": "%", "milled_today_t": "t"},
+        "rated_tph": 41.36,
+        "commissioned": "2024-12"
+      },
+      "features": {
+        "state": {"properties": {"value": "running"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "utilisation_pct": {"properties": {"value": 0.0}},
+        "milled_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:plant-line-4",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Технологическая линия № 4 (проект)",
+        "_isType": false,
+        "kind": "plant_line",
+        "type": "kz.sekis.type:plant_line",
+        "_parents": "kz.sekis:plant",
+        "units": {"state": "", "feed_tph": "t/h", "utilisation_pct": "%", "milled_today_t": "t"},
+        "rated_tph": 49.63,
+        "commissioned": "planned"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "utilisation_pct": {"properties": {"value": 0.0}},
+        "milled_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:plant-line-5",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Технологическая линия № 5 (проект)",
+        "_isType": false,
+        "kind": "plant_line",
+        "type": "kz.sekis.type:plant_line",
+        "_parents": "kz.sekis:plant",
+        "units": {"state": "", "feed_tph": "t/h", "utilisation_pct": "%", "milled_today_t": "t"},
+        "rated_tph": 49.63,
+        "commissioned": "planned"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "utilisation_pct": {"properties": {"value": 0.0}},
+        "milled_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:plant-line-6",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Технологическая линия № 6 (проект)",
+        "_isType": false,
+        "kind": "plant_line",
+        "type": "kz.sekis.type:plant_line",
+        "_parents": "kz.sekis:plant",
+        "units": {"state": "", "feed_tph": "t/h", "utilisation_pct": "%", "milled_today_t": "t"},
+        "rated_tph": 62.04,
+        "commissioned": "planned"
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "feed_tph": {"properties": {"value": 0.0}},
+        "utilisation_pct": {"properties": {"value": 0.0}},
+        "milled_today_t": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:tailings",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Хвостовое хозяйство",
+        "_isType": false,
+        "kind": "tailings_facility",
+        "type": "kz.sekis.type:tailings_facility",
+        "_parents": "kz.sekis:enterprise",
+        "units": {
+          "state": "",
+          "stored_t": "t",
+          "free_capacity_t": "t",
+          "inflow_tpd": "t/d",
+          "years_left": "years",
+          "reclaim_m3h": "m3/h"
+        },
+        "coordinates": "50°20'24\" N, 82°36'30\" E",
+        "area_km2": 1.53,
+        "link_active_dam": "kz.sekis:tsf-dam4"
+      },
+      "features": {
+        "state": {"properties": {"value": "ok"}},
+        "stored_t": {"properties": {"value": 2863755.0}},
+        "free_capacity_t": {"properties": {"value": 3172095.0}},
+        "inflow_tpd": {"properties": {"value": 0.0}},
+        "years_left": {"properties": {"value": 0.0}},
+        "reclaim_m3h": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:tsf-dam4",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Хвостохранилище, дамба № 4",
+        "_isType": false,
+        "kind": "tailings_dam",
+        "type": "kz.sekis.type:tailings_dam",
+        "_parents": "kz.sekis:tailings",
+        "units": {"state": "", "stored_t": "t", "fill_pct": "%", "free_capacity_t": "t", "inflow_tph": "t/h"},
+        "capacity_t": 3181950,
+        "capacity_m3": 2357000,
+        "bulk_density": 1.35
+      },
+      "features": {
+        "state": {"properties": {"value": "active"}},
+        "stored_t": {"properties": {"value": 2863755.0}},
+        "fill_pct": {"properties": {"value": 90.0}},
+        "free_capacity_t": {"properties": {"value": 318195.0}},
+        "inflow_tph": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:tsf-dam2",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Хвостохранилище, дамба № 2",
+        "_isType": false,
+        "kind": "tailings_dam",
+        "type": "kz.sekis.type:tailings_dam",
+        "_parents": "kz.sekis:tailings",
+        "units": {"state": "", "stored_t": "t", "fill_pct": "%", "free_capacity_t": "t", "inflow_tph": "t/h"},
+        "capacity_t": 1426950,
+        "capacity_m3": 1057000,
+        "bulk_density": 1.35
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "stored_t": {"properties": {"value": 0.0}},
+        "fill_pct": {"properties": {"value": 0.0}},
+        "free_capacity_t": {"properties": {"value": 1426950.0}},
+        "inflow_tph": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:tsf-dam3",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Хвостохранилище, дамба № 3",
+        "_isType": false,
+        "kind": "tailings_dam",
+        "type": "kz.sekis.type:tailings_dam",
+        "_parents": "kz.sekis:tailings",
+        "units": {"state": "", "stored_t": "t", "fill_pct": "%", "free_capacity_t": "t", "inflow_tph": "t/h"},
+        "capacity_t": 1426950,
+        "capacity_m3": 1057000,
+        "bulk_density": 1.35
+      },
+      "features": {
+        "state": {"properties": {"value": "standby"}},
+        "stored_t": {"properties": {"value": 0.0}},
+        "fill_pct": {"properties": {"value": 0.0}},
+        "free_capacity_t": {"properties": {"value": 1426950.0}},
+        "inflow_tph": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:tsf-cell5",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Новая карта хвостохранилища (мера Х1, допущение)",
+        "_isType": false,
+        "kind": "tailings_dam",
+        "type": "kz.sekis.type:tailings_dam",
+        "_parents": "kz.sekis:tailings",
+        "units": {"state": "", "stored_t": "t", "fill_pct": "%", "free_capacity_t": "t", "inflow_tph": "t/h"},
+        "capacity_t": 6000000,
+        "capacity_m3": 4444444,
+        "bulk_density": 1.35
+      },
+      "features": {
+        "state": {"properties": {"value": "planned"}},
+        "stored_t": {"properties": {"value": 0.0}},
+        "fill_pct": {"properties": {"value": 0.0}},
+        "free_capacity_t": {"properties": {"value": 0.0}},
+        "inflow_tph": {"properties": {"value": 0.0}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:scenario",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Сценарий (управляющий двойник)",
+        "_isType": false,
+        "kind": "scenario_control",
+        "type": "kz.sekis.type:scenario_control",
+        "_parents": "kz.sekis:enterprise",
+        "units": {
+          "target_ktpa": "kt/yr",
+          "m_plant": "stage",
+          "m_haul": "stage",
+          "m_stopes": "stage",
+          "m_vent": "stage",
+          "m_dev": "stage",
+          "m_water": "stage",
+          "m_tailings": "stage",
+          "tu1_closed": "flag",
+          "tu2_closed": "flag",
+          "fan_vs2_off": "flag",
+          "pumps_failed_p150": "pumps",
+          "inflow_factor": "factor",
+          "grade_gpt": "g/t",
+          "line_down": "line no.",
+          "revision": "",
+          "label": ""
+        }
+      },
+      "features": {
+        "target_ktpa": {"properties": {"value": 1000.0}},
+        "m_plant": {"properties": {"value": 0.0}},
+        "m_haul": {"properties": {"value": 0.0}},
+        "m_stopes": {"properties": {"value": 0.0}},
+        "m_vent": {"properties": {"value": 0.0}},
+        "m_dev": {"properties": {"value": 0.0}},
+        "m_water": {"properties": {"value": 0.0}},
+        "m_tailings": {"properties": {"value": 0.0}},
+        "tu1_closed": {"properties": {"value": 0.0}},
+        "tu2_closed": {"properties": {"value": 0.0}},
+        "fan_vs2_off": {"properties": {"value": 0.0}},
+        "pumps_failed_p150": {"properties": {"value": 0.0}},
+        "inflow_factor": {"properties": {"value": 1.0}},
+        "grade_gpt": {"properties": {"value": 2.05}},
+        "line_down": {"properties": {"value": 0.0}},
+        "revision": {"properties": {"value": 0.0}},
+        "label": {"properties": {"value": "Базовый режим"}}
+      }
+    },
+    {
+      "thingId": "kz.sekis:advisor",
+      "policyId": "default:basic_policy",
+      "attributes": {
+        "name": "Советник по расширению",
+        "_isType": false,
+        "kind": "advisor",
+        "type": "kz.sekis.type:advisor",
+        "_parents": "kz.sekis:enterprise",
+        "units": {
+          "binding_link": "",
+          "next_measure": "",
+          "measures_needed": "steps",
+          "target_ktpa": "kt/yr",
+          "achievable_ktpa": "kt/yr",
+          "cap_haulage_ktpa": "kt/yr",
+          "cap_ventilation_ktpa": "kt/yr",
+          "cap_stopes_ktpa": "kt/yr",
+          "cap_development_ktpa": "kt/yr",
+          "cap_dewatering_ktpa": "kt/yr",
+          "dewatering_margin": "ratio",
+          "cap_plant_ktpa": "kt/yr",
+          "cap_water_ktpa": "kt/yr",
+          "cap_tailings_ktpa": "kt/yr",
+          "gold_koz_year": "koz/yr",
+          "gold_gain_koz_year": "koz/yr",
+          "air_demand_m3s": "m3/s",
+          "water_deficit_m3h": "m3/h",
+          "discharge_m3h": "m3/h",
+          "tailings_years_left": "years",
+          "stockpile_days_left": "days",
+          "report_revision": ""
+        }
+      },
+      "features": {
+        "binding_link": {"properties": {"value": "haulage"}},
+        "next_measure": {"properties": {"value": "m_haul"}},
+        "measures_needed": {"properties": {"value": 0.0}},
+        "target_ktpa": {"properties": {"value": 1000.0}},
+        "achievable_ktpa": {"properties": {"value": 0.0}},
+        "cap_haulage_ktpa": {"properties": {"value": 926.0}},
+        "cap_ventilation_ktpa": {"properties": {"value": 958.0}},
+        "cap_stopes_ktpa": {"properties": {"value": 1024.0}},
+        "cap_development_ktpa": {"properties": {"value": 1750.0}},
+        "cap_dewatering_ktpa": {"properties": {"value": 0.0}},
+        "dewatering_margin": {"properties": {"value": 0.0}},
+        "cap_plant_ktpa": {"properties": {"value": 1000.0}},
+        "cap_water_ktpa": {"properties": {"value": 1000.0}},
+        "cap_tailings_ktpa": {"properties": {"value": 1057.0}},
+        "gold_koz_year": {"properties": {"value": 0.0}},
+        "gold_gain_koz_year": {"properties": {"value": 0.0}},
+        "air_demand_m3s": {"properties": {"value": 317.2}},
+        "water_deficit_m3h": {"properties": {"value": 0.0}},
+        "discharge_m3h": {"properties": {"value": 0.0}},
+        "tailings_years_left": {"properties": {"value": 0.0}},
+        "stockpile_days_left": {"properties": {"value": 0.0}},
+        "report_revision": {"properties": {"value": 0.0}}
+      }
+    }
+  ]
+}

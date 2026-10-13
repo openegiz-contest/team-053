@@ -1,0 +1,623 @@
+{
+  "regime.working_days": {
+    "value": 360,
+    "unit": "days/yr",
+    "source": "FACT A10 'Shift regime': 360 working days/yr, 2 shifts/day, 11 h shift underground and surface"
+  },
+  "regime.shifts": {
+    "value": 2,
+    "unit": "shifts/day",
+    "source": "FACT A10 'Shift regime': 360 working days/yr, 2 shifts/day, 11 h shift underground and surface"
+  },
+  "regime.shift_h": {
+    "value": 11,
+    "unit": "h",
+    "source": "FACT A10 'Shift regime': 360 working days/yr, 2 shifts/day, 11 h shift underground and surface"
+  },
+  "regime.productive_h": {
+    "value": 8.5,
+    "unit": "h",
+    "source": "ASSUMPTION: 0.75 h travel and inspection at each end of the shift and 1 h meal leave 8.5 h of productive time inside an 11 h shift"
+  },
+  "regime.plant_days": {
+    "value": 365,
+    "unit": "days/yr",
+    "source": "ASSUMPTION: the plant runs every day, so plant totals are annualised with 365 (spec 2.1)"
+  },
+  "regime.shift_a_start_h": {"value": 8, "unit": "h of day", "source": "ASSUMPTION: shift A 08:00-19:00 (spec 2.1)"},
+  "regime.shift_a_end_h": {"value": 19, "unit": "h of day", "source": "ASSUMPTION: shift A 08:00-19:00 (spec 2.1)"},
+  "regime.shift_b_start_h": {"value": 20, "unit": "h of day", "source": "ASSUMPTION: shift B 20:00-07:00 (spec 2.1)"},
+  "regime.shift_b_end_h": {"value": 7, "unit": "h of day", "source": "ASSUMPTION: shift B 20:00-07:00 (spec 2.1)"},
+  "regime.blast_window_h": {
+    "value": 1,
+    "unit": "h",
+    "source": "ASSUMPTION: the 2 hours left by 2 x 11 h are used for blasting and clearing, as two 1 h blast windows (spec 2.1)"
+  },
+  "sim.speedup": {
+    "value": 60,
+    "unit": "simulated s per real s",
+    "source": "ASSUMPTION: time compression chosen in spec 2.1: one real second is one simulated minute"
+  },
+  "sim.step_s": {"value": 10, "unit": "simulated s", "source": "ASSUMPTION: internal simulation step chosen in spec 2.1"},
+  "sim.loop_s": {
+    "value": 0.5,
+    "unit": "real s",
+    "source": "ASSUMPTION: service loop period chosen in spec 2.1 (3 steps per loop)"
+  },
+  "sim.seed": {"value": 53, "unit": "-", "source": "ASSUMPTION: random generator seed chosen in spec 2.1"},
+  "sim.epoch": {
+    "value": "2027-01-01T08:00:00",
+    "unit": "ISO 8601",
+    "source": "ASSUMPTION: simulation epoch chosen in spec 2.1: first year of the decision, start of shift A"
+  },
+  "sim.rate_window_h": {
+    "value": 2,
+    "unit": "simulated h",
+    "source": "ASSUMPTION: displayed 'now' rates are rolling 2-simulated-hour means (spec 2.1)"
+  },
+  "sim.op_delay_factor": {
+    "value": 0.81,
+    "unit": "-",
+    "source": "ASSUMPTION: simulator-only calibration knob for check C3; start value 0.81, tuned in the range below"
+  },
+  "sim.op_delay_factor_min": {
+    "value": 0.7,
+    "unit": "-",
+    "source": "ASSUMPTION: lower end of the tuning range of sim.op_delay_factor (spec 2.4)"
+  },
+  "sim.op_delay_factor_max": {
+    "value": 0.95,
+    "unit": "-",
+    "source": "ASSUMPTION: upper end of the tuning range of sim.op_delay_factor (spec 2.4)"
+  },
+  "decline.tu1.portal_m": {"value": 430, "unit": "m", "source": "FACT A2 'Transport decline TU1: portal to bottom': +430 to -300"},
+  "decline.tu1.design_bottom_m": {"value": -300, "unit": "m", "source": "FACT A2 'Transport decline TU1: portal to bottom': +430 to -300"},
+  "decline.tu2.portal_m": {"value": 320, "unit": "m", "source": "FACT A2 'Transport decline TU2: portal to bottom': +320 to -200"},
+  "decline.tu2.design_bottom_m": {"value": -200, "unit": "m", "source": "FACT A2 'Transport decline TU2: portal to bottom': +320 to -200"},
+  "decline.slope_deg": {
+    "value": 8,
+    "unit": "deg",
+    "source": "FACT A2 'Transport decline TU1: cross-section in clear / slope': 18.0 m2 / 8 deg (TU2 identical)"
+  },
+  "decline.section_m2": {
+    "value": 18.0,
+    "unit": "m2",
+    "source": "FACT A2 'Transport decline TU1: cross-section in clear / slope': 18.0 m2 / 8 deg (TU2 identical)"
+  },
+  "decline.tu1.bottom_m": {
+    "value": -50,
+    "unit": "m",
+    "source": "FACT D1 'Decline No.1, advance': advanced 230 linear metres from -34 masl to -50 masl in H1 2026"
+  },
+  "decline.tu2.bottom_m": {
+    "value": -34,
+    "unit": "m",
+    "source": "ASSUMPTION: D1 'Decline No.2, target level' says -34 masl is planned for H2 2026 (decline at 0 masl in H1 2026); taken as reached at the epoch"
+  },
+  "decline.length_factor": {
+    "value": 1.15,
+    "unit": "-",
+    "source": "ASSUMPTION: curves and passing bays; decline lengths are not published (facts file section C)"
+  },
+  "decline.bay_spacing_vm": {"value": 25, "unit": "m of elevation", "source": "ASSUMPTION: a passing bay about every 200 m of ramp"},
+  "decline.bay_wait_slots": {
+    "value": 1,
+    "unit": "slots per node",
+    "source": "ASSUMPTION: each decline node is a passing bay with one waiting slot (spec 2.4)"
+  },
+  "decline.tu1.surface_km": {"value": 0.8, "unit": "km", "source": "ASSUMPTION: surface haul from the TU1 portal to the ROM pad"},
+  "decline.tu2.surface_km": {
+    "value": 1.5,
+    "unit": "km",
+    "source": "ASSUMPTION: surface haul from the TU2 portal to the ROM pad; TU2 portal assumed on the old pit floor"
+  },
+  "level.floor_height_m": {"value": 50, "unit": "m", "source": "FACT A1 'Floor (этаж) height': 50 m, horizontal mining levels"},
+  "stope.sublevel_m": {
+    "value": [13, 16],
+    "unit": "m",
+    "source": "FACT A1 'Sublevel height hn for ore 4.5-6 m': 13-16 m (Table 1.8)"
+  },
+  "stope.capacity_design_ktpa": {
+    "value": 1023.5,
+    "unit": "kt/yr",
+    "source": "FACT A3 'Calculated capacity from mining conditions': 1,023.5 kt/yr"
+  },
+  "stope.producing_base": {
+    "value": 4,
+    "unit": "stopes",
+    "source": "ASSUMPTION: four producing stopes at baseline give 255.875 kt/yr per producing stope"
+  },
+  "stope.cycle_shifts": {"value": 4, "unit": "shifts", "source": "ASSUMPTION: ring cycle length: 255 875 t / 360 d x 2 d"},
+  "stope.blast_t": {"value": 1421.5, "unit": "t", "source": "ASSUMPTION: 255 875 t / 360 d x 2 d"},
+  "stope.drilling_shifts": {
+    "value": 1.5,
+    "unit": "productive shifts",
+    "source": "ASSUMPTION: drilling phase of the stope cycle (spec 2.5)"
+  },
+  "stope.charging_shifts": {"value": 0.5, "unit": "shifts", "source": "ASSUMPTION: charging phase of the stope cycle (spec 2.5)"},
+  "stope.ore_initial_t": {
+    "value": 90000,
+    "unit": "t",
+    "source": "ASSUMPTION: one block; stope dimensions are not published (facts file section C)"
+  },
+  "stope.backfill_days": {
+    "value": 20,
+    "unit": "days",
+    "source": "ASSUMPTION: waste backfill duration (the backfill itself is FACT A1 'Backfill: waste rock returned')"
+  },
+  "stope.preparation_days": {"value": 5, "unit": "days", "source": "ASSUMPTION: preparation of the next block after backfill"},
+  "stope.grade_by_level": {
+    "value": {"p150": 1.75, "p100": 1.95, "p050": 2.15, "000": 2.35, "m050": 2.45, "m100": 2.55},
+    "unit": "g/t",
+    "source": "ASSUMPTION: mean of the four production levels is 2.05 (FACT B 'Milled gold grade' FY2025); lower grade on upper horizons follows D1 'Mined grade, Q1 vs Q2 2026' (Q1 2026 dip during upper-horizon mining)"
+  },
+  "stope.centroid_baseline_m": {
+    "value": 75,
+    "unit": "m",
+    "source": "ASSUMPTION: baseline production centroid: mean elevation of levels +150, +100, +50, 0 (spec 2.3)"
+  },
+  "ore.density": {"value": 2.83, "unit": "t/m3", "source": "FACT A3 'Ore density': 2.83 t/m3"},
+  "dev.advance_vm_per_year": {
+    "value": 34,
+    "unit": "m of depth/yr",
+    "source": "FACT B3 'Transport decline 1 is at -34masl, decline 2 is at sea level': decline 1 from 0 to -34 masl and decline 2 from +34 to 0 during 2025"
+  },
+  "dev.advance_boosted": {"value": 50, "unit": "m of depth/yr", "source": "ASSUMPTION: second development crew"},
+  "dev.t_per_vm": {
+    "value": 51462,
+    "unit": "t per m of depth",
+    "source": "ASSUMPTION: from D2 'Ore Reserves (to -400 m)': 33.45 Mt over +250 ... -400 m (650 m), spread evenly"
+  },
+  "truck.AD30.payload_t": {
+    "value": 30,
+    "unit": "t",
+    "source": "ASSUMPTION: manufacturer data sheet (model named in FACT A4 'CAT AD30, 4 units')"
+  },
+  "truck.AD30.engine_kw": {
+    "value": 304,
+    "unit": "kW",
+    "source": "ASSUMPTION: manufacturer data sheet (model named in FACT A4 'CAT AD30, 4 units')"
+  },
+  "truck.AD45.payload_t": {
+    "value": 45,
+    "unit": "t",
+    "source": "ASSUMPTION: manufacturer data sheet (model named in FACT A4 'AD45 and Cat 1700')"
+  },
+  "truck.AD45.engine_kw": {
+    "value": 439,
+    "unit": "kW",
+    "source": "ASSUMPTION: manufacturer data sheet (model named in FACT A4 'AD45 and Cat 1700')"
+  },
+  "lhd.R1300.bucket_t": {
+    "value": 6.8,
+    "unit": "t",
+    "source": "ASSUMPTION: manufacturer data sheet (model named in FACT A4 'CAT R1300, 2 units')"
+  },
+  "lhd.R1300.engine_kw": {
+    "value": 123,
+    "unit": "kW",
+    "source": "ASSUMPTION: manufacturer data sheet (model named in FACT A4 'CAT R1300, 2 units')"
+  },
+  "lhd.R1700.bucket_t": {
+    "value": 15,
+    "unit": "t",
+    "source": "ASSUMPTION: manufacturer data sheet (model named in FACT A4 'AD45 and Cat 1700')"
+  },
+  "lhd.R1700.engine_kw": {
+    "value": 263,
+    "unit": "kW",
+    "source": "ASSUMPTION: manufacturer data sheet (model named in FACT A4 'AD45 and Cat 1700')"
+  },
+  "fleet.base.trucks_ad30": {"value": 4, "unit": "units", "source": "FACT A4 'CAT AD30, 4 units': haul trucks on TU2"},
+  "fleet.base.lhd_r1300": {
+    "value": 3,
+    "unit": "units",
+    "source": "FACT D3 '3 Cat R1300 LHDs': 3 Cat R1300 LHDs, 3 Cat AD30 trucks delivered 2020"
+  },
+  "fleet.base.trucks_ad45": {
+    "value": 1,
+    "unit": "units",
+    "source": "ASSUMPTION: one AD45 on TU1 at baseline; FACT A4 names AD45 as intended and D1 'Additional transport equipment' says additional transport equipment was purchased, count not published"
+  },
+  "fleet.base.lhd_r1700": {
+    "value": 1,
+    "unit": "units",
+    "source": "ASSUMPTION: one R1700 at baseline; FACT A4 names Cat 1700 as intended, count not published"
+  },
+  "fleet.base.rigs": {
+    "value": 2,
+    "unit": "units",
+    "source": "ASSUMPTION: two drill rigs at baseline (Boomer S1D and Boomer T1D named in FACT A4); the count in service is not published"
+  },
+  "truck.speed_up_loaded_kmh": {"value": 9, "unit": "km/h", "source": "ASSUMPTION: typical for a 1:7 ramp and a 20 km/h underground limit"},
+  "truck.speed_down_empty_kmh": {
+    "value": 16,
+    "unit": "km/h",
+    "source": "ASSUMPTION: typical for a 1:7 ramp and a 20 km/h underground limit"
+  },
+  "truck.speed_flat_loaded_kmh": {
+    "value": 15,
+    "unit": "km/h",
+    "source": "ASSUMPTION: typical for a 1:7 ramp and a 20 km/h underground limit"
+  },
+  "truck.speed_flat_empty_kmh": {
+    "value": 20,
+    "unit": "km/h",
+    "source": "ASSUMPTION: typical for a 1:7 ramp and a 20 km/h underground limit"
+  },
+  "truck.load_min": {"value": 5, "unit": "min", "source": "ASSUMPTION: loading time per truck"},
+  "truck.dump_min": {"value": 1.5, "unit": "min", "source": "ASSUMPTION: dumping time per truck"},
+  "truck.manoeuvre_min": {"value": 1.5, "unit": "min", "source": "ASSUMPTION: manoeuvring time per cycle"},
+  "truck.availability": {"value": 0.8, "unit": "-", "source": "ASSUMPTION: MTBF 40 h and MTTR 10 h give availability 0.80"},
+  "truck.mtbf_h": {
+    "value": 40,
+    "unit": "h",
+    "source": "ASSUMPTION: mean time to failure of a truck, exponential; with MTTR 10 h gives availability 0.80"
+  },
+  "truck.mttr_h": {
+    "value": 10,
+    "unit": "h",
+    "source": "ASSUMPTION: mean repair time of a truck; with MTBF 40 h gives availability 0.80"
+  },
+  "haul.K_HAUL": {
+    "value": 0.811,
+    "unit": "-",
+    "source": "ASSUMPTION: calibration constant, set so that C_haul(baseline) = 926.4 kt/yr (FACT B 'Ore mined' FY2025: 926,422 t)"
+  },
+  "haul.K_BAY": {
+    "value": 0.75,
+    "unit": "min per extra truck on the decline",
+    "source": "ASSUMPTION: congestion term of the analytic haulage formula"
+  },
+  "vent.supply_2022": {"value": 252, "unit": "m3/s", "source": "FACT A5 'Fresh air, current': 252 m3/s"},
+  "vent.supply_base": {
+    "value": 322,
+    "unit": "m3/s",
+    "source": "FACT A5 'Fresh air, planned': 322 m3/s; the upgrade is taken as complete at the epoch because FY2025 reports ventilation improvements completed (B3)"
+  },
+  "vent.fan_vs2.duty_m3s": {
+    "value": 70,
+    "unit": "m3/s",
+    "source": "ASSUMPTION: 322 - 252 = 70 m3/s taken as the VS2 duty inside its range"
+  },
+  "vent.fan_vs2.duty_min_m3s": {"value": 63, "unit": "m3/s", "source": "FACT A5 'Surface fan at VS2': Korfmann AL17-2000, 63.0-88.0 m3/s"},
+  "vent.fan_vs2.duty_max_m3s": {"value": 88, "unit": "m3/s", "source": "FACT A5 'Surface fan at VS2': Korfmann AL17-2000, 63.0-88.0 m3/s"},
+  "vent.fan_vs2.pressure_pa": {"value": 3000, "unit": "Pa", "source": "FACT A5 'Surface fan at VS2': pressure up to 3000 Pa"},
+  "vent.split_fan_vs1_m3s": {"value": 150, "unit": "m3/s", "source": "ASSUMPTION: split of the 252 m3/s group: 150 through shaft VS1"},
+  "vent.split_fan_ug_p320_m3s": {
+    "value": 102,
+    "unit": "m3/s",
+    "source": "ASSUMPTION: split of the 252 m3/s group: 102 through the two declines"
+  },
+  "vent.q_base": {
+    "value": 180,
+    "unit": "m3/s",
+    "source": "ASSUMPTION: base air demand; the pair q_base/q_diesel reproduces 252 m3/s at half the fleet and 322 m3/s at the full fleet (checks C6, C7)"
+  },
+  "vent.q_diesel": {
+    "value": 0.06,
+    "unit": "m3/s per kW",
+    "source": "ASSUMPTION: 0.06 m3/s per diesel kW is common design practice"
+  },
+  "vent.velocity_limit_ms": {"value": 15, "unit": "m/s", "source": "ASSUMPTION: air velocity limit used to size new airways"},
+  "vent.measure_V1.raise_section_m2": {
+    "value": 7.0,
+    "unit": "m2",
+    "source": "FACT A2 'Ventilation raise VPV (proposed)': section 7.0 m2, from +324 to -200"
+  },
+  "vent.measure_V1.delta_m3s": {"value": 105, "unit": "m3/s", "source": "ASSUMPTION: fan on raise VPV: 7.0 m2 x 15 m/s"},
+  "vent.measure_V2.shaft_section_m2": {"value": 16, "unit": "m2", "source": "ASSUMPTION: new shaft VS3 section"},
+  "vent.measure_V2.delta_m3s": {"value": 240, "unit": "m3/s", "source": "ASSUMPTION: new shaft VS3: 16 m2 x 15 m/s"},
+  "vent.fan_efficiency": {"value": 0.75, "unit": "-", "source": "ASSUMPTION: fan efficiency for the power formula"},
+  "vent.pressure_vs1_pa": {
+    "value": 2500,
+    "unit": "Pa",
+    "source": "ASSUMPTION: fan pressure of VS1 and the underground fan; also used for the planned fans VPV and VS3"
+  },
+  "vent.reentry_min": {"value": 30, "unit": "min", "source": "ASSUMPTION: re-entry wait after a blast"},
+  "vent.min_active_trucks": {
+    "value": 1,
+    "unit": "units",
+    "source": "ASSUMPTION: the holding rule never goes below one truck (spec 2.6)"
+  },
+  "vent.min_active_lhd": {"value": 1, "unit": "units", "source": "ASSUMPTION: the holding rule never goes below one LHD (spec 2.6)"},
+  "water.inflow_m3h": {
+    "value": 197,
+    "unit": "m3/h",
+    "source": "FACT A6 'Average mine inflow': 197 m3/h (2021); equals 1725.72 thousand m3/yr / 8760 h"
+  },
+  "water.inflow_design_m3h": {"value": 430, "unit": "m3/h", "source": "FACT A6 'Design inflow': 430 m3/h as approved in the mine plan"},
+  "water.upper_share": {
+    "value": 0.6,
+    "unit": "-",
+    "source": "ASSUMPTION: share of inflow reporting to the +150 m sump; FACT A6 'Inflow to workings at +320 m horizon' gives at most 25 m3/h at the +320 m horizon"
+  },
+  "water.ps_p150.pumps": {
+    "value": 3,
+    "unit": "units",
+    "source": "ASSUMPTION: three pumps at the +150 m station; station and elevation from FACT A6 'Pumping stations'"
+  },
+  "water.ps_p150.pumps_working": {"value": 2, "unit": "units", "source": "ASSUMPTION: two working, one standby"},
+  "water.ps_p150.pump_m3h": {
+    "value": 300,
+    "unit": "m3/h",
+    "source": "ASSUMPTION: two working pumps clear the design inflow in 20 h (430 x 24/20 = 516 <= 600)"
+  },
+  "water.ps_p150.sump_m3": {"value": 1800, "unit": "m3", "source": "ASSUMPTION: about 4 h of design inflow"},
+  "water.ps_m050.pumps": {
+    "value": 2,
+    "unit": "units",
+    "source": "ASSUMPTION: two pumps at the -50 m station; unit size from FACT A6 'Pumps at quarry sump'"
+  },
+  "water.ps_m050.pumps_working": {"value": 1, "unit": "units", "source": "ASSUMPTION: one working, one standby"},
+  "water.ps_m050.pump_m3h": {
+    "value": 150,
+    "unit": "m3/h",
+    "source": "ASSUMPTION: unit size from FACT A6 'Pumps at quarry sump' (3 pumps x 150 m3/h)"
+  },
+  "water.ps_m050.sump_m3": {"value": 600, "unit": "m3", "source": "ASSUMPTION: sump of the sectional station"},
+  "water.ps_p150.start1_pct": {
+    "value": 60,
+    "unit": "% sump level",
+    "source": "ASSUMPTION: first pump starts at 60 % sump level (spec 2.7)"
+  },
+  "water.ps_p150.stop_pct": {"value": 20, "unit": "% sump level", "source": "ASSUMPTION: pumps stop at 20 % sump level (spec 2.7)"},
+  "water.ps_p150.start2_pct": {
+    "value": 80,
+    "unit": "% sump level",
+    "source": "ASSUMPTION: second pump starts at 80 % sump level (spec 2.7)"
+  },
+  "water.ps_m050.start1_pct": {"value": 70, "unit": "% sump level", "source": "ASSUMPTION: one pump starts at 70 % sump level (spec 2.7)"},
+  "water.ps_m050.stop_pct": {"value": 20, "unit": "% sump level", "source": "ASSUMPTION: pump stops at 20 % sump level (spec 2.7)"},
+  "water.ps_m050.start_standby_pct": {
+    "value": 90,
+    "unit": "% sump level",
+    "source": "ASSUMPTION: the standby pump starts at 90 % sump level (spec 2.7)"
+  },
+  "water.flood_threshold_m050_m3": {"value": 300, "unit": "m3", "source": "ASSUMPTION: flood volume above which level -50 m is flooded"},
+  "water.flood_threshold_000_m3": {"value": 1500, "unit": "m3", "source": "ASSUMPTION: flood volume above which level 0 m is flooded"},
+  "water.pump_efficiency": {"value": 0.7, "unit": "-", "source": "ASSUMPTION: pump efficiency for the power formula"},
+  "water.pump_head_factor": {"value": 1.1, "unit": "-", "source": "ASSUMPTION: head loss factor in the pump power formula (spec 2.7)"},
+  "water.head_ps_p150_m": {"value": 280, "unit": "m", "source": "ASSUMPTION: head from +150 to +430 (elevations from FACT A2)"},
+  "water.head_ps_m050_m": {"value": 200, "unit": "m", "source": "ASSUMPTION: head from -50 to +150 (elevations from FACT A2 and A6)"},
+  "water.rolling_window_h": {
+    "value": 24,
+    "unit": "h",
+    "source": "ASSUMPTION: rolling 24-hour means hide pump cycling in the water balance (spec 2.7)"
+  },
+  "pond.volume_m3": {
+    "value": 4530,
+    "unit": "m3",
+    "source": "FACT A6 'Settling ponds': volume 4530 m3, two ponds in series (upper, lower)"
+  },
+  "pond.area_m2": {"value": 755, "unit": "m2", "source": "FACT A6 'Settling ponds': pond area 755 m2 at 3 m depth"},
+  "pond.depth_m": {"value": 3, "unit": "m", "source": "FACT A6 'Settling ponds': pond area 755 m2 at 3 m depth"},
+  "pond.settling_h": {"value": 6, "unit": "h", "source": "FACT A6 'Settling ponds': 6 h settling"},
+  "pond.tss_in_mgl": {
+    "value": 39.563,
+    "unit": "mg/l",
+    "source": "FACT A6 'Sludge (settling pond) yield': concentration 39.563 mg/l"
+  },
+  "pond.efficiency": {
+    "value": 0.949,
+    "unit": "-",
+    "source": "FACT A6 'Sludge (settling pond) yield': settling coefficient 94.9 %"
+  },
+  "water.site_use_kth_m3yr": {"value": 602.688, "unit": "thousand m3/yr", "source": "FACT A6 'Reused on site': 602.688 thousand m3/yr"},
+  "water.plant_supply_kth_m3yr": {
+    "value": 1123.032,
+    "unit": "thousand m3/yr",
+    "source": "FACT A6 'Transferred to Altyn MM concentrator': 1,123.032 thousand m3/yr"
+  },
+  "water.mine_water_kth_m3yr": {
+    "value": 1725.72,
+    "unit": "thousand m3/yr",
+    "source": "FACT A6 'Water balance 2023-2030: total use': mine water 1,725.72 thousand m3/yr"
+  },
+  "water.site_m3_per_t": {
+    "value": 0.603,
+    "unit": "m3/t",
+    "source": "ASSUMPTION: the site-use volume divided by the 1000 kt/yr design output (FACT A3 'Design ore output') and scaled linearly"
+  },
+  "water.plant_m3_per_t": {
+    "value": 1.123,
+    "unit": "m3/t",
+    "source": "ASSUMPTION: the plant-supply volume divided by the 1000 kt/yr design output (FACT A3 'Design ore output') and scaled linearly"
+  },
+  "water.permit_m3h": {
+    "value": 218.8,
+    "unit": "m3/h",
+    "source": "FACT A6 'Discharge to Volchevka stream': 1917.1123 thousand m3/yr / 8760 h"
+  },
+  "water.permit_warning_pct": {
+    "value": 80,
+    "unit": "% of permit",
+    "source": "ASSUMPTION: monitoring point state is 'warning' above 80 % of the permit (spec 2.7)"
+  },
+  "water.measure_W1.reclaim_m3_per_t": {"value": 0.6, "unit": "m3/t milled", "source": "ASSUMPTION: about half of the slurry water at 45 % solids"},
+  "water.measure_W2.extra_intake_m3h": {"value": 150, "unit": "m3/h", "source": "ASSUMPTION: extra river intake sized for 2.5 Mtpa"},
+  "plant.nameplate_ktpa": {
+    "value": 1000,
+    "unit": "kt/yr",
+    "source": "FACT B2 'increasing processing capacity by 50% to 1Mtpa': third line commissioned December 2024"
+  },
+  "plant.lines": {
+    "value": 3,
+    "unit": "units",
+    "source": "FACT B2 'increasing processing capacity by 50% to 1Mtpa': third production line commissioned"
+  },
+  "plant.availability": {
+    "value": 0.92,
+    "unit": "-",
+    "source": "ASSUMPTION: planned maintenance of one day in 12.5 days; gives 41.36 t/h per line at 1000 kt/yr"
+  },
+  "plant.maintenance_period_days": {
+    "value": 12.5,
+    "unit": "days",
+    "source": "ASSUMPTION: each line is down one day in every 12.5 days (spec 2.7)"
+  },
+  "plant.maintenance_duration_days": {"value": 1, "unit": "days", "source": "ASSUMPTION: duration of a planned maintenance stop (spec 2.7)"},
+  "plant.maintenance_stagger_days": {
+    "value": 4,
+    "unit": "days",
+    "source": "ASSUMPTION: maintenance of the lines is staggered by 4 days (spec 2.7)"
+  },
+  "plant.min_stockpile_t": {
+    "value": 500,
+    "unit": "t",
+    "source": "ASSUMPTION: a line runs while the ROM stockpile holds more than 500 t (spec 2.7)"
+  },
+  "plant.stages_ktpa": {
+    "value": [1200, 2000, 2500],
+    "unit": "kt/yr",
+    "source": "FACT D1 'Capacity increase available at the existing plant': about 200 kt per annum (1200); B2 '2-2.5Mtpa' (2000, 2500)"
+  },
+  "plant.line45_ktpa": {
+    "value": 400,
+    "unit": "kt/yr",
+    "source": "ASSUMPTION: lines 4 and 5 add 400 kt/yr each (the 1200 to 2000 stage); split is not published"
+  },
+  "plant.line6_ktpa": {
+    "value": 500,
+    "unit": "kt/yr",
+    "source": "ASSUMPTION: line 6 adds 500 kt/yr (the 2000 to 2500 stage); split is not published"
+  },
+  "plant.recovery.intercept_pct": {
+    "value": 81.616,
+    "unit": "%",
+    "source": "ASSUMPTION: least-squares fit R(g) = 81.616 + 1.637 g to FACT B 'Gold recovery' (FY2024, FY2025) and D1 'Gold recovery' (H1 2025, H1 2026)"
+  },
+  "plant.recovery.slope_pct_per_gpt": {
+    "value": 1.637,
+    "unit": "% per g/t",
+    "source": "ASSUMPTION: least-squares fit R(g) = 81.616 + 1.637 g to FACT B 'Gold recovery' (FY2024, FY2025) and D1 'Gold recovery' (H1 2025, H1 2026)"
+  },
+  "plant.recovery.min_pct": {"value": 80, "unit": "%", "source": "ASSUMPTION: lower clamp of the recovery model"},
+  "plant.recovery.max_pct": {"value": 88, "unit": "%", "source": "ASSUMPTION: upper clamp of the recovery model"},
+  "plant.grade_base": {"value": 2.05, "unit": "g/t", "source": "FACT B 'Milled gold grade': 2.05 g/t (FY2025)"},
+  "plant.grade_h1_2026": {"value": 1.76, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 1.76 g/t (H1 2026)"},
+  "stockpile.start_t": {
+    "value": 36000,
+    "unit": "t",
+    "source": "ASSUMPTION: from FACT B and D1 stockpile draws: +156 433 t in 2024, -40 170 t in 2025, -40 130 t in H1 2026 ('Ore processed minus ore mined'), -40 000 t assumed for H2 2026"
+  },
+  "tsf.dam4_capacity_t": {
+    "value": 3181950,
+    "unit": "t",
+    "source": "FACT A9 'Capacity after reconstruction': 2,357,000 m3 (3,181,950 t)"
+  },
+  "tsf.dam4_capacity_m3": {
+    "value": 2357000,
+    "unit": "m3",
+    "source": "FACT A9 'Capacity after reconstruction': 2,357,000 m3 (3,181,950 t)"
+  },
+  "tsf.bulk_density": {"value": 1.35, "unit": "t/m3", "source": "FACT A9 'Tailings composition': bulk 1.35 t/m3"},
+  "tsf.dam4_fill_start": {
+    "value": 0.9,
+    "unit": "fraction",
+    "source": "ASSUMPTION: fill state is not published (facts file section C)"
+  },
+  "tsf.dam23_free_t": {
+    "value": 1426950,
+    "unit": "t each",
+    "source": "ASSUMPTION: same as the increment of the dam 4 reconstruction (3,181,950 - 1,755,000 t, FACT A9 'Capacity before reconstruction'); D1 'Tailings Dams 2 and 3' reports their expansion as started"
+  },
+  "tsf.measure_X1_t": {"value": 6000000, "unit": "t", "source": "ASSUMPTION: new tailings cell, measure X1"},
+  "tsf.min_years": {"value": 3.0, "unit": "years", "source": "ASSUMPTION: lead time to permit and build storage"},
+  "gold.g_per_oz": {
+    "value": 31.1035,
+    "unit": "g/oz",
+    "source": "ASSUMPTION: definition of the troy ounce, not a model assumption"
+  },
+  "publish.period_fast_s": {"value": 2, "unit": "s", "source": "ASSUMPTION: tier S publishing period (spec 1.2)"},
+  "publish.period_medium_s": {"value": 6, "unit": "s", "source": "ASSUMPTION: tier M publishing period (spec 1.2)"},
+  "publish.period_slow_s": {"value": 20, "unit": "s", "source": "ASSUMPTION: tier L publishing period (spec 1.2)"},
+  "publish.period_advisor_s": {"value": 30, "unit": "s", "source": "ASSUMPTION: advisor publishes on change and every 30 s (spec 1.2)"},
+  "publish.max_msg_per_s": {"value": 20, "unit": "messages/s", "source": "ASSUMPTION: publishing budget (spec 1.2)"},
+  "publish.fast_units_limit": {
+    "value": 14,
+    "unit": "units",
+    "source": "ASSUMPTION: above this many active fast-tier units the fast period grows (spec 1.2)"
+  },
+  "publish.period_fast_loaded_s": {
+    "value": 3,
+    "unit": "s",
+    "source": "ASSUMPTION: fast tier period when more than 14 fast-tier units are active (spec 1.2)"
+  },
+  "publish.scale_default": {
+    "value": 1.0,
+    "unit": "-",
+    "source": "ASSUMPTION: default of the PUBLISH_SCALE environment variable (spec 1.2)"
+  },
+  "calib.run_days": {
+    "value": 60,
+    "unit": "simulated days",
+    "source": "ASSUMPTION: length of the simulator calibration runs C3, C8, C11 (spec 2.9)"
+  },
+  "calib.c1.milled_t": {"value": 966592, "unit": "t", "source": "FACT B 'Ore milled (processed)': 966,592 t (FY2025)"},
+  "calib.c1.grade_gpt": {"value": 2.05, "unit": "g/t", "source": "FACT B 'Milled gold grade': 2.05 g/t (FY2025)"},
+  "calib.c1.reported_oz": {"value": 53852, "unit": "oz", "source": "FACT B 'Gold poured': 53,852 oz (FY2025)"},
+  "calib.c1.tol_pct": {"value": 1.5, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c2.milled_t": {"value": 593612, "unit": "t", "source": "FACT B 'Ore milled (processed)': 593,612 t (FY2024)"},
+  "calib.c2.grade_gpt": {"value": 2.29, "unit": "g/t", "source": "FACT B 'Milled gold grade': 2.29 g/t (FY2024)"},
+  "calib.c2.reported_oz": {"value": 37279, "unit": "oz", "source": "FACT B 'Gold poured': 37,279 oz (FY2024)"},
+  "calib.c2.tol_pct": {"value": 1.5, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c3.reported_t": {"value": 926422, "unit": "t/yr", "source": "FACT B 'Ore mined': 926,422 t (FY2025)"},
+  "calib.c3.tol_pct": {"value": 3, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c4.h1_2026.milled_t": {"value": 498331, "unit": "t", "source": "FACT D1 'Ore processed': 498,331 t (H1 2026)"},
+  "calib.c4.h1_2026.grade_gpt": {"value": 1.76, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 1.76 g/t (H1 2026)"},
+  "calib.c4.h1_2026.reported_oz": {"value": 23906, "unit": "oz", "source": "FACT D1 'Gold poured': 23,906 oz (H1 2026)"},
+  "calib.c4.h1_2025.milled_t": {"value": 452593, "unit": "t", "source": "FACT D1 'Ore processed': 452,593 t (H1 2025)"},
+  "calib.c4.h1_2025.grade_gpt": {"value": 2.04, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 2.04 g/t (H1 2025)"},
+  "calib.c4.h1_2025.reported_oz": {"value": 25081, "unit": "oz", "source": "FACT D1 'Gold poured': 25,081 oz (H1 2025)"},
+  "calib.c4.tol_pct": {"value": 1.5, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c5.grades_gpt": {
+    "value": [2.29, 2.05, 2.04, 1.76],
+    "unit": "g/t",
+    "source": "FACT B 'Milled gold grade' (FY2024 2.29, FY2025 2.05) and D1 'Gold grade, processed' (H1 2025 2.04, H1 2026 1.76)"
+  },
+  "calib.c5.reported_pct": {
+    "value": [85.42, 85.07, 84.75, 84.55],
+    "unit": "%",
+    "source": "FACT B 'Gold recovery' (FY2024 85.42, FY2025 85.07) and D1 'Gold recovery' (H1 2025 84.75, H1 2026 84.55)"
+  },
+  "calib.c5.tol_points": {"value": 0.25, "unit": "percentage points", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c6.reported_m3s": {"value": 322, "unit": "m3/s", "source": "FACT A5 'Fresh air, planned': 322 m3/s"},
+  "calib.c6.band_pct": {"value": [95, 100], "unit": "% of reported", "source": "ASSUMPTION: accepted band fixed in spec 2.9"},
+  "calib.c7.reported_m3s": {"value": 252, "unit": "m3/s", "source": "FACT A5 'Fresh air, current': 252 m3/s"},
+  "calib.c7.tol_pct": {"value": 3, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c8.reported_t": {
+    "value": 1000000,
+    "unit": "t/yr",
+    "source": "FACT B2 'increasing processing capacity by 50% to 1Mtpa': plant nameplate 1 Mtpa (D1 'Plant operating level': operated at its 1Mtpa nameplate capacity)"
+  },
+  "calib.c8.tol_pct": {"value": 3, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c9.reported_t_yr": {
+    "value": 64.3,
+    "unit": "t/yr",
+    "source": "FACT A6 'Sludge (settling pond) yield': 64.3 t/yr maximum (2023 OVOS)"
+  },
+  "calib.c9.tol_pct": {"value": 2, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c10.reported_kth_m3yr": {
+    "value": 1725.72,
+    "unit": "thousand m3/yr",
+    "source": "FACT A6 'Water balance 2023-2030: total use': mine water 1,725.72 thousand m3/yr"
+  },
+  "calib.c10.tol_pct": {"value": 0.5, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c11.tol_pct": {"value": 0.1, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
+  "calib.c12.min_oz": {
+    "value": 100000,
+    "unit": "oz/yr",
+    "source": "FACT B2 'potentially boosting annual production to over 100,000 ounces': CEO statement for 2-2.5 Mtpa"
+  },
+  "calib.c12.target_ktpa": {
+    "value": 2000,
+    "unit": "kt/yr",
+    "source": "FACT B2 'evaluating plans to increase processing capacity to 2-2.5Mtpa'"
+  },
+  "calib.sim_consistency_tol_pct": {
+    "value": 7,
+    "unit": "%",
+    "source": "ASSUMPTION: simulated throughput with the full 2.0 Mtpa measure set stays within 7 % of the analytic minimum of haulage and stopes (spec 2.9)"
+  }
+}
