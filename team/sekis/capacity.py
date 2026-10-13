@@ -30,6 +30,29 @@ Conventions
 * No model number lives in this file. Every value comes from ``params.json`` (``Model.p``) or
   from the attributes of the things in ``registry.json``. The upper-case constants below are
   unit conversions only.
+
+Ventilation capacity (``Result.capacity_ktpa["ventilation"]``, detail in ``Result.air``)
+
+A diesel unit either works or waits for air; the air is not shared out over a fleet. The
+capacity therefore follows the hold rule of spec 2.6, the same function (``hold_units``) the
+simulator calls every simulated minute:
+
+* The fleet in service needs ``q_base + q_diesel x kW`` of air. If that exceeds the supply, whole
+  units are held in the fixed order of ``vent.hold_order`` (highest truck number, next truck,
+  highest LHD number, and again) until the demand fits. The capacity is then what the units left
+  working can hoist and muck: ``min(C_haul of the working trucks, C_stopes of the stopes whose
+  LHD still works)``, with the formulas of those two links. A held LHD idles its stope (the last
+  of the producing set), so the working trucks haul from the mean elevation of the stopes left
+  working. ``Air.held_trucks`` and ``Air.held_lhds`` name the units that wait, ``Air.spare_m3s``
+  is the air left over, too little for the unit that would be released next.
+* If nothing is held, the air does not limit the fleet in service. The bar then shows headroom,
+  not a limit: ``C_haul x P_allowed / P_fleet``, the haulage capacity scaled by the diesel power
+  the supply permits over the power in service. It is never below ``C_haul``, so with the
+  tie-break order of ``LINKS`` ventilation is the binding link only while units are held. In the
+  undisturbed baseline 317.2 of 322 m3/s are needed and the bar stands 3.5 % above haulage; the
+  spare 4.8 m3/s is less than any further unit needs (the smallest LHD takes 7.4 m3/s), so the
+  headroom is not a promise that one more unit fits. The hold rule answers that, and the bar
+  drops to the tonnage of the working units the moment a unit is held.
 """
 
 from __future__ import annotations
@@ -48,7 +71,8 @@ __all__ = [
     "active_trucks", "active_lhds", "active_rigs", "producing_stopes", "truck_decline", "fleet_power_kw",
     "ramp_length_km", "haul_cycle", "haulage", "HaulCycle", "Haulage",
     "stopes", "Stopes", "development_capacity_ktpa", "centroid_after",
-    "fans_running", "air_supply_m3s", "air_demand_m3s", "air", "Air", "level_air", "LevelAir", "fan_power_kw",
+    "fans_running", "air_supply_m3s", "air_demand_m3s", "hold_units", "Hold", "air", "Air", "level_air", "LevelAir",
+    "fan_power_kw",
     "dewatering", "Dewatering", "pump_power_kw", "pond_treatment", "PondTreatment",
     "plant", "Plant", "PlantLine", "water_capacity_ktpa", "water_balance", "WaterBalance",
     "tailings", "Tailings", "DamFill", "recovery_pct", "gold_oz", "Gold", "stockpile_days_left",
@@ -99,6 +123,9 @@ KNOBS: Tuple[str, ...] = tuple(_KNOB_LADDER)
 _ROLE_PRODUCTION = "production"
 _ROLE_DEVELOPMENT = "development"
 _ROLE_PLANNED = "planned"
+# Kinds of unit in ``vent.hold_order``: whose turn it is to be held.
+_HOLD_TRUCK = "truck"
+_HOLD_LHD = "lhd"
 
 
 def _short(thing_id: str) -> str:
@@ -278,6 +305,9 @@ class Model:
         need(max(self.p("ladder.m_stopes.rigs")) <= len(self.rigs), "ladder.m_stopes.rigs exceeds the registry")
         for stage in self.p("ladder.m_vent.fans"):
             need(all(name in self.fans for name in stage), "ladder.m_vent.fans names an unknown fan")
+        order = self.p("vent.hold_order")
+        need(len(order) > 0 and all(kind in (_HOLD_TRUCK, _HOLD_LHD) for kind in order),
+             "vent.hold_order must be a list of 'truck' and 'lhd'")
         need(len(self.p("ladder.m_plant.lines")) == len(self.p("ladder.m_plant.capacity_ktpa")),
              "the two ladder.m_plant lists differ in length")
         need(max(self.p("ladder.m_plant.lines")) <= len(self.plant_lines), "ladder.m_plant.lines exceeds the registry")
@@ -627,11 +657,35 @@ def centroid_after(model: Model, centroid_m: float, ore_t: float) -> float:
 # --- ventilation -------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
+class Hold:
+    """Outcome of the hold rule of spec 2.6 for a fleet and an air supply.
+
+    ``trucks`` and ``lhds`` name the units held, in the order they were held; ``working_kw`` is
+    the engine power of the units left working.
+    """
+    trucks: Tuple[str, ...]
+    lhds: Tuple[str, ...]
+    working_kw: float
+
+
+@dataclass(frozen=True)
 class Air:
     """Ventilation (spec 2.3 item 3, 2.6). Flows in m3/s, power in kW.
 
-    ``margin_pct = (supply - demand) / supply x 100``; negative when the fleet needs more air than
-    the fans supply. ``capacity_ktpa`` is ``C_vent``; ``math.inf`` with no diesel unit active.
+    ``demand_m3s`` is what the whole fleet in service needs and ``margin_pct = (supply - demand)
+    / supply x 100`` its margin, negative when the fleet needs more air than the fans supply.
+    ``held_trucks`` and ``held_lhds`` are the units the hold rule keeps waiting for air (in the
+    order they are held), ``used_m3s`` the demand of the units left working and ``spare_m3s =
+    supply - used`` the air nobody uses; while units are held it is less than the unit next in
+    the release order needs.
+
+    ``capacity_ktpa`` is ``C_vent``. While units are held it is the smaller of
+    ``haul_working_ktpa`` and ``stopes_working_ktpa``: what the trucks left working can hoist and
+    what the stopes whose LHD is left working can produce; ``centroid_working_m`` is the mean
+    haul elevation of those stopes. With no unit held it is the headroom
+    ``C_haul x allowed_kw / fleet_kw``, never below ``C_haul`` (see the module docstring), and the
+    three ``..._working_...`` values are those of the whole fleet. ``math.inf`` with no diesel
+    unit in service.
     """
     fans_running: Tuple[str, ...]
     supply_m3s: float
@@ -639,7 +693,20 @@ class Air:
     fleet_kw: float
     allowed_kw: float
     margin_pct: float
+    held_trucks: Tuple[str, ...]
+    held_lhds: Tuple[str, ...]
+    working_kw: float
+    used_m3s: float
+    spare_m3s: float
+    haul_working_ktpa: float
+    stopes_working_ktpa: float
+    centroid_working_m: float
     capacity_ktpa: float
+
+    @property
+    def restricted(self) -> bool:
+        """True while the hold rule keeps a unit waiting for air."""
+        return bool(self.held_trucks or self.held_lhds)
 
 
 def fans_running(model: Model, state: State) -> Tuple[str, ...]:
@@ -658,24 +725,103 @@ def air_demand_m3s(model: Model, diesel_kw: float) -> float:
     return model.p("vent.q_base") + model.p("vent.q_diesel") * diesel_kw
 
 
-def air(model: Model, state: State, haul_capacity_ktpa: Optional[float] = None) -> Air:
-    """Air supply, demand and ``C_vent = P_allowed x C_haul / P_fleet``.
+def hold_units(model: Model, trucks: Iterable[Any], lhds: Iterable[Any], supply_m3s: float) -> Hold:
+    """The hold rule of spec 2.6: which units wait for air at a given supply.
 
-    ``P_allowed = (supply - q_base) / q_diesel`` is the diesel power the supply permits; the
-    capacity is the ore that power moves at the fleet's specific power. ``haul_capacity_ktpa``
-    defaults to ``haulage(model, state).capacity_ktpa``.
+    While the demand of the units still working exceeds the supply, whole units are held in a
+    fixed order: the truck with the highest number, the next truck, then the LHD with the highest
+    number, and again (``vent.hold_order``). The rule never goes below ``vent.min_active_trucks``
+    trucks and ``vent.min_active_lhd`` LHDs; when one kind is at its minimum the other kind is
+    held in its place.
+
+    ``trucks`` and ``lhds`` are the units in service: any objects with ``name``, ``number`` and
+    ``engine_kw``. The simulator calls this function for its own units, so the twins and the
+    analytic capacity hold the same units by construction.
+    """
+    trucks = sorted(trucks, key=lambda unit: -unit.number)
+    lhds = sorted(lhds, key=lambda unit: -unit.number)
+    min_trucks = int(model.p("vent.min_active_trucks"))
+    min_lhds = int(model.p("vent.min_active_lhd"))
+    order = model.p("vent.hold_order")
+    power = sum(unit.engine_kw for unit in trucks) + sum(unit.engine_kw for unit in lhds)
+    held_trucks: list = []
+    held_lhds: list = []
+    turn = 0
+    while air_demand_m3s(model, power) > supply_m3s:
+        can_truck = len(trucks) - len(held_trucks) > min_trucks
+        can_lhd = len(lhds) - len(held_lhds) > min_lhds
+        if not can_truck and not can_lhd:
+            break
+        take_lhd = order[turn % len(order)] == _HOLD_LHD
+        turn += 1
+        if take_lhd and not can_lhd:
+            take_lhd = False
+        elif not take_lhd and not can_truck:
+            take_lhd = True
+        unit = lhds[len(held_lhds)] if take_lhd else trucks[len(held_trucks)]
+        (held_lhds if take_lhd else held_trucks).append(unit)
+        power -= unit.engine_kw
+    return Hold(trucks=tuple(unit.name for unit in held_trucks), lhds=tuple(unit.name for unit in held_lhds),
+                working_kw=power)
+
+
+def air(model: Model, state: State, haul_capacity_ktpa: Optional[float] = None) -> Air:
+    """Air supply and demand, the units the hold rule keeps waiting, and ``C_vent``.
+
+    The hold rule (``hold_units``) is applied to the fleet in service. If the fleet needs more
+    air than is supplied, ``C_vent`` is what the units left working can hoist and muck: the
+    smaller of the haulage capacity of the working trucks (they alone are on the declines) and the
+    stoping capacity of the stopes whose LHD still works. Both come from the formulas of the
+    haulage and the stopes link. Where held LHDs idle stopes, the working trucks haul from the
+    stopes left working, so their haulage is taken at the mean elevation of those stopes
+    (``Air.centroid_working_m``) instead of the centroid of the whole set. Otherwise the air does
+    not limit the fleet and ``C_vent = C_haul x P_allowed / P_fleet`` with ``P_allowed = (supply
+    - q_base) / q_diesel``: the headroom of the supply over the fleet, in tonnes at the fleet's
+    tonnes per kW.
+    ``haul_capacity_ktpa`` is ``C_haul`` of the whole fleet in service and defaults to
+    ``haulage(model, state).capacity_ktpa``.
     """
     running = fans_running(model, state)
     supply = air_supply_m3s(model, running)
+    trucks, lhds = active_trucks(model, state), active_lhds(model, state)
     fleet_kw = fleet_power_kw(model, state)
     demand = air_demand_m3s(model, fleet_kw)
     allowed_kw = max(0.0, (supply - model.p("vent.q_base")) / model.p("vent.q_diesel"))
     if haul_capacity_ktpa is None:
         haul_capacity_ktpa = haulage(model, state).capacity_ktpa
-    capacity = allowed_kw * haul_capacity_ktpa / fleet_kw if fleet_kw > 0 else math.inf
+    hold = hold_units(model, trucks, lhds, supply)
+    all_stopes = stopes(model, state)
+    haul_working = haul_capacity_ktpa
+    stopes_working = all_stopes.capacity_ktpa
+    centroid = _centroid(model, state)
+    if fleet_kw <= 0:
+        capacity = math.inf
+    elif demand <= supply:
+        capacity = haul_capacity_ktpa * allowed_kw / fleet_kw
+    else:
+        # The fleet needs more air than is supplied: only the units the rule leaves working
+        # produce. (A fleet already at the rule's minimum works on, with nothing held.)
+        working = state.replace(
+            active_trucks=tuple(u.name for u in trucks if u.name not in hold.trucks),
+            active_lhds=tuple(u.name for u in lhds if u.name not in hold.lhds))
+        left = stopes(model, working)
+        if 0 < left.n_producing < all_stopes.n_producing:
+            # Held LHDs idle stopes. LHDs are paired with the producing stopes in the activation
+            # order, so the held ones (the highest numbers) idle the last stopes of the set, and
+            # the trucks left working haul from the others: from their mean elevation, lowered by
+            # as much as the production centroid has dropped since the epoch.
+            elevations = [s.elevation_m for s in producing_stopes(model, state)][:left.n_producing]
+            centroid += sum(elevations) / len(elevations) - model.p("stope.centroid_baseline_m")
+        haul_working = haulage(model, working.replace(centroid_m=centroid)).capacity_ktpa
+        stopes_working = left.capacity_ktpa
+        capacity = min(haul_working, stopes_working)
+    used = air_demand_m3s(model, hold.working_kw)
     margin = (supply - demand) / supply * PERCENT if supply > 0 else -math.inf
     return Air(fans_running=running, supply_m3s=supply, demand_m3s=demand, fleet_kw=fleet_kw,
-               allowed_kw=allowed_kw, margin_pct=margin, capacity_ktpa=capacity)
+               allowed_kw=allowed_kw, margin_pct=margin, held_trucks=hold.trucks, held_lhds=hold.lhds,
+               working_kw=hold.working_kw, used_m3s=used, spare_m3s=supply - used,
+               haul_working_ktpa=haul_working, stopes_working_ktpa=stopes_working,
+               centroid_working_m=centroid, capacity_ktpa=capacity)
 
 
 @dataclass(frozen=True)

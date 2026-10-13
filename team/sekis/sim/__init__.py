@@ -38,6 +38,17 @@ Time
     The internal step is ``sim.step_s`` (10 simulated seconds). A fraction of a step is carried
     over to the next call. Trucks move on every step; stopes, pumps, ponds, plant and the
     ventilation rule are integrated once per simulated minute.
+    The epoch of ``sim.epoch`` lies 45 minutes into the first productive block of shift A, and
+    the run opens on a working mine: the trucks are spread along their cycles (see
+    ``Haulage.warm_start``), the LHDs muck, the rigs drill, every producing stope holds one ring
+    of broken ore. The state at the epoch is the same for every seed; the totals start at zero.
+    An epoch outside productive time opens with the trucks at the ROM pad.
+
+Ventilation (spec 2.6)
+    Which units wait for air is decided by ``capacity.hold_units``, the function behind the
+    analytic ventilation capacity, so ``mine.units_held_vent``, the trucks in ``held_vent`` and
+    the advisor's bar tell the same story. ``held_trucks`` and ``held_lhds`` name the units held.
+    A held truck is not counted among the trucks working its decline (``trucks_on_decline``).
 
 Scenario (spec 3.1, 3.3)
     ``apply_scenario(knobs) -> list of changed knob names``

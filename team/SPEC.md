@@ -171,7 +171,7 @@ Dynamic assignments (which LHD or rig works which stope, which decline a truck i
 
 - Compression 60: one real second is one simulated minute (`SIM_SPEEDUP=60`). A shift lasts 11 real minutes, a truck cycle about 40 real seconds.
 - Internal step 10 simulated seconds; the service loop runs every 0.5 real seconds (3 steps).
-- Simulation epoch: 1 January 2027, 08:00 (first year of the decision). A year is 360 working days (FACT A10 "Shift regime"); the five non-working days are not simulated. Mine totals are annualised with × 360, plant totals with × 365 (the plant runs every day).
+- Simulation epoch: 1 January 2027, 09:30, 45 minutes into the first productive block (first year of the decision); the run opens with trucks spread along their cycles. A year is 360 working days (FACT A10 "Shift regime"); the five non-working days are not simulated. Mine totals are annualised with × 360, plant totals with × 365 (the plant runs every day).
 - Day: shift A 08:00–19:00, blast window 19:00–20:00, shift B 20:00–07:00, blast window 07:00–08:00. ASSUMPTION: the 2 hours left by 2 × 11 h are used for blasting and clearing.
 - Productive time inside a shift: 8.5 h (ASSUMPTION: 0.75 h travel and inspection at each end, 1 h meal).
 - Random numbers come from one generator seeded with `SIM_SEED=53`. The core runs headless (no MQTT) at full speed for tests: 60 simulated days in at most 60 s.
@@ -199,7 +199,11 @@ Used by the advisor and by tests. `H = 7920` shift hours per year (360 × 2 × 1
    `T = 5 + 1.5 + 1.5 + 60·L/9 + 60·L/16 + 60·S_d/15 + 60·S_d/20 + K_BAY·(n − 1)` minutes;
    `C_haul = Σ payload_i × 60 / T_i × H × (8.5/11) × 0.80 × K_HAUL / 1000`.
 2. Stopes. `C_stopes = N_producing × 255.875`. Development: `C_dev = advance_vm_per_year × 51 462 / 1000`. The row "stopes" shows `C_stopes`; "development" is its own row.
-3. Ventilation. `P_allowed = (Q_supply − 180) / 0.06` kW. `P_fleet` = engine kW of all active trucks and LHDs. `C_vent = P_allowed × C_haul / P_fleet` (the ore the permitted diesel power can move at the fleet's specific power).
+3. Ventilation. A diesel unit either works or waits for air; the air is not shared out over a fleet. The hold rule of 2.6 is applied to the fleet in service (`capacity.hold_units`, the function the simulator calls every simulated minute). `P_fleet` = engine kW of all trucks and LHDs in service; the fleet needs `180 + 0.06 × P_fleet` m³/s.
+   - The fleet needs more than is supplied: whole units are held in the order of 2.6 until the demand of the rest fits. `C_vent = min(C_haul of the trucks left working, C_stopes of the stopes whose LHD is left working)`, with the formulas of items 1 and 2; `n` in item 1 counts the working trucks only. A held LHD idles its stope, the last of the producing set, so the working trucks haul from the mean elevation of the stopes left working (with `fan-vs2` failed at baseline: +100 m instead of +75 m).
+   - The supply covers the fleet: nothing is held and the air does not limit the fleet in service. The bar then shows headroom, `C_vent = C_haul × P_allowed / P_fleet` with `P_allowed = (Q_supply − 180) / 0.06` kW. It is never below `C_haul`, so ventilation is the binding link only while units are held (a tie goes to haulage). The headroom is not a promise that one more unit fits: at baseline 4.8 m³/s are spare and the smallest LHD needs 7.4 m³/s.
+
+   The result names the held units, the air the working units use and the spare air (`Air.held_trucks`, `held_lhds`, `used_m3s`, `spare_m3s`); the advisor puts them into its texts.
 4. Dewatering. `margin = working pump capacity / (inflow × 24/20)`. It caps throughput only when a level is flooded: then `C_dewatering = C_stopes` of the non-flooded producing stopes; otherwise it is reported as not limiting.
 5. Plant. `C_plant` = 1000 / 1200 / 2000 / 2500 by stage, reduced by a stopped line.
 6. Water. `C_water = (1725.72 + 8.76 × extra_intake_m3h) / (0.603 + 1.123 − reclaim_m3_per_t)`.
@@ -212,11 +216,23 @@ Reference values with the parameters of 2.8 (tests use them with ±1 % tolerance
 | Measure set | haulage | stopes | development | ventilation | plant | water | tailings | air demand m³/s |
 |---|---|---|---|---|---|---|---|---|
 | Baseline | 926 | 1024 | 1750 | 958 | 1000 | 1000 | 1057 | 317.2 |
-| Full set for 1.2 Mtpa | 1386 | 1279 | 1750 | 1665 | 1200 | 1533 | 3057 | 385.7 |
-| Full set for 2.0 Mtpa | 2076 | 2047 | 2573 | 3045 | 2000 | 2700 | 3057 | 512.0 |
-| Full set for 2.5 Mtpa | 2512 | 2559 | 2573 | 2938 | 2500 | 2700 | 3057 | 596.3 |
+| Full set for 1.2 Mtpa | 1388 | 1279 | 1750 | 1667 | 1200 | 1533 | 3057 | 385.7 |
+| Full set for 2.0 Mtpa | 2078 | 2047 | 2573 | 3049 | 2000 | 2700 | 3057 | 512.0 |
+| Full set for 2.5 Mtpa | 2515 | 2559 | 2573 | 2942 | 2500 | 2700 | 3057 | 596.3 |
 
-Depth effect: every 50 m the production centroid goes down costs about 8.5 % of haul capacity (baseline fleet: 926 → 840 → 769 → 709 kt/yr at +75, +25, −25, −75 m).
+No unit is held in these four sets, so their ventilation column is headroom. States in which units are held (the simulator column is the 60-day run of 2.9, annualised; tests keep it within ±7 % of `C_vent`):
+
+| State | Air needed / supplied, m³/s | Units held | Working units use, m³/s | haulage | ventilation | Simulator |
+|---|---|---|---|---|---|---|
+| Baseline + `m_haul = 1` | 369.9 / 322 | trucks 07, 06 | 317.2 | 1388 | 926 | 931 |
+| Baseline + `m_haul = 2` | 448.9 / 322 | trucks 10, 09, 08, 07; LHDs 04, 03 | 320.4 | 2078 | 512 (two stopes left) | 521 |
+| Baseline + `m_stopes = 1` | 333.0 / 322 | truck 05 | 306.7 | 926 | 683 | 726 |
+| Baseline, `fan-vs2` failed | 317.2 / 252 | trucks 05, 04, 03; LHD 04 | 238.6 | 926 | 374 | 378 |
+| Full set for 1.2 Mtpa, `fan-vs2` failed | 385.7 / 357 | trucks 07, 06 | 333.0 | 1388 | 926 | 968 |
+
+The rule holds trucks first, so a fleet measure taken without air can lower the output: five more trucks at 322 m³/s cost two LHDs and nearly half the tonnage, one more LHD costs the only AD45. In the two rows with five producing stopes the simulator is 6.3 % and 4.5 % above `C_vent`. About three points of each belong to item 1, not to the air rule: item 1 hauls from the +75 m centroid whatever the producing set, while the fifth stope lies at +150 m (at the mean of +90 m item 1 gives 705 and 955 kt/yr), and the same 968 kt/yr are hoisted against a haulage of 926 with no unit held (`m_stopes = 1`, `m_vent = 1`). The rest is the simulator's spread around item 1, 0.6 % at baseline.
+
+Depth effect: every 50 m the production centroid goes down costs about 8.5 % of haul capacity (baseline fleet: 926 → 841 → 770 → 710 kt/yr at +75, +25, −25, −75 m).
 
 ### 2.4 Trucks and decline traffic (state machine)
 
@@ -424,12 +440,12 @@ Undo: every toggle is its own undo; «Шаг назад» pops a stack of previo
 | Scenario | Twins that change | In the 3D scene and section | In panels |
 |---|---|---|---|
 | `step1200` alone | `plant-line-1..3.rated`, `plant.capacity_ktpa`, `advisor.*` | plant lines brighten; nothing else moves | bars: plant 1200, haulage 926 binding; gold gain 0; stockpile days fall |
-| `advisor_next` on haulage | `truck-06`, `truck-07` leave `parked`; `decline-tu1.trucks_on_ramp`; `mine.air_demand_m3s` | two more trucks enter TU1; bays show waiting trucks | haulage bar 1386; next binding link named |
-| measure on ventilation | `fan-vpv`, `raise-vpv` (`running`, `in_service`), `mine.air_supply_m3s`, level `air_flow_m3s` | new airflow arrows down the VPV raise; level tint from amber to normal | ventilation bar 1665 |
+| `advisor_next` on haulage | `truck-06`, `truck-07` leave `parked` and are `held_vent` (369.9 m³/s needed, 322 supplied); `mine.state = restricted_air`, `mine.units_held_vent = 2`; `mine.air_demand_m3s` stays 317.2 (the working units) | the two new trucks line up at the TU1 portal | haulage bar 1388; ventilation bar 958 → 926, binding; achievable stays 926; next measure: ventilation, naming trucks 06 and 07 |
+| measure on ventilation | `fan-vpv`, `raise-vpv` (`running`, `in_service`), `mine.air_supply_m3s = 427`, level `air_flow_m3s`; held trucks return to work, `decline-tu1.trucks_on_ramp` | new airflow arrows down the VPV raise; level tint from amber to normal; two more trucks enter TU1, bays show waiting trucks | ventilation bar 1805 (1667 with the full set for 1.2 Mtpa); plant 1000 binding, target reached |
 | measure on stopes | next stope leaves `standby`; `lhd-05`, `rig-03` active | stope box changes colour through its cycle; blast flash at the shift change | stopes bar 1279 |
 | measure on water / tailings | `water.reclaim_m3h`, `water.deficit_m3h`; `tsf-cell5.state`, `tailings.years_left` | reclaim pipe from tailings to plant animates; new cell appears | water bar; years of storage |
-| `close_tu2` | `decline-tu2.state = closed`; trucks 01–04 `decline = tu1`; `ore_hoisted_tph` falls about 10 % (baseline) | TU2 turns red and empties; all trucks on TU1, queues in bays | haulage 833; stockpile days fall |
-| `fan_vs2_fail` | `fan-vs2.state = failed`; `mine.air_supply_m3s = 252`; trucks `held_vent`, LHD `standby_vent`, stope `standby`; `mine.state = restricted_air` | VS2 arrow disappears; levels amber; held trucks line up at the portal | ventilation bar about 486, binding |
+| `close_tu2` | `decline-tu2.state = closed`; trucks 01–04 `decline = tu1`; `ore_hoisted_tph` falls about 10 % (baseline) | TU2 turns red and empties; all trucks on TU1, queues in bays | haulage 834; stockpile days fall |
+| `fan_vs2_fail` | `fan-vs2.state = failed`; `mine.air_supply_m3s = 252`; `truck-03..05` `held_vent`, `lhd-04` `standby_vent`, `stp-000-1` `standby`; `mine.state = restricted_air`, `mine.air_demand_m3s = 238.6` | VS2 arrow disappears; levels amber; held trucks line up at the portal | ventilation bar 374, binding (trucks 01 and 02 on three stopes); the simulator hoists 378 kt/yr |
 | `pump_one_fail` | `ps-p150.pumps_available = 2` | one pump icon red, station still green | no change in bars (redundancy) |
 | `pump_station_fail` | `ps-p150.state = failed`, `sump_level_pct` rises, `hours_to_overflow` counts down; later `mine.flood_volume_m3`, `lvl-m050` then `lvl-000` `flooded`, their stopes `flooded` | sump bar fills, water plane rises on the lower levels, flooded stopes blue | dewatering row turns binding when a production level floods |
 | `flood` | `mine.inflow_m3h = 430`, pumps run together, `mon-volchevka.discharge_m3h` about 238, state `exceeded` | thicker water flow in the cascade; outfall marker red | water row: discharge above the permit |
@@ -455,10 +471,12 @@ Expected sequences with the parameters of 2.8 (unit-tested):
 
 | Target | Sequence of binding links from the baseline | Achieved | Gold at 2.05 g/t |
 |---|---|---|---|
-| 1000 | haulage | 1000 (plant) | 56.0 koz |
-| 1200 | haulage, plant, water, stopes, ventilation, tailings | 1200 (plant) | 67.2 koz |
+| 1000 | haulage, ventilation | 1000 (plant) | 56.0 koz |
+| 1200 | haulage, ventilation, plant, water, stopes, tailings | 1200 (plant) | 67.2 koz |
 | 2000 | the six above, then plant, stopes, ventilation, haulage, water, development | 2000 (plant) | 112.0 koz |
 | 2500 | the twelve above, then plant, stopes, haulage | 2500 (plant) | 140.0 koz |
+
+Two steps of these sequences do not raise the achievable rate by themselves, and the advisor says so in the measure text. The first step (trucks 06 and 07) leaves it at 926 kt/yr: the trucks wait for air until the second step starts `fan-vpv`. The eighth step of the 2000 and 2500 ladders (stopes 5 → 8, three more LHDs) needs 433.0 m³/s against 427, holds truck 07 and lowers the chain from 1279 (stopes) to 1161 kt/yr (ventilation) until the ninth step starts `fan-vs3`.
 
 Sustainable baseline: 926 kt/yr, 51.9 koz (the plant mills 1000 kt/yr only while the 36 000 t stockpile lasts, about 216 days).
 
@@ -742,4 +760,4 @@ These settle ambiguities package B1 found. They override sections 2 and 3 where 
 2. **Dispatch** is decided at the ROM pad; breakdowns run on calendar time with a 10 h repair; productive time is two blocks of 4.25 h around a meal hour. As implemented.
 3. **`sim.op_delay_factor`** is 0.785 (was 0.81): with the bay rules a truck waits 0.45 min per trip for opposing traffic, less than the 2.25 min the analytic formula books on TU2. The value and the 17 constants of the simulator's `MISSING_PARAMS` table move into `params.json`.
 4. **Grade knob** rescales the stockpile and loaded trucks at once (a what-if on the ore), so the plant responds within minutes.
-5. **Open issue, to be settled in fix round 1: air rule consistency.** The analytic ventilation capacity scales the whole fleet's haul capacity by allowed kW over fleet kW (1038 kt/yr with seven trucks at 322 m³/s), while the simulator holds whole units in the spec's order and then hoists about the baseline rate (trucks 06 and 07 stay `held_vent` until `m_vent = 1`; under `fan_vs2_fail` 376 kt/yr against the analytic 486). The Stand must not show a target as reached while the simulated mine does not reach it. The library is the side to change: ventilation capacity must be what the hold rule actually lets the fleet haul, and the bottleneck sequences, their tests, the advisor tests, the Stand fixture and the tables of 2.3 and 3.4 follow.
+5. **Air rule consistency** (settled in fix round 1; 2.3 item 3 is rewritten accordingly). One function, `capacity.hold_units`, decides for the simulator and for the library which units wait for air, and while units are held `C_vent` is the tonnage the units left working can hoist and muck; with nothing held the bar is headroom and cannot bind. In the simulator a held truck no longer counts among the `n` trucks on its decline. The 1000 kt/yr sequence becomes haulage, then ventilation (926 kt/yr until `fan-vpv` runs, where the old formula gave 1038), and `fan_vs2_fail` gives 374 kt/yr against 378 in the simulator (was 486 against 376).

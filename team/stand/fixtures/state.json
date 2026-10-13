@@ -29,12 +29,12 @@
    },
    "f": {
     "sim_time": "2027-01-13T10:24:00",
-    "sim_day": 12.1,
+    "sim_day": 12.037,
     "shift": "A",
     "ore_mined_tpd": 2572.0,
     "ore_milled_tpd": 2740.0,
     "gold_poured_oz_day": 153.4,
-    "gold_poured_total_oz": 1857.0,
+    "gold_poured_total_oz": 1847.0,
     "annual_rate_ktpa": 926.0,
     "binding_link": "haulage"
    }
@@ -73,7 +73,7 @@
     "state": "production",
     "ore_hoisted_tph": 151.3,
     "ore_hoisted_today_t": 281.0,
-    "ore_hoisted_total_t": 31124.0,
+    "ore_hoisted_total_t": 30963.0,
     "trucks_active": 5.0,
     "diesel_kw_active": 2287.0,
     "air_supply_m3s": 322.0,
@@ -81,7 +81,7 @@
     "air_margin_pct": 1.5,
     "units_held_vent": 0.0,
     "inflow_m3h": 197.0,
-    "pumped_m3h": 300.0,
+    "pumped_m3h": 0.0,
     "flood_volume_m3": 0.0
    }
   },
@@ -315,7 +315,7 @@
     "diesel_kw": 866.0,
     "water_inflow_m3h": 19.7,
     "active_stopes": 1.0,
-    "ore_today_t": 1082.8
+    "ore_today_t": 992.0
    }
   },
   "kz.sekis:lvl-000": {
@@ -354,7 +354,7 @@
     "diesel_kw": 871.0,
     "water_inflow_m3h": 19.7,
     "active_stopes": 1.0,
-    "ore_today_t": 356.9
+    "ore_today_t": 266.2
    }
   },
   "kz.sekis:lvl-m050": {
@@ -716,7 +716,7 @@
     "state": "drilling",
     "ore_remaining_t": 81471.0,
     "broken_ore_t": 0.0,
-    "drilled_pct": 40.0,
+    "drilled_pct": 30.6,
     "backfill_pct": 0.0,
     "grade": 1.95,
     "mucked_today_t": 0.0,
@@ -847,11 +847,11 @@
    "f": {
     "state": "mucking",
     "ore_remaining_t": 81471.0,
-    "broken_ore_t": 338.7,
+    "broken_ore_t": 429.5,
     "drilled_pct": 0.0,
     "backfill_pct": 0.0,
     "grade": 2.15,
-    "mucked_today_t": 1082.8,
+    "mucked_today_t": 992.0,
     "block_no": 1.0
    }
   },
@@ -979,11 +979,11 @@
    "f": {
     "state": "mucking",
     "ore_remaining_t": 81471.0,
-    "broken_ore_t": 1064.6,
+    "broken_ore_t": 1155.3,
     "drilled_pct": 0.0,
     "backfill_pct": 0.0,
     "grade": 2.35,
-    "mucked_today_t": 356.9,
+    "mucked_today_t": 266.2,
     "block_no": 1.0
    }
   },
@@ -1371,7 +1371,7 @@
    "f": {
     "state": "open",
     "bottom_elevation": -50.0,
-    "trucks_on_ramp": 1.0,
+    "trucks_on_ramp": 0.0,
     "trucks_waiting_in_bays": 0.0,
     "loaded_trips_today": 2.0,
     "ore_today_t": 90.0,
@@ -1415,7 +1415,7 @@
    "f": {
     "state": "open",
     "bottom_elevation": -34.0,
-    "trucks_on_ramp": 3.0,
+    "trucks_on_ramp": 2.0,
     "trucks_waiting_in_bays": 0.0,
     "loaded_trips_today": 8.0,
     "ore_today_t": 240.0,
@@ -1782,14 +1782,14 @@
     "link_discharges_to": "kz.sekis:pond-upper"
    },
    "f": {
-    "state": "pumping",
+    "state": "idle",
     "inflow_m3h": 197.0,
-    "pumped_m3h": 300.0,
-    "sump_level_pct": 59.8,
-    "pumps_running": 1.0,
+    "pumped_m3h": 0.0,
+    "sump_level_pct": 43.9,
+    "pumps_running": 0.0,
     "pumps_available": 3.0,
-    "power_kw": 359.7,
-    "hours_to_overflow": 0.0
+    "power_kw": 0.0,
+    "hours_to_overflow": 5.1
    }
   },
   "kz.sekis:ps-m050": {
@@ -1823,11 +1823,11 @@
     "state": "idle",
     "inflow_m3h": 78.8,
     "pumped_m3h": 0.0,
-    "sump_level_pct": 41.8,
+    "sump_level_pct": 22.1,
     "pumps_running": 0.0,
     "pumps_available": 2.0,
     "power_kw": 0.0,
-    "hours_to_overflow": 4.4
+    "hours_to_overflow": 5.9
    }
   },
   "kz.sekis:ps-m200": {
@@ -1898,16 +1898,16 @@
     "link_home_decline": "kz.sekis:decline-tu2"
    },
    "f": {
-    "state": "hauling_up",
-    "payload": 30.0,
+    "state": "loading",
+    "payload": 9.0,
     "grade": 2.15,
-    "speed": 9.0,
+    "speed": 0.0,
     "decline": "tu2",
-    "chainage_m": 2039.5,
-    "elevation": 73.2,
-    "pos_x": 220.9,
-    "pos_y": 73.2,
-    "pos_z": 150.0,
+    "chainage_m": 2231.0,
+    "elevation": 50.0,
+    "pos_x": -200.0,
+    "pos_y": 50.0,
+    "pos_z": 10.0,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -1947,10 +1947,10 @@
     "grade": 2.35,
     "speed": 9.0,
     "decline": "tu2",
-    "chainage_m": 1609.2,
-    "elevation": 125.3,
-    "pos_x": 209.7,
-    "pos_y": 125.3,
+    "chainage_m": 1146.1,
+    "elevation": 181.3,
+    "pos_x": 163.1,
+    "pos_y": 181.3,
     "pos_z": 150.0,
     "trips_today": 2.0,
     "tonnes_today": 60.0
@@ -1987,15 +1987,15 @@
    },
    "f": {
     "state": "surface_haul",
-    "payload": 0.0,
-    "grade": 0.0,
-    "speed": 20.0,
+    "payload": 30.0,
+    "grade": 2.15,
+    "speed": 15.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 430.0,
-    "pos_x": -300.6,
-    "pos_y": 430.0,
-    "pos_z": -208.2,
+    "elevation": 379.3,
+    "pos_x": 332.3,
+    "pos_y": 379.3,
+    "pos_z": 192.0,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -2035,10 +2035,10 @@
     "grade": 0.0,
     "speed": 16.0,
     "decline": "tu2",
-    "chainage_m": 145.1,
-    "elevation": 302.4,
-    "pos_x": 47.4,
-    "pos_y": 302.4,
+    "chainage_m": 968.3,
+    "elevation": 202.8,
+    "pos_x": 50.0,
+    "pos_y": 202.8,
     "pos_z": 150.0,
     "trips_today": 2.0,
     "tonnes_today": 60.0
@@ -2074,16 +2074,16 @@
     "link_home_decline": "kz.sekis:decline-tu1"
    },
    "f": {
-    "state": "descending",
+    "state": "queue_load",
     "payload": 0.0,
     "grade": 0.0,
-    "speed": 16.0,
+    "speed": 0.0,
     "decline": "tu1",
-    "chainage_m": 2399.6,
-    "elevation": 139.6,
-    "pos_x": -48.2,
-    "pos_y": 139.6,
-    "pos_z": 120.0,
+    "chainage_m": 3140.0,
+    "elevation": 50.0,
+    "pos_x": -200.0,
+    "pos_y": 50.0,
+    "pos_z": 10.0,
     "trips_today": 2.0,
     "tonnes_today": 90.0
    }
@@ -2481,7 +2481,7 @@
     "engine_kw": 123
    },
    "f": {
-    "state": "mucking",
+    "state": "loading_truck",
     "stope": "stp-p050-1",
     "tonnes_today": 336.0,
     "pos_x": -200.0,
@@ -3077,11 +3077,11 @@
    },
    "f": {
     "state": "normal",
-    "tonnes": 33973.0,
+    "tonnes": 33984.0,
     "grade": 2.05,
     "inflow_tph": 151.3,
     "outflow_tph": 124.1,
-    "days_of_feed": 202.8
+    "days_of_feed": 202.9
    }
   },
   "kz.sekis:plant-line-1": {
@@ -3264,8 +3264,8 @@
    },
    "f": {
     "state": "ok",
-    "stored_t": 2896906.0,
-    "free_capacity_t": 3138944.0,
+    "stored_t": 2896734.0,
+    "free_capacity_t": 3139116.0,
     "inflow_tpd": 2740.0,
     "years_left": 3.1,
     "reclaim_m3h": 0.0
@@ -3294,9 +3294,9 @@
    },
    "f": {
     "state": "active",
-    "stored_t": 2896906.0,
+    "stored_t": 2896734.0,
     "fill_pct": 91.0,
-    "free_capacity_t": 285044.0,
+    "free_capacity_t": 285216.0,
     "inflow_tph": 124.1
    }
   },
@@ -3475,7 +3475,7 @@
    "f": {
     "binding_link": "haulage",
     "next_measure": "m_haul",
-    "measures_needed": 1.0,
+    "measures_needed": 2.0,
     "target_ktpa": 1000.0,
     "achievable_ktpa": 926.0,
     "cap_haulage_ktpa": 926.0,

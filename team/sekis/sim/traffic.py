@@ -22,6 +22,7 @@ no rounding to cycle times. A wait ends at the exact time the blocking truck cle
 
 from __future__ import annotations
 
+import math
 import random
 from collections import deque
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -185,6 +186,7 @@ class Haulage:
         self._rng_failure = {trk.name: random.Random(f"{sim.seed}:{trk.name}:breakdown") for trk in self.trucks}
         self._rng_delay = {trk.name: random.Random(f"{sim.seed}:{trk.name}:delay") for trk in self.trucks}
         self.active: List[Truck] = []
+        self._warming = False        # True only inside warm_start()
         self._cycle_cache: Dict[Tuple[str, float, int], float] = {}
         self._paths: Dict[Tuple[str, str], Polyline] = {}
         self.conflicts = 0           # entries into a segment against opposing traffic; stays 0
@@ -217,6 +219,48 @@ class Haulage:
             elif trk.in_service:
                 trk.retiring = True
         self.active = [trk for trk in self.trucks if trk.in_service]
+
+    def warm_start(self, now: float, worked_s: float) -> None:
+        """Open the run with the trucks at work: ``worked_s`` seconds of the productive block
+        have already passed at ``now``, the epoch.
+
+        The working trucks of each decline are spread evenly along the shortest cycle that
+        decline offers, the analytic ``T`` of spec 2.3 item 1 for its highest producing stope:
+        truck ``j`` of ``m``, by number, left the ROM pad ``T x (m - j) / (m + 1)`` before the
+        epoch, but not before the block began. From there every truck is advanced to the epoch by
+        the ordinary rules, so its dispatch, bay reservations and loading are those of a normal
+        trip and the state at the epoch is one the rules can reach. These opening trips carry no
+        random operational delay: the state at the epoch is the same for every seed, and the
+        random streams start at the epoch. With the baseline fleet no truck is back at the pad
+        before the epoch, so the totals start at zero; ore already loaded is booked as usual
+        (as a tip before the epoch would be), which keeps the mass balances exact. Nothing
+        happens when the epoch lies outside a productive block: the trucks then start from the pad.
+        """
+        sim = self.sim
+        if worked_s <= 0.0 or not sim.productive:
+            return
+        fleet = self.active
+        release: Dict[str, float] = {}
+        for key, ramp in self.ramps.items():
+            group = [trk for trk in fleet if trk.ramp is ramp and trk.phase == P_PAD and not trk.held]
+            levels = [stope.elevation for stope in sim.mining.producing
+                      if key in stope.ramps and stope.lhd is not None and not stope.suspended()]
+            if not group or not levels:
+                continue
+            cycle_s = self.cycle_s(key, max(levels))
+            for j, trk in enumerate(group):
+                lead = min(float(worked_s), cycle_s * (len(group) - j) / (len(group) + 1))
+                release[trk.name] = trk.t_ready = now - lead
+        if not release:
+            return
+        self._warming = True
+        t = now - self.step_s * math.ceil((now - min(release.values())) / self.step_s)
+        while t <= now:
+            self.active = [trk for trk in fleet if release.get(trk.name, t) <= t]
+            self.step(t)
+            t += self.step_s
+        self.active = fleet
+        self._warming = False
 
     def rehome(self) -> None:
         """Trucks standing at the surface take the decline the scenario gives them at once; a
@@ -336,7 +380,10 @@ class Haulage:
             trk.state = "shift_break"
             return False
         mean_delay = cycle_s * (1.0 / self.k_delay - 1.0)
-        delay = self._rng_delay[trk.name].expovariate(1.0 / mean_delay) if mean_delay > 0 else 0.0
+        if self._warming or mean_delay <= 0:
+            delay = 0.0
+        else:
+            delay = self._rng_delay[trk.name].expovariate(1.0 / mean_delay)
         trk.delay_half = delay / 2.0
         stope.committed += trk.payload_t
         stope.assigned += 1

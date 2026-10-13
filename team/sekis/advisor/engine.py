@@ -287,6 +287,9 @@ class Advisor:
             "air_demand_m3s": _finite(res.air.demand_m3s, 1),
             "air_supply_m3s": _finite(res.air.supply_m3s, 1),
             "air_margin_pct": _finite(res.air.margin_pct, 1),
+            "air_used_m3s": _finite(res.air.used_m3s, 1),
+            "air_spare_m3s": _finite(res.air.spare_m3s, 1),
+            "units_held_vent": len(res.air.held_trucks) + len(res.air.held_lhds),
             "water_deficit_m3h": _finite(res.water.deficit_m3h, 1),
             "discharge_m3h": _finite(res.water.discharge_m3h, 1),
             "permit_m3h": self.model.p("water.permit_m3h"),
@@ -410,6 +413,7 @@ class Advisor:
         return {"target_ktpa": inputs.target_ktpa, "binding_link": res.binding_link,
                 "achievable_ktpa": achievable_rounded(res), "capacities": dict(res.capacity_rounded),
                 "measures_needed": len(plan.steps), "flooded_levels": tuple(res.dewatering.flooded_levels),
+                "held_trucks": tuple(res.air.held_trucks), "held_lhds": tuple(res.air.held_lhds),
                 "pumps_total": pumps_total, "pumps_available": pumps_total - state.pumps_failed_p150,
                 "permit_exceeded": res.water.permit_state == "exceeded",
                 "kpi": self.kpi(res, inputs.stockpile_t)}

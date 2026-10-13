@@ -86,6 +86,28 @@ def _decline_label(names: Mapping[str, str], key: str) -> str:
     return name.split()[-1] if name else key.upper()
 
 
+def _unit_numbers(units: Iterable[str]) -> List[int]:
+    return [int(str(unit).rsplit("-", 1)[-1]) for unit in units]
+
+
+def held_phrase(trucks: Iterable[str], lhds: Iterable[str]) -> str:
+    """Units that wait for air, by number: «самосвалы № 6–7», «самосвалы № 3–5 и ПДМ № 4».
+
+    Empty when nothing is held. The phrase is in the nominative, for use after a colon.
+    """
+    truck_numbers, lhd_numbers = _unit_numbers(trucks), _unit_numbers(lhds)
+    parts = []
+    if truck_numbers:
+        parts.append(f"{'самосвал' if len(truck_numbers) == 1 else 'самосвалы'} {numbers(truck_numbers)}")
+    if lhd_numbers:
+        parts.append(f"ПДМ {numbers(lhd_numbers)}")
+    return " и ".join(parts)
+
+
+def _held(air: cap.Air) -> str:
+    return held_phrase(air.held_trucks, air.held_lhds)
+
+
 def flooded_phrase(names: Mapping[str, str], levels: Sequence[str]) -> str:
     """«затоплен горизонт −50 м» / «затоплены горизонты 0 м, −50 м» from the registry names."""
     marks = [names.get(level, level).replace("Горизонт ", "", 1) for level in levels]
@@ -104,8 +126,13 @@ def link_detail(model: cap.Model, names: Mapping[str, str], link: str, res: cap.
                                for key, count in res.haulage.trucks_by_decline.items())
         return f"самосвалов в работе: {len(res.haulage.cycles)} ({by_decline})"
     if link == "ventilation":
-        return (f"подача воздуха {num(res.air.supply_m3s)} {U_M3S}, "
-                f"потребность {num(res.air.demand_m3s, 1)} {U_M3S}")
+        air = res.air
+        text = (f"подача воздуха {num(air.supply_m3s)} {U_M3S}, "
+                f"потребность парка {num(air.demand_m3s, 1)} {U_M3S}")
+        if air.restricted:      # whole units wait; the units left working need less than is supplied
+            return (f"{text}; в ожидании воздуха: {_held(air)}; работающей технике нужно "
+                    f"{num(air.used_m3s, 1)} {U_M3S}")
+        return f"{text}, запас {num(air.spare_m3s, 1)} {U_M3S}"
     if link == "stopes":
         return (f"очистных блоков в работе: {res.stopes.n_producing}, ПДМ: {res.stopes.lhds}, "
                 f"буровых установок: {res.stopes.rigs}")
@@ -139,7 +166,42 @@ def link_detail(model: cap.Model, names: Mapping[str, str], link: str, res: cap.
 
 def measure_text(model: cap.Model, names: Mapping[str, str], link: str,
                  before: cap.Result, after: cap.Result) -> str:
-    """What one more stage on the knob of ``link`` consists of, as a noun phrase."""
+    """What one more stage on the knob of ``link`` consists of, as a noun phrase.
+
+    The phrase also says what the stage does to the units that wait for air (spec 2.6). A
+    ventilation stage names the units it returns to work and those that still wait. Any other
+    stage names the units that will wait once it is taken, when the fleet it brings in needs more
+    air than is supplied.
+    """
+    return _stage_text(model, names, link, before, after) + held_note(link, before.air, after.air)
+
+
+def held_note(link: str, before: cap.Air, after: cap.Air) -> str:
+    """Tail of a measure text: what a stage on ``link`` does to the units that wait for air.
+
+    Empty when the stage holds and releases nothing. Starts with «; », to follow the stage text.
+    """
+    held_before = set(before.held_trucks) | set(before.held_lhds)
+    held_after = set(after.held_trucks) | set(after.held_lhds)
+    if link == "ventilation":
+        note = ""
+        released = held_phrase([t for t in before.held_trucks if t not in held_after],
+                               [u for u in before.held_lhds if u not in held_after])
+        if released:
+            note += f"; в работу возвращаются: {released}"
+        if after.restricted:
+            note += f"; в ожидании воздуха остаются: {_held(after)}"
+        return note
+    waiting = held_phrase([t for t in after.held_trucks if t not in held_before],
+                          [u for u in after.held_lhds if u not in held_before])
+    if waiting:
+        return f"; воздуха на весь парк не хватит, до меры по вентиляции в ожидании: {waiting}"
+    return ""
+
+
+def _stage_text(model: cap.Model, names: Mapping[str, str], link: str,
+                before: cap.Result, after: cap.Result) -> str:
+    """The stage itself, without its effect on the units that wait for air."""
     old, new = before.state, after.state
     if link == "haulage":
         added = [c.truck for c in after.haulage.cycles
@@ -243,9 +305,9 @@ def effect_items(names: Mapping[str, str], before: Mapping[str, Any], after: Map
     """Sentences for the panel «Что изменилось» from two snapshots of the advisor.
 
     A snapshot holds ``target_ktpa``, ``binding_link``, ``achievable_ktpa``, ``capacities``
-    (link -> kt/yr or ``None``), ``measures_needed``, ``flooded_levels``, ``pumps_available``,
-    ``pumps_total``, ``permit_exceeded`` and the KPI values of the report. Only values that
-    differ at the precision they are shown with produce an item.
+    (link -> kt/yr or ``None``), ``measures_needed``, ``flooded_levels``, ``held_trucks``,
+    ``held_lhds``, ``pumps_available``, ``pumps_total``, ``permit_exceeded`` and the KPI values of
+    the report. Only values that differ at the precision they are shown with produce an item.
     """
     items: List[Optional[Dict[str, Any]]] = []
     kb, ka = before["kpi"], after["kpi"]
@@ -289,6 +351,7 @@ def effect_items(names: Mapping[str, str], before: Mapping[str, Any], after: Map
                                kb["air_supply_m3s"], ka["air_supply_m3s"]))
     items.append(changed_value("air_demand_m3s", "Потребность в воздухе", ROSE_F, U_M3S, 1,
                                kb["air_demand_m3s"], ka["air_demand_m3s"], higher_is_better=False))
+    items.append(held_item(before, after))
     items.append(changed_value("water_deficit_m3h", "Дефицит технической воды", ROSE_M, U_M3H, 1,
                                kb["water_deficit_m3h"], ka["water_deficit_m3h"], higher_is_better=False))
     over_permit = (f"; разрешённый сброс {num(ka['permit_m3h'], 1)} {U_M3H} превышен"
@@ -309,6 +372,23 @@ def effect_items(names: Mapping[str, str], before: Mapping[str, Any], after: Map
         items.append(_item("pumps_available", "Исправные насосы", "шт.", old, new, _trend(old, new, True),
                            f"{station}: исправных насосов {old} {ARROW} {new} из {after['pumps_total']}."))
     return [item for item in items if item is not None]
+
+
+def held_item(before: Mapping[str, Any], after: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
+    """Units that wait for air (spec 2.6): named whenever the set of held units changed."""
+    old = (tuple(before["held_trucks"]), tuple(before["held_lhds"]))
+    new = (tuple(after["held_trucks"]), tuple(after["held_lhds"]))
+    if old == new:
+        return None
+    n_old, n_new = len(old[0]) + len(old[1]), len(new[0]) + len(new[1])
+    if not n_old:
+        text = f"Воздуха не хватает на весь парк, в ожидании воздуха: {held_phrase(*new)}."
+    elif not n_new:
+        text = f"Воздуха снова хватает на весь парк, в работу возвращаются: {held_phrase(*old)}."
+    else:
+        text = f"В ожидании воздуха: {held_phrase(*old)} {ARROW} {held_phrase(*new)}."
+    return _item("units_held_vent", "Техника в ожидании воздуха", "ед.", n_old, n_new,
+                 _trend(n_old, n_new, False), text)
 
 
 def _stockpile(before: Optional[float], after: Optional[float]) -> Optional[Dict[str, Any]]:

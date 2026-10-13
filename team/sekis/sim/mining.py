@@ -222,15 +222,17 @@ class Mining:
 
     def _warm_start(self) -> None:
         """Steady operation at the epoch: one ring of broken ore in every producing stope and the
-        rings staggered one shift apart."""
+        rings staggered one shift apart. The next ring of each stope is as far prepared as the
+        whole shifts since its last blast and the part of the running shift already worked allow."""
         rigs = [rig for rig in self.rigs if rig.in_service]
         prep_total = self.drill_total_s + self.charge_total_s
+        worked_s = float(self.sim.cal.worked_s(self.sim.cal.index(0))[1])
         for i, stope in enumerate(self.producing):
             shifts_ago = i % self.cycle_shifts
             stope.last_blast_w = -shifts_ago
             stope.broken = min(self.start_broken_t, stope.ore_remaining)
             stope.ore_remaining -= stope.broken
-            done = shifts_ago * self.productive_shift_s
+            done = shifts_ago * self.productive_shift_s + worked_s
             if done >= prep_total:
                 stope.ring, stope.drill_s, stope.charge_s = R_READY, self.drill_total_s, self.charge_total_s
             elif done >= self.drill_total_s:

@@ -132,6 +132,8 @@ class Simulator:
         self.dev_rate_m_per_s = 0.0
 
         self._configure(first=True)
+        # The run opens on a working mine: the trucks are already spread along their cycles.
+        self.haul.warm_start(float(self.t), float(self.cal.worked_s(self._i)[0]))
 
         # publishing support
         self._snapshot_tick = -1
@@ -322,18 +324,23 @@ class Simulator:
         self._refresh_analytic()
 
     def on_fleet_change(self) -> None:
-        """Counts that follow the units in service; the ventilation rule is evaluated again."""
+        """The units in service changed: the ventilation rule is evaluated again, and with it the
+        counts that follow the units left working."""
+        self._vent_key = None
+        self._ventilation_rule()
+
+    def _count_working_trucks(self) -> None:
+        """Trucks working each decline and the smallest of them. A truck held for air waits at
+        the surface, so it is not one of the ``n`` trucks on its decline (spec 2.3 item 1)."""
         counts: Dict[str, int] = {key: 0 for key in self.model.declines}
         smallest: Dict[str, float] = {}
         for truck in self.haul.trucks:
-            if truck.in_service and not truck.retiring:
+            if truck.in_service and not truck.retiring and not truck.held:
                 key = self.decline_of[truck.name]
                 counts[key] += 1
                 smallest[key] = min(smallest.get(key, truck.payload_t), truck.payload_t)
         self.trucks_on_decline = counts
         self.mining.set_min_payloads(smallest)
-        self._vent_key = None
-        self._ventilation_rule()
 
     def _refresh_analytic(self) -> None:
         """The analytic picture for the live state: the same call the advisor makes."""
@@ -346,41 +353,24 @@ class Simulator:
     # ---------------------------------------------------------------------------------------
 
     def _ventilation_rule(self) -> None:
-        """Hold units until the air demand fits the supply: the truck with the highest number, the
-        next truck, the LHD with the highest number, and again; never below the minimum fleet."""
-        model, p = self.model, self.p
-        trucks = sorted((t for t in self.haul.trucks if t.in_service and not t.retiring),
-                        key=lambda t: -t.number)
-        lhds = sorted((u for u in self.mining.lhds if u.in_service), key=lambda u: -u.number)
+        """Hold units until the air demand fits the supply. The rule itself is
+        ``capacity.hold_units``, the function behind the analytic ventilation capacity, so the
+        twins and the advisor hold the same units."""
+        model = self.model
+        trucks = [t for t in self.haul.trucks if t.in_service and not t.retiring]
+        lhds = [u for u in self.mining.lhds if u.in_service]
         key = (self.air_supply, tuple(t.name for t in trucks), tuple(u.name for u in lhds))
         if key == self._vent_key:
             return
         self._vent_key = key
-        power = sum(t.engine_kw for t in trucks) + sum(u.engine_kw for u in lhds)
-        min_trucks, min_lhds = int(p("vent.min_active_trucks")), int(p("vent.min_active_lhd"))
-        held_trucks: List[Any] = []
-        held_lhds: List[Any] = []
-        turn = 0
-        while cap.air_demand_m3s(model, power) > self.air_supply:
-            can_truck = len(trucks) - len(held_trucks) > min_trucks
-            can_lhd = len(lhds) - len(held_lhds) > min_lhds
-            if not can_truck and not can_lhd:
-                break
-            take_lhd = turn % 3 == 2            # truck, truck, LHD
-            turn += 1
-            if take_lhd and not can_lhd:
-                take_lhd = False
-            elif not take_lhd and not can_truck:
-                take_lhd = True
-            unit = lhds[len(held_lhds)] if take_lhd else trucks[len(held_trucks)]
-            (held_lhds if take_lhd else held_trucks).append(unit)
-            power -= unit.engine_kw
-        self.air_demand = cap.air_demand_m3s(model, power)
-        self.held_trucks = tuple(t.name for t in held_trucks)
-        self.held_lhds = tuple(u.name for u in held_lhds)
+        hold = cap.hold_units(model, trucks, lhds, self.air_supply)
+        self.air_demand = cap.air_demand_m3s(model, hold.working_kw)
+        self.held_trucks = hold.trucks
+        self.held_lhds = hold.lhds
         held = set(self.held_trucks)
         for truck in self.haul.trucks:
             truck.held = truck.name in held
+        self._count_working_trucks()
         self.mining.set_held_lhds(self.held_lhds)
         if self.air_demand > self.air_demand_peak:
             self.air_demand_peak = self.air_demand

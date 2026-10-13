@@ -30,6 +30,12 @@ REGISTRY = json.loads((TEAM / "model" / "registry.json").read_text(encoding="utf
 MODEL = cap.load_model()
 GEO = geometry.load()
 
+# The run opens at 09:30 on the epoch day (sim.epoch), 45 minutes into the first productive block.
+EPOCH = "2027-01-01T09:30:00"
+EPOCH_H = 9.5
+MOVING = {"surface_haul", "descending", "tram_level", "hauling_up"}
+
+FULL_1200 = dict(m_haul=1, m_stopes=1, m_vent=1, m_plant=1, m_water=1, m_tailings=1)
 FULL_2000 = dict(m_haul=2, m_stopes=2, m_vent=2, m_plant=2, m_water=2, m_tailings=1, m_dev=1)
 FULL_2500 = dict(m_haul=3, m_stopes=3, m_vent=2, m_plant=3, m_water=2, m_tailings=1, m_dev=1)
 
@@ -318,7 +324,8 @@ class TestSnapshot(SimCase):
                     self.assertEqual(snap[name]["state"], baseline["state"], name)
             if kind == "stope" and baseline["state"] in ("planned", "preparation", "standby"):
                 self.assertEqual(snap[name]["state"], baseline["state"], name)
-        self.assertEqual(snap["enterprise"]["sim_time"], "2027-01-01T08:00:00")
+        self.assertEqual(snap["enterprise"]["sim_time"], EPOCH)
+        self.assertEqual(MODEL.p("sim.epoch"), EPOCH)
         self.assertEqual(snap["enterprise"]["binding_link"], "haulage")
         self.assertEqual(snap["mine"]["air_supply_m3s"], 322.0)
         self.assertEqual(snap["mine"]["air_demand_m3s"], 317.2)
@@ -383,25 +390,25 @@ class TestTimeBase(SimCase):
         productive = {"A": 0, "B": 0}
         for minute in range(24 * 60):
             snap = sim.snapshot(["enterprise", "mine"])
-            hour = (8 + minute / 60) % 24
+            hour = round((EPOCH_H + minute / 60) % 24, 6)
             seen.setdefault(snap["enterprise"]["shift"], []).append(hour)
             if snap["enterprise"]["shift"] == "blast":
                 self.assertEqual(snap["mine"]["state"], "blast_window")
             if sim.productive:
                 productive[snap["enterprise"]["shift"]] += 1
             sim.advance(1)
-        self.assertEqual((min(seen["A"]), max(seen["A"])), (8.0, 19 - 1 / 60))
+        self.assertEqual((min(seen["A"]), max(seen["A"])), (8.0, round(19 - 1 / 60, 6)))
         self.assertEqual(len(seen["A"]), 11 * 60)
         self.assertEqual(len(seen["B"]), 11 * 60)
         self.assertEqual(len(seen["blast"]), 2 * 60)
         self.assertTrue(all(19 <= h < 20 or 7 <= h < 8 for h in seen["blast"]))
         self.assertEqual(productive, {"A": 510, "B": 510})    # 8.5 h in each shift
-        self.assertEqual(sim.sim_time, "2027-01-02T08:00:00")
+        self.assertEqual(sim.sim_time, "2027-01-02T09:30:00")
         self.assertEqual(sim.snapshot()["enterprise"]["sim_day"], 1.0)
 
     def test_daily_totals_reset_at_0800(self):
         sim = new_sim()
-        sim.advance(23 * 60)
+        sim.advance((24 + 7 - EPOCH_H) * 60)          # 07:00 on day 2: both shifts of the first day are over
         self.assertGreater(sim.snapshot()["mine"]["ore_hoisted_today_t"], 1000.0)
         self.assertGreater(sim.snapshot()["truck-01"]["trips_today"], 0.0)
         total = sim.ore_hoisted_t
@@ -413,7 +420,7 @@ class TestTimeBase(SimCase):
 
     def test_trucks_rest_outside_the_productive_time(self):
         sim = new_sim()
-        sim.advance(11 * 60 + 30)                     # 19:30, inside the blast window
+        sim.advance((19.5 - EPOCH_H) * 60)            # 19:30, inside the blast window
         snap = sim.snapshot()
         for name in TRUCKS[:5]:
             self.assertIn(snap[name]["state"], ("shift_break", "maintenance"), name)
@@ -425,6 +432,95 @@ class TestTimeBase(SimCase):
         sim.advance(5 * 60 + 30)
         self.assertEqual(sim.sim_time, "2027-03-10T19:30:00")
         self.assertEqual(sim.snapshot()["enterprise"]["shift"], "blast")
+
+
+class TestOpening(SimCase):
+    """The run opens mid-shift on a working mine (sim.epoch, 09:30), not on the walk-in at 08:00."""
+
+    def test_trucks_are_spread_along_their_cycles_at_the_epoch(self):
+        sim = new_sim()
+        self.assertEqual((sim.sim_time, sim.t, sim.shift, sim.productive), (EPOCH, 0, "A", True))
+        snap = sim.snapshot()
+        fleet = TRUCKS[:5]
+        states = [snap[name]["state"] for name in fleet]
+        self.assertFalse({"shift_break", "parked", "held_vent", "maintenance"} & set(states), states)
+        self.assertGreaterEqual(len(set(states)), 3, states)
+        places = {(snap[n]["pos_x"], snap[n]["pos_y"], snap[n]["pos_z"]) for n in fleet}
+        self.assertEqual(len(places), 5, "no two trucks stand at the same place")
+        self.assertGreaterEqual(sum(1 for n in fleet if snap[n]["chainage_m"] > 0.0), 2, "trucks on the declines")
+        self.assertGreaterEqual(sum(1 for n in fleet if snap[n]["payload"] > 0.0), 1, "a truck is already loaded")
+        self.assertGreaterEqual(sum(1 for n in fleet if snap[n]["payload"] == 0.0), 1)
+        self.assertEqual(snap["mine"]["state"], "production")
+        self.assertEqual(snap["mine"]["trucks_active"], 5.0)
+        self.assertGreater(snap["mine"]["diesel_kw_active"], 1000.0)
+        # LHDs and rigs are at work too
+        self.assertTrue(all(snap[f"lhd-0{n}"]["state"] in ("mucking", "loading_truck") for n in (1, 2, 3, 4)))
+        self.assertEqual((snap["rig-01"]["state"], snap["rig-02"]["state"]), ("drilling", "drilling"))
+
+    def test_at_least_three_trucks_move_in_the_first_minute_and_ore_is_hoisted_in_the_first_half_hour(self):
+        sim = new_sim()
+        fleet = TRUCKS[:5]
+        for _ in range(7):                            # 0, 10, ... 60 simulated seconds
+            snap = sim.snapshot(fleet)
+            states = [snap[name]["state"] for name in fleet]
+            moving = [name for name in fleet if snap[name]["state"] in MOVING]
+            self.assertGreaterEqual(len(moving), 3, f"{sim.t} s: {states}")
+            self.assertTrue(all(snap[name]["speed"] > 0.0 for name in moving))
+            sim.advance(1 / 6)
+        self.assertEqual(sim.ore_hoisted_t, 0.0)
+        sim.advance(29)                               # 30 simulated minutes after the epoch
+        self.assertLessEqual(sim.t, 30 * 60 + 10)
+        self.assertGreater(sim.ore_hoisted_t, 0.0)
+        self.assertGreater(sim.snapshot()["mine"]["ore_hoisted_total_t"], 0.0)
+        self.assertGreater(sim.snapshot()["mine"]["ore_hoisted_tph"], 0.0)
+
+    def test_totals_start_at_zero_and_the_mass_balance_holds_at_the_epoch(self):
+        sim = new_sim()
+        t = sim.totals()
+        self.assertEqual((t["ore_hoisted_t"], t["truck_trips"], t["ore_milled_t"], t["ore_blasted_t"]),
+                         (0.0, 0.0, 0.0, 0.0))
+        self.assertEqual(t["stockpile_t"], MODEL.p("stockpile.start_t"))
+        # ore already on the trucks was loaded from the broken ore of the warm start
+        self.assertGreater(t["ore_on_trucks_t"], 0.0)
+        self.assertEqual(t["ore_loaded_t"], t["ore_on_trucks_t"])
+        self.assertAlmostEqual(t["ore_broken_start_t"], t["ore_broken_t"] + t["ore_loaded_t"])
+        self.assertEqual(sim.snapshot()["enterprise"]["sim_day"], 0.0)
+
+    def test_stopes_keep_their_warm_start(self):
+        sim = new_sim()
+        t = sim.totals()
+        # one ring of broken ore in each of the four producing stopes
+        self.assertAlmostEqual(t["ore_broken_start_t"], 4 * MODEL.p("stope.blast_t"))
+        self.assertEqual([st.last_blast_w for st in sim.mining.producing], [0, -1, -2, -3])   # a shift apart
+        snap = sim.snapshot()
+        drilled = [snap[st.name]["drilled_pct"] for st in sim.mining.producing]
+        # the ring of the first stope is 45 minutes into its 12.75 h of drilling, the second a shift further
+        self.assertAlmostEqual(drilled[0], 0.75 / 12.75 * 100, delta=0.1)
+        self.assertAlmostEqual(drilled[1], (8.5 + 0.75) / 12.75 * 100, delta=0.1)
+        self.assertEqual(drilled[2:], [100.0, 100.0])
+        fired = []
+        sim.advance((19.5 - EPOCH_H) * 60 + 1)        # 19:31, just after the rings of the first window are fired
+        for _ in range(4):                            # one ring per blast window, four shifts after the stope's last
+            fired.append(sim.last_blast)
+            sim.advance(12 * 60)
+        self.assertEqual(fired, [("stp-000-1",), ("stp-p050-1",), ("stp-p100-1",), ("stp-p150-1",)])
+
+    def test_state_at_the_epoch_does_not_depend_on_the_seed(self):
+        first, second = new_sim(seed=1), new_sim(seed=2)
+        self.assertEqual(first.snapshot(), second.snapshot())
+        self.assertEqual(first.totals(), second.totals())
+        first.run_days(2)
+        second.run_days(2)
+        self.assertNotEqual(first.totals()["ore_hoisted_t"], second.totals()["ore_hoisted_t"])
+
+    def test_epoch_outside_productive_time_starts_from_the_pad(self):
+        sim = Simulator(MODEL, GEO, REGISTRY, epoch="2027-01-01T08:00:00")     # the walk-in at the shift start
+        snap = sim.snapshot()
+        self.assertFalse(sim.productive)
+        self.assertEqual({snap[name]["state"] for name in TRUCKS[:5]}, {"shift_break"})
+        self.assertEqual(sim.totals()["ore_loaded_t"], 0.0)
+        sim.advance(60)                               # 09:00: production began at 08:45
+        self.assertTrue(any(sim.snapshot()[name]["state"] in MOVING for name in TRUCKS[:5]))
 
 
 class TestDeterminism(SimCase):
@@ -512,11 +608,10 @@ class TestTraffic(SimCase):
         self.assertGreater(run.totals["bay_wait_min_per_trip"], 0.5)
 
     def test_truck_cycle_visits_the_states_in_order(self):
-        sim = new_sim()
-        sim.advance(40)                               # 08:40, just before production starts
+        sim = new_sim()                               # 09:30: every truck is on a trip
         fleet = TRUCKS[:5]
-        order = {name: [] for name in fleet}
-        for _ in range(6 * 170):
+        order = {name: [sim.snapshot(fleet)[name]["state"]] for name in fleet}
+        for _ in range(6 * 170):                      # to 12:20, inside the first productive block
             sim.advance(1 / 6)
             snap = sim.snapshot(fleet)
             for name in fleet:
@@ -532,8 +627,10 @@ class TestTraffic(SimCase):
             if cycle in " ".join(moving):
                 complete.append(name)
         self.assertGreaterEqual(len(complete), 3, f"states seen: {order}")
+        working = set(cycle.split()) | {"waiting_bay"}
         for name in fleet:
-            self.assertEqual(order[name][0], "shift_break", name)
+            self.assertIn(order[name][0], working, name)
+            self.assertNotIn("shift_break", order[name], name)
 
     def test_truck_payload_grade_and_position_follow_the_cycle(self):
         sim = new_sim()
@@ -784,11 +881,11 @@ class TestDisturbances(SimCase):
         self.assertEqual(snap["enterprise"]["annual_rate_ktpa"], 833.6)
 
         sim = new_sim()
-        sim.advance(100)                              # 09:40, trucks on both declines
+        sim.advance(30)                               # 10:00, trucks on both declines
         self.assertEqual([sim.snapshot()[n]["decline"] for n in TRUCKS[:5]], ["tu2"] * 4 + ["tu1"])
         sim.apply_scenario({"tu2_closed": 1})
         self.assertEqual(sim.snapshot()["decline-tu2"]["state"], "closed")
-        sim.advance(100)                              # every truck has finished the trip it was on
+        sim.advance(100)                              # 11:40: every truck has finished the trip it was on
         snap = sim.snapshot()
         self.assertEqual([snap[n]["decline"] for n in TRUCKS[:5]], ["tu1"] * 5)
         self.assertEqual(snap["decline-tu2"]["trucks_on_ramp"], 0.0)
@@ -802,7 +899,7 @@ class TestDisturbances(SimCase):
         self.assertGreaterEqual(busy, 3.0)
         # undo
         sim.apply_scenario({"tu2_closed": 0})
-        sim.advance(120)
+        sim.advance(120)                              # 14:40, after the meal hour
         snap = sim.snapshot()
         self.assertEqual(snap["decline-tu2"]["state"], "open")
         self.assertEqual([snap[n]["decline"] for n in TRUCKS[:5]], ["tu2"] * 4 + ["tu1"])
@@ -819,7 +916,7 @@ class TestDisturbances(SimCase):
 
     def test_fan_vs2_fail_holds_units_and_restricts_the_mine(self):
         sim = new_sim()
-        sim.advance(26 * 60)                          # 10:00 on day 2
+        sim.advance(24.5 * 60)                        # 10:00 on day 2
         before = sim.snapshot()
         self.assertEqual(before["mine"]["state"], "production")
         sim.apply_scenario({"fan_vs2_off": 1})
@@ -838,7 +935,12 @@ class TestDisturbances(SimCase):
         self.assertEqual(snap["lhd-04"]["state"], "standby_vent")
         self.assertEqual(snap["stp-000-1"]["state"], "standby")
         self.assertEqual(snap["enterprise"]["binding_link"], "ventilation")
-        self.assertAlmostEqual(snap["enterprise"]["annual_rate_ktpa"], 486, delta=1)
+        # the twin shows the analytic rate of the units left working: trucks 01, 02 and three stopes
+        analytic = cap.evaluate(MODEL, cap.State(fan_vs2_off=True))
+        self.assertEqual((sim.held_trucks, sim.held_lhds), (analytic.air.held_trucks, analytic.air.held_lhds))
+        self.assertAlmostEqual(snap["mine"]["air_demand_m3s"], analytic.air.used_m3s, places=1)
+        self.assertAlmostEqual(snap["enterprise"]["annual_rate_ktpa"], analytic.capacity_ktpa["ventilation"], delta=0.05)
+        self.assertAlmostEqual(snap["enterprise"]["annual_rate_ktpa"], 374, delta=1)
         self.assertLess(snap["lvl-p150"]["air_flow_m3s"], before["lvl-p150"]["air_flow_m3s"])
         sim.advance(90)                               # held trucks finish their trip
         snap = sim.snapshot()
@@ -999,7 +1101,7 @@ class TestDisturbances(SimCase):
 
     def test_grade_drop_lowers_the_gold(self):
         sim = new_sim()
-        sim.advance(30 * 60)                          # 14:00 on day 2: three lines running
+        sim.advance(30 * 60)                          # 15:30 on day 2: three lines running
         before = sim.snapshot()
         self.assertEqual(before["plant"]["lines_running"], 3.0)
         sim.apply_scenario({"grade_gpt": 1.76})
@@ -1137,7 +1239,7 @@ class TestMeasures(SimCase):
 
     def test_m_haul_brings_trucks_06_07_and_they_wait_for_air_until_m_vent(self):
         sim = new_sim()
-        sim.advance(26 * 60)
+        sim.advance(24.5 * 60)                        # 10:00 on day 2
         sim.apply_scenario({"m_haul": 1})
         snap = sim.snapshot()
         self.assertNotEqual(snap["truck-06"]["state"], "parked")
@@ -1151,6 +1253,12 @@ class TestMeasures(SimCase):
         self.assertEqual(sim.tier("truck-06"), "S")
         capacity = sim.analytic.capacity_ktpa
         self.assertLess(capacity["ventilation"], capacity["haulage"], "the air now carries less than the trucks")
+        # the advisor's view of the same state: the trucks left working haul the baseline tonnage
+        self.assertEqual(sim.analytic.air.held_trucks, sim.held_trucks)
+        self.assertEqual(snap["enterprise"]["binding_link"], "ventilation")
+        self.assertEqual(snap["enterprise"]["annual_rate_ktpa"], round(sim.baseline.capacity_ktpa["haulage"], 1))
+        self.assertAlmostEqual(snap["mine"]["air_demand_m3s"], sim.analytic.air.used_m3s, places=1)
+        self.assertEqual(sim.trucks_on_decline, {"tu1": 1, "tu2": 4})     # held trucks are not on the decline
         sim.apply_scenario({"m_vent": 1})
         snap = sim.snapshot()
         self.assertEqual(snap["fan-vpv"]["state"], "running")
@@ -1312,6 +1420,96 @@ class TestMeasures(SimCase):
         self.assertGreater(run.totals["load_wait_min_per_trip"], 1.0)
 
 
+class TestAirLimitedCases(SimCase):
+    """Spec 2.6 against 2.3 item 3 (decision 10.5): where the air holds units, the simulated mine
+    hoists what the analytic ventilation capacity says, and the twins never show more."""
+
+    def check(self, key, knobs, held_trucks, held_lhds):
+        run = run_of(key, MODEL.p("calib.run_days"), **knobs)
+        analytic = cap.evaluate(MODEL, cap.State.from_knobs(knobs))
+        sim = run.sim
+        self.assertEqual((analytic.air.held_trucks, analytic.air.held_lhds), (held_trucks, held_lhds), key)
+        self.assertEqual((sim.held_trucks, sim.held_lhds), (held_trucks, held_lhds), key)
+        self.assertEqual(analytic.binding_link, "ventilation", key)
+        self.assertAlmostEqual(analytic.achievable_ktpa, analytic.capacity_ktpa["ventilation"])
+        self.assertWithin(run.year["ore_hoisted_t"], analytic.capacity_ktpa["ventilation"] * 1000,
+                          MODEL.p("calib.sim_consistency_tol_pct"), f"{key}:")
+        snap = sim.snapshot()
+        self.assertEqual(snap["mine"]["state"], "restricted_air", key)
+        self.assertEqual(snap["mine"]["units_held_vent"], float(len(held_trucks) + len(held_lhds)), key)
+        self.assertAlmostEqual(snap["mine"]["air_demand_m3s"], analytic.air.used_m3s, places=1)
+        self.assertLessEqual(snap["mine"]["air_demand_m3s"], snap["mine"]["air_supply_m3s"])
+        self.assertEqual(snap["enterprise"]["binding_link"], "ventilation", key)
+        self.assertEqual(snap["enterprise"]["annual_rate_ktpa"], round(analytic.capacity_ktpa["ventilation"], 1))
+        for name in held_trucks:
+            self.assertIn(snap[name]["state"], ("held_vent", "maintenance"), name)
+        for name in held_lhds:
+            self.assertEqual(snap[name]["state"], "standby_vent", name)
+        self.assertEqual(run.totals["traffic_conflicts"], 0.0)
+        return run, analytic
+
+    def test_m_haul_1_alone_hoists_the_baseline(self):
+        run, analytic = self.check("air m_haul=1", dict(m_haul=1), ("truck-07", "truck-06"), ())
+        # 1000 kt/yr is not reached, in the library and in the mine alike
+        self.assertEqual(analytic.capacity_rounded["ventilation"], 926)
+        self.assertLess(run.year["ore_hoisted_t"], 0.97 * 1000000)
+        # the two trucks never leave the portal: the run is the baseline run, tonne for tonne
+        self.assertEqual(run.totals["ore_hoisted_t"], baseline_run().totals["ore_hoisted_t"])
+        self.assertEqual(run.totals["truck_trips"], baseline_run().totals["truck_trips"])
+        snap = run.sim.snapshot()
+        self.assertEqual((snap["truck-06"]["trips_today"], snap["truck-07"]["trips_today"]), (0.0, 0.0))
+
+    def test_m_haul_2_without_ventilation_leaves_two_stopes(self):
+        run, analytic = self.check("air m_haul=2", dict(m_haul=2),
+                                   ("truck-10", "truck-09", "truck-08", "truck-07"), ("lhd-04", "lhd-03"))
+        # the stopes left working bind: more trucks in service, less ore than the baseline
+        self.assertAlmostEqual(analytic.capacity_ktpa["ventilation"], 2 * 255.875)
+        self.assertLess(run.year["ore_hoisted_t"], 0.6 * baseline_run().year["ore_hoisted_t"])
+        snap = run.sim.snapshot()
+        self.assertEqual((snap["stp-p050-1"]["state"], snap["stp-000-1"]["state"]), ("standby", "standby"))
+
+    def test_fan_vs2_fail_at_baseline(self):
+        run, analytic = self.check("air fan", dict(fan_vs2_off=1), ("truck-05", "truck-04", "truck-03"), ("lhd-04",))
+        self.assertEqual(analytic.capacity_rounded["ventilation"], 374)
+        self.assertEqual(analytic.air.centroid_working_m, 100)
+        self.assertEqual(run.sim.snapshot()["stp-000-1"]["state"], "standby")
+
+    def test_fan_vs2_fail_with_the_measure_set_for_1200(self):
+        run, analytic = self.check("air fan 1200", dict(fan_vs2_off=1, **FULL_1200), ("truck-07", "truck-06"), ())
+        self.assertEqual(run.sim.snapshot()["mine"]["air_supply_m3s"], 357.0)
+        self.assertEqual(analytic.capacity_rounded["ventilation"], 926)
+        self.assertLess(run.year["ore_hoisted_t"], 1200000 * 0.9)
+
+    def test_m_stopes_1_alone_holds_the_only_ad45(self):
+        # the rule holds trucks first: LHD 05 at 322 m3/s costs truck 05 and a fifth of the tonnage
+        run, analytic = self.check("air m_stopes=1", dict(m_stopes=1), ("truck-05",), ())
+        self.assertEqual(analytic.capacity_rounded["ventilation"], 683)
+        self.assertLess(run.year["ore_hoisted_t"], 0.85 * baseline_run().year["ore_hoisted_t"])
+
+    def test_gap_with_five_stopes_is_the_haulage_formula_not_the_air_rule(self):
+        # The same five trucks on the same five stopes, once with trucks 06 and 07 held and once with
+        # no hold at all: the simulator hoists the same, and both runs sit a few per cent above the
+        # analytic haulage of the five trucks, which keeps the +75 m centroid for the fifth stope too.
+        held = run_of("air fan 1200", MODEL.p("calib.run_days"), fan_vs2_off=1, **FULL_1200)
+        free = run_of("five stopes", MODEL.p("calib.run_days"), m_stopes=1, m_vent=1)
+        self.assertEqual((free.sim.held_trucks, free.sim.held_lhds), ((), ()))
+        self.assertWithin(held.year["ore_hoisted_t"], free.year["ore_hoisted_t"], 1.0)
+        haulage = cap.evaluate(MODEL, cap.State(m_stopes=1, m_vent=1)).capacity_ktpa["haulage"] * 1000
+        self.assertAlmostEqual(haulage, cap.evaluate(MODEL).capacity_ktpa["haulage"] * 1000)
+        for run in (held, free):
+            self.assertGreater(run.year["ore_hoisted_t"], haulage)
+            self.assertWithin(run.year["ore_hoisted_t"], haulage, MODEL.p("calib.sim_consistency_tol_pct"))
+
+    def test_no_hold_and_no_restriction_once_the_air_fits(self):
+        run = run_of("air m_haul=1 m_vent=1", 30, m_haul=1, m_vent=1)
+        analytic = cap.evaluate(MODEL, cap.State(m_haul=1, m_vent=1))
+        self.assertFalse(analytic.air.restricted)
+        self.assertEqual((run.sim.held_trucks, run.sim.held_lhds), ((), ()))
+        self.assertEqual((analytic.binding_link, analytic.capacity_rounded["plant"]), ("plant", 1000))
+        # seven trucks on four stopes: the mine delivers the 1000 kt/yr the advisor names as reached
+        self.assertGreater(run.year["ore_hoisted_t"], 0.97 * 1000000)
+
+
 # ---------------------------------------------------------------------------------------------
 # publishing support
 # ---------------------------------------------------------------------------------------------
@@ -1425,7 +1623,7 @@ class TestPublishing(SimCase):
         message = ditto_modify(sim.namespace, "truck-01", sim.features("truck-01"))
         self.assertEqual(message["topic"], "kz.sekis/truck-01/things/twin/commands/modify")
         self.assertEqual(message["path"], "/features")
-        self.assertEqual(message["value"]["state"], {"properties": {"value": "shift_break"}})
+        self.assertEqual(message["value"]["state"], {"properties": {"value": "surface_haul"}})   # loaded, at 09:30
         self.assertEqual(set(message["value"]), set(sim.features("truck-01")))
         self.assertEqual(telemetry_topic("truck-01"), "telemetry/sekis/truck-01")
         self.assertLess(len(json.dumps(message)), 1024)

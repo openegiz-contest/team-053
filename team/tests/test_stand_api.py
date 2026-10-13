@@ -218,9 +218,9 @@ class FixtureStandTest(unittest.TestCase):
         self.assertEqual(len(report["links"]), 8)
         self.assertEqual(report["binding_link"], "haulage")
         self.assertEqual(next(iter(report["next_measure"]["set"])), "m_haul")
-        first = ["haulage", "plant", "water", "stopes", "ventilation", "tailings"]
+        first = ["haulage", "ventilation", "plant", "water", "stopes", "tailings"]
         second = first + ["plant", "stopes", "ventilation", "haulage", "water", "development"]
-        expected = {1000: ["haulage"], 1200: first, 2000: second,
+        expected = {1000: ["haulage", "ventilation"], 1200: first, 2000: second,
                     2500: second + ["plant", "stopes", "haulage"]}        # spec 3.4
         gold = {1000: 56.0, 1200: 67.2, 2000: 112.0, 2500: 140.0}
         self.assertEqual([row["target_ktpa"] for row in report["ladder"]], [1000, 1200, 2000, 2500])
@@ -331,6 +331,52 @@ class FixtureStandTest(unittest.TestCase):
         _, answer = self.client.post({"action": "undo"})
         self.assertEqual(answer["knobs"], self.defaults)
         self.assertEqual(self.client.features()["truck-06"]["state"], "parked")
+
+    def test_new_trucks_wait_for_air_and_the_advisor_says_so(self):
+        """Spec 2.6 and decision 10.5: the bars, the twins and the texts tell one story."""
+        self.client.post({"action": "advisor_next"})                 # haulage: trucks 06 and 07
+        features = self.client.features()
+        self.assertEqual((features["truck-06"]["state"], features["truck-07"]["state"]),
+                         ("held_vent", "held_vent"))
+        mine, advisor = features["mine"], features["advisor"]
+        self.assertEqual((mine["state"], mine["units_held_vent"], mine["trucks_active"]),
+                         ("restricted_air", 2.0, 5.0))
+        self.assertEqual((mine["air_supply_m3s"], mine["air_demand_m3s"]), (322.0, 317.2))
+        # the target is not shown as reached while two trucks stand at the portal
+        self.assertEqual((advisor["binding_link"], advisor["next_measure"]), ("ventilation", "m_vent"))
+        self.assertEqual((advisor["cap_ventilation_ktpa"], advisor["achievable_ktpa"]), (926.0, 926.0))
+        self.assertEqual(advisor["air_demand_m3s"], 369.9)           # what the whole fleet in service needs
+        self.assertEqual(features["enterprise"]["annual_rate_ktpa"], 926.0)
+        report = self.client.json("/api/advisor")[1]
+        self.assertFalse(report["target_reached"])
+        waiting = "самосвалы №\u00a06–7"
+        self.assertIn("в ожидании воздуха: " + waiting, report["links"][1]["detail"])
+        self.assertIn("в работу возвращаются: " + waiting, report["next_measure"]["text"])
+        held = [item for item in report["effects"]["items"] if item["id"] == "units_held_vent"]
+        self.assertEqual(len(held), 1)
+        self.assertIn(waiting, held[0]["text"])
+        self.assertEqual((held[0]["before"], held[0]["after"], held[0]["trend"]), (0, 2, "worse"))
+        # the fan on raise VPV returns them to work and the target is reached
+        status, answer = self.client.post({"action": "advisor_next"})
+        self.assertEqual(answer["changed"], {"m_vent": [0.0, 1.0]})
+        features = self.client.features()
+        self.assertEqual(features["mine"]["units_held_vent"], 0.0)
+        self.assertNotEqual(features["mine"]["state"], "restricted_air")
+        self.assertNotIn(features["truck-06"]["state"], ("held_vent", "parked"))
+        self.assertEqual(features["mine"]["air_demand_m3s"], 369.9)
+        report = self.client.json("/api/advisor")[1]
+        self.assertTrue(report["target_reached"])
+        self.assertEqual((report["binding_link"], report["achievable_ktpa"]), ("plant", 1000.0))
+
+    def test_fan_failure_holds_the_units_of_the_hold_rule(self):
+        self.client.post({"preset": "fan_vs2_fail"})
+        features = self.client.features()
+        self.assertEqual([features[f"truck-0{n}"]["state"] for n in (3, 4, 5)], ["held_vent"] * 3)
+        self.assertEqual((features["lhd-04"]["state"], features["stp-000-1"]["state"]), ("standby_vent", "standby"))
+        self.assertEqual((features["mine"]["units_held_vent"], features["mine"]["trucks_active"]), (4.0, 2.0))
+        self.assertEqual(features["mine"]["air_demand_m3s"], 238.6)
+        self.assertEqual((features["advisor"]["binding_link"], features["advisor"]["cap_ventilation_ktpa"]),
+                         ("ventilation", 374.0))
 
     def test_advisor_all_and_undo(self):
         self.client.post({"preset": "step1200"})
@@ -637,7 +683,7 @@ class LiveStandTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(state["mode"], "live")
         self.assertEqual(len(state["things"]), 96)
-        self.assertEqual(state["sim_time"], "2027-01-01T08:00:00")
+        self.assertEqual(state["sim_time"], "2027-01-01T09:30:00")
         truck = state["things"][NS + "truck-01"]
         self.assertEqual((truck["kind"], truck["parent"]), ("haul_truck", NS + "mine"))
         self.assertEqual(truck["f"]["state"], "surface_haul")

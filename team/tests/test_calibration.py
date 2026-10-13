@@ -52,10 +52,17 @@ class TestReferenceTable(ModelCase):
     COLUMNS = ("haulage", "stopes", "development", "ventilation", "plant", "water", "tailings")
     TABLE = {
         "baseline": ({}, (926, 1024, 1750, 958, 1000, 1000, 1057), 317.2),
-        "full set for 1.2 Mtpa": (FULL_1200, (1386, 1279, 1750, 1665, 1200, 1533, 3057), 385.7),
-        "full set for 2.0 Mtpa": (FULL_2000, (2076, 2047, 2573, 3045, 2000, 2700, 3057), 512.0),
-        "full set for 2.5 Mtpa": (FULL_2500, (2512, 2559, 2573, 2938, 2500, 2700, 3057), 596.3),
+        "full set for 1.2 Mtpa": (FULL_1200, (1388, 1279, 1750, 1667, 1200, 1533, 3057), 385.7),
+        "full set for 2.0 Mtpa": (FULL_2000, (2078, 2047, 2573, 3049, 2000, 2700, 3057), 512.0),
+        "full set for 2.5 Mtpa": (FULL_2500, (2515, 2559, 2573, 2942, 2500, 2700, 3057), 596.3),
     }
+
+    def test_no_unit_is_held_in_the_reference_sets(self):
+        # the ventilation column is headroom in every row: the air carries the whole fleet
+        for name, (knobs, _, _) in self.TABLE.items():
+            air = self.evaluate(**knobs).air
+            self.assertEqual((air.held_trucks, air.held_lhds, air.restricted), ((), (), False), name)
+            self.assertLessEqual(air.demand_m3s, air.supply_m3s, name)
 
     def test_capacities_within_one_percent(self):
         for name, (knobs, expected, _) in self.TABLE.items():
@@ -89,7 +96,7 @@ class TestReferenceTable(ModelCase):
         self.assertEqual(self.base.haulage.centroid_m, 75)
 
     def test_depth_effect(self):
-        expected = {75: 926, 25: 840, -25: 769, -75: 709}
+        expected = {75: 926, 25: 841, -25: 770, -75: 710}
         values = []
         for z, want in expected.items():
             value = self.evaluate(centroid_m=z).capacity_ktpa["haulage"]
@@ -204,7 +211,7 @@ class TestBindingRule(ModelCase):
         self.assertEqual(cap.binding_link(even), "haulage")
         self.assertEqual(cap.binding_link(dict(even, haulage=1200.0, ventilation=1200.0)), "stopes")
         # plant 1000 and water 999.84 are equal after rounding: plant comes first
-        self.assertEqual(cap.binding_link(dict(even, haulage=1386.0, ventilation=1036.0, stopes=1024.0,
+        self.assertEqual(cap.binding_link(dict(even, haulage=1388.0, ventilation=1805.0, stopes=1024.0,
                                                development=1750.0, dewatering=math.inf, water=999.84,
                                                tailings=1057.0)), "plant")
         self.assertEqual(cap.binding_link(dict(even, dewatering=999.4)), "dewatering")
@@ -236,7 +243,7 @@ class TestBottleneckSequences(ModelCase):
     advisor package has its own implementation and its own tests.
     """
 
-    FIRST_SIX = ["haulage", "plant", "water", "stopes", "ventilation", "tailings"]
+    FIRST_SIX = ["haulage", "ventilation", "plant", "water", "stopes", "tailings"]
     NEXT_SIX = ["plant", "stopes", "ventilation", "haulage", "water", "development"]
     LAST_THREE = ["plant", "stopes", "haulage"]
 
@@ -263,7 +270,10 @@ class TestBottleneckSequences(ModelCase):
         return res
 
     def test_target_1000(self):
-        self.check(1000, ["haulage"], 56.0)
+        # trucks 06 and 07 alone change nothing: they wait for air until the fan on raise VPV runs
+        res = self.check(1000, ["haulage", "ventilation"], 56.0)
+        self.assertEqual(res.state, cap.State(m_haul=1, m_vent=1))
+        self.assertEqual(self.evaluate(m_haul=1).capacity_rounded["ventilation"], 926)
 
     def test_target_1200(self):
         res = self.check(1200, self.FIRST_SIX, 67.2)
@@ -272,6 +282,16 @@ class TestBottleneckSequences(ModelCase):
     def test_target_2000(self):
         res = self.check(2000, self.FIRST_SIX + self.NEXT_SIX, 112.0)
         self.assertEqual(res.state, cap.State(**FULL_2000))
+
+    def test_the_stopes_measure_of_the_2000_ladder_takes_a_truck_out_until_the_shaft_is_built(self):
+        # eighth step: three more LHDs need 433.0 m3/s against 427, truck 07 is held and the chain
+        # falls from 1279 (stopes) to 1161 kt/yr (ventilation) until fan VS3 runs
+        before = self.evaluate(m_haul=1, m_vent=1, m_plant=2, m_water=1, m_stopes=1, m_tailings=1)
+        after = self.evaluate(m_haul=1, m_vent=1, m_plant=2, m_water=1, m_stopes=2, m_tailings=1)
+        self.assertEqual((before.binding_link, before.capacity_rounded["stopes"]), ("stopes", 1279))
+        self.assertEqual(after.air.held_trucks, ("truck-07",))
+        self.assertEqual((after.binding_link, after.capacity_rounded["ventilation"]), ("ventilation", 1161))
+        self.assertLess(after.achievable_ktpa, before.achievable_ktpa)
 
     def test_target_2500(self):
         res = self.check(2500, self.FIRST_SIX + self.NEXT_SIX + self.LAST_THREE, 140.0)
@@ -297,20 +317,26 @@ class TestScenarioEffects(ModelCase):
 
     def test_haulage_measure(self):
         res = self.evaluate(m_plant=1, m_haul=1)
-        self.assertWithin(res.capacity_ktpa["haulage"], 1386, 1.0)
+        self.assertWithin(res.capacity_ktpa["haulage"], 1388, 1.0)
         self.assertEqual([c.truck for c in res.haulage.cycles], [f"truck-{n:02d}" for n in range(1, 8)])
         self.assertEqual(res.haulage.trucks_by_decline, {"tu1": 3, "tu2": 4})
         self.assertGreater(res.air.demand_m3s, self.base.air.demand_m3s)
+        # 369.9 m3/s are needed and 322 supplied: the two new trucks wait and the chain stays at 926
+        self.assertEqual(res.air.held_trucks, ("truck-07", "truck-06"))
+        self.assertEqual((res.binding_link, res.capacity_rounded["ventilation"]), ("ventilation", 926))
+        self.assertAlmostEqual(res.achievable_ktpa, self.base.achievable_ktpa)
 
     def test_ventilation_and_stope_measures(self):
         before = self.evaluate(m_plant=1, m_haul=1, m_water=1, m_stopes=1)
         self.assertEqual(before.binding_link, "ventilation")
+        self.assertEqual((before.air.held_trucks, before.air.held_lhds), (("truck-07", "truck-06"), ("lhd-05",)))
         self.assertWithin(before.capacity_ktpa["stopes"], 1279, 1.0)
         self.assertEqual((before.stopes.n_producing, before.stopes.lhds, before.stopes.rigs), (5, 5, 3))
         after = self.evaluate(m_plant=1, m_haul=1, m_water=1, m_stopes=1, m_vent=1)
         self.assertEqual(after.air.fans_running, ("fan-vs1", "fan-ug-p320", "fan-vs2", "fan-vpv"))
         self.assertEqual(after.air.supply_m3s, 427)
-        self.assertWithin(after.capacity_ktpa["ventilation"], 1665, 1.0)
+        self.assertWithin(after.capacity_ktpa["ventilation"], 1667, 1.0)
+        self.assertFalse(after.air.restricted)
 
     def test_water_and_tailings_measures(self):
         self.assertWithin(self.evaluate(m_water=1).capacity_ktpa["water"], 1533, 1.0)
@@ -338,10 +364,15 @@ class TestScenarioEffects(ModelCase):
         res = self.evaluate(fan_vs2_off=True)
         self.assertEqual(res.air.supply_m3s, 252)
         self.assertNotIn("fan-vs2", res.air.fans_running)
-        self.assertWithin(res.capacity_ktpa["ventilation"], 486, 1.0)
+        # trucks 03-05 and LHD 04 wait; trucks 01 and 02 haul from the three stopes left, at +100 m
+        self.assertEqual((res.air.held_trucks, res.air.held_lhds),
+                         (("truck-05", "truck-04", "truck-03"), ("lhd-04",)))
+        self.assertWithin(res.capacity_ktpa["ventilation"], 374, 1.0)
         self.assertEqual(res.binding_link, "ventilation")
         self.assertLess(res.air.margin_pct, 0)
         self.assertAlmostEqual(res.air.demand_m3s, self.base.air.demand_m3s)
+        self.assertAlmostEqual(res.air.used_m3s, 180 + 0.06 * (2 * 304 + 3 * 123))
+        self.assertAlmostEqual(res.air.spare_m3s, 252 - res.air.used_m3s)
 
     def test_one_pump_failed_changes_no_bar(self):
         res = self.evaluate(pumps_failed_p150=1)
@@ -393,6 +424,103 @@ class TestScenarioEffects(ModelCase):
         self.assertEqual(res.binding_link, "plant")
         self.assertEqual([line.state for line in res.plant.lines],
                          ["running", "off", "running", "planned", "planned", "planned"])
+
+
+class TestHoldRule(ModelCase):
+    """Spec 2.6 and 2.3 item 3: whole units wait for air, and the ventilation capacity is what the
+    units left working can hoist and muck."""
+
+    def test_order_is_truck_truck_lhd_from_the_highest_number(self):
+        self.assertEqual(self.model.p("vent.hold_order"), ["truck", "truck", "lhd"])
+        trucks, lhds = self.model.trucks[:10], self.model.lhds[:4]
+        hold = cap.hold_units(self.model, trucks, lhds, 322)
+        self.assertEqual(hold.trucks, ("truck-10", "truck-09", "truck-08", "truck-07"))
+        self.assertEqual(hold.lhds, ("lhd-04", "lhd-03"))
+        # the order of holding: 10, 09, LHD 04, 08, 07, LHD 03; each step is needed
+        kw = sum(u.engine_kw for u in trucks) + sum(u.engine_kw for u in lhds)
+        self.assertAlmostEqual(hold.working_kw, kw - 4 * 439 - 263 - 123)
+        self.assertLessEqual(cap.air_demand_m3s(self.model, hold.working_kw), 322)
+        self.assertGreater(cap.air_demand_m3s(self.model, hold.working_kw + 123), 322)
+
+    def test_nothing_is_held_while_the_air_fits(self):
+        hold = cap.hold_units(self.model, self.model.trucks[:5], self.model.lhds[:4], 322)
+        self.assertEqual((hold.trucks, hold.lhds), ((), ()))
+        self.assertEqual(hold.working_kw, self.base.air.fleet_kw)
+
+    def test_never_below_one_truck_and_one_lhd(self):
+        hold = cap.hold_units(self.model, self.model.trucks[:5], self.model.lhds[:4], 0)
+        self.assertEqual(hold.trucks, ("truck-05", "truck-04", "truck-03", "truck-02"))
+        self.assertEqual(hold.lhds, ("lhd-04", "lhd-03", "lhd-02"))
+        self.assertEqual(hold.working_kw, 304 + 123)
+        # one kind at its minimum: the other kind is held in its place
+        one_truck = cap.hold_units(self.model, self.model.trucks[:1], self.model.lhds[:4], 215)
+        self.assertEqual((one_truck.trucks, one_truck.lhds), ((), ("lhd-04", "lhd-03")))
+
+    def test_capacity_is_that_of_the_units_left_working(self):
+        # m_haul = 1 alone: trucks 06 and 07 wait, the other five haul the baseline tonnage
+        res = self.evaluate(m_haul=1)
+        self.assertEqual((res.air.held_trucks, res.air.held_lhds), (("truck-07", "truck-06"), ()))
+        self.assertAlmostEqual(res.capacity_ktpa["ventilation"], self.base.capacity_ktpa["haulage"])
+        self.assertAlmostEqual(res.air.haul_working_ktpa, self.base.capacity_ktpa["haulage"])
+        self.assertAlmostEqual(res.air.used_m3s, self.base.air.demand_m3s)
+        self.assertEqual(res.binding_link, "ventilation")
+        self.assertWithin(res.capacity_ktpa["haulage"], 1388, 1.0)     # the haulage bar keeps the whole fleet
+        # the same five trucks on their own are the baseline: the library says so twice
+        five = self.evaluate(active_trucks=tuple(f"truck-{n:02d}" for n in range(1, 6)))
+        self.assertAlmostEqual(res.air.haul_working_ktpa, five.capacity_ktpa["haulage"])
+
+    def test_held_lhds_idle_their_stopes(self):
+        # m_haul = 2 at 322 m3/s: four trucks and two LHDs wait, two stopes are left
+        res = self.evaluate(m_haul=2)
+        self.assertEqual(res.air.held_trucks, ("truck-10", "truck-09", "truck-08", "truck-07"))
+        self.assertEqual(res.air.held_lhds, ("lhd-04", "lhd-03"))
+        self.assertAlmostEqual(res.air.stopes_working_ktpa, 2 * 255.875)
+        self.assertAlmostEqual(res.capacity_ktpa["ventilation"], 2 * 255.875)   # the stopes left bind
+        self.assertGreater(res.air.haul_working_ktpa, res.air.stopes_working_ktpa)
+        self.assertEqual(res.capacity_rounded["stopes"], 1024)                  # the stopes bar keeps its value
+        self.assertLess(res.achievable_ktpa, self.base.achievable_ktpa)         # more trucks, less ore
+
+    def test_working_trucks_haul_from_the_stopes_left_working(self):
+        res = self.evaluate(fan_vs2_off=True)
+        self.assertEqual(res.air.centroid_working_m, 100)        # +150, +100, +50; the stope on level 0 idles
+        two = cap.State(active_trucks=("truck-01", "truck-02"))
+        self.assertAlmostEqual(res.air.haul_working_ktpa,
+                               self.evaluate(active_trucks=two.active_trucks, centroid_m=100.0).capacity_ktpa["haulage"])
+        self.assertEqual(res.air.haul_working_ktpa, res.capacity_ktpa["ventilation"])
+        # trucks alone held: the centroid of the haulage link is kept
+        self.assertEqual(self.evaluate(m_haul=1).air.centroid_working_m, 75)
+        self.assertEqual(self.base.air.centroid_working_m, 75)
+
+    def test_headroom_never_binds_below_haulage(self):
+        for knobs in ({}, FULL_1200, FULL_2000, FULL_2500, dict(tu2_closed=True), dict(m_vent=2),
+                      dict(m_haul=1, m_vent=1), dict(centroid_m=-75.0)):
+            res = self.evaluate(**knobs)
+            self.assertFalse(res.air.restricted, knobs)
+            self.assertGreaterEqual(res.capacity_ktpa["ventilation"], res.capacity_ktpa["haulage"], knobs)
+            self.assertNotEqual(res.binding_link, "ventilation", knobs)
+
+    def test_ventilation_binds_only_while_units_are_held(self):
+        stages = {knob: range(cap.knob_max(self.model, knob) + 1) for knob in ("m_haul", "m_stopes", "m_vent")}
+        seen = 0
+        for m_haul in stages["m_haul"]:
+            for m_stopes in stages["m_stopes"]:
+                for m_vent in stages["m_vent"]:
+                    for fan_off in (False, True):
+                        res = self.evaluate(m_haul=m_haul, m_stopes=m_stopes, m_vent=m_vent, fan_vs2_off=fan_off)
+                        if res.binding_link == "ventilation":
+                            seen += 1
+                            self.assertTrue(res.air.restricted)
+                            self.assertLess(res.air.used_m3s, res.air.demand_m3s)
+                        self.assertLessEqual(res.air.used_m3s, res.air.supply_m3s)
+                        self.assertGreaterEqual(res.air.spare_m3s, 0)
+        self.assertGreater(seen, 10)
+
+    def test_stope_measure_without_air_takes_trucks_out(self):
+        # the rule holds trucks first: LHD 05 at 322 m3/s costs truck 05, the only AD45
+        res = self.evaluate(m_stopes=1)
+        self.assertEqual((res.air.held_trucks, res.air.held_lhds), (("truck-05",), ()))
+        self.assertEqual(res.binding_link, "ventilation")
+        self.assertLess(res.capacity_ktpa["ventilation"], self.base.capacity_ktpa["haulage"])
 
 
 class TestLadders(ModelCase):
@@ -492,8 +620,13 @@ class TestFormulas(ModelCase):
         self.assertEqual(air.supply_m3s, 322)
         self.assertEqual(air.fleet_kw, 4 * 304 + 439 + 3 * 123 + 263)
         self.assertAlmostEqual(air.allowed_kw, (322 - 180) / 0.06)
+        # nothing is held at baseline: the bar is headroom over haulage, not a limit
+        self.assertEqual((air.held_trucks, air.held_lhds), ((), ()))
         self.assertAlmostEqual(air.capacity_ktpa, air.allowed_kw * self.base.capacity_ktpa["haulage"] / air.fleet_kw)
+        self.assertGreater(air.capacity_ktpa, self.base.capacity_ktpa["haulage"])
         self.assertAlmostEqual(air.margin_pct, (322 - 317.22) / 322 * 100)
+        self.assertAlmostEqual(air.spare_m3s, 322 - 317.22)
+        self.assertAlmostEqual(air.used_m3s, air.demand_m3s)
         self.assertAlmostEqual(cap.fan_power_kw(self.model, 150, 2500), 500.0)
         split = cap.level_air(self.model, 322, {"lvl-p150": 439, "lvl-000": 123})
         self.assertEqual(len(split), 8)  # the levels that are not planned

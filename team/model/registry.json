@@ -40,7 +40,7 @@
         "description": "Горнодобывающее предприятие целиком: показатели по руднику, фабрике и золоту."
       },
       "features": {
-        "sim_time": {"properties": {"value": "2027-01-01T08:00:00"}},
+        "sim_time": {"properties": {"value": "2027-01-01T09:30:00"}},
         "sim_day": {"properties": {"value": 0.0}},
         "shift": {"properties": {"value": "A"}},
         "ore_mined_tpd": {"properties": {"value": 0.0}},
@@ -494,7 +494,7 @@
         "coordinates": "50°19'43\" N, 82°35'48\" E"
       },
       "features": {
-        "sim_time": {"properties": {"value": "2027-01-01T08:00:00"}},
+        "sim_time": {"properties": {"value": "2027-01-01T09:30:00"}},
         "sim_day": {"properties": {"value": 0.0}},
         "shift": {"properties": {"value": "A"}},
         "ore_mined_tpd": {"properties": {"value": 0.0}},

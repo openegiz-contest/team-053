@@ -46,9 +46,9 @@
   },
   "sim.seed": {"value": 53, "unit": "-", "source": "ASSUMPTION: random generator seed chosen in spec 2.1"},
   "sim.epoch": {
-    "value": "2027-01-01T08:00:00",
+    "value": "2027-01-01T09:30:00",
     "unit": "ISO 8601",
-    "source": "ASSUMPTION: simulation epoch chosen in spec 2.1: first year of the decision, start of shift A"
+    "source": "ASSUMPTION: simulation epoch: first year of the decision (spec 2.1), 45 minutes into the first productive block of shift A (08:45-13:00), so that a run opens on a working mine with the trucks spread along their cycles and not on the walk-in at the start of the shift"
   },
   "sim.rate_window_h": {
     "value": 2,
@@ -321,6 +321,11 @@
     "source": "ASSUMPTION: the holding rule never goes below one truck (spec 2.6)"
   },
   "vent.min_active_lhd": {"value": 1, "unit": "units", "source": "ASSUMPTION: the holding rule never goes below one LHD (spec 2.6)"},
+  "vent.hold_order": {
+    "value": ["truck", "truck", "lhd"],
+    "unit": "kind of unit held at each turn, repeated",
+    "source": "ASSUMPTION: order of the holding rule of spec 2.6: the truck with the highest number, the next truck, then the LHD with the highest number, and again; the simulator and the analytic ventilation capacity both use it"
+  },
   "water.inflow_m3h": {
     "value": 197,
     "unit": "m3/h",

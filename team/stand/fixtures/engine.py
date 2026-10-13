@@ -3,9 +3,13 @@ and the advisor, used only with STAND_FIXTURE=1 (standard library only).
 
 It is not the simulator and not the Expansion Advisor. It turns a knob set and a
 clock into (a) a full 96-thing state in the shape of GET /api/state and (b) an
-advisor report in the shape of GET /api/advisor, with the analytic formulas of
-spec section 2.3 and the constraint loop of section 3.4, so that every scenario
-button changes something visible on the page without the stack.
+advisor report in the shape of GET /api/advisor, so that every scenario button
+changes something visible on the page without the stack.
+
+The eight link capacities, the binding link and the units held for air are not
+re-implemented here: they come from sekis.capacity.evaluate, the library the
+simulator and the advisor use, so the fixture cannot drift from them. The
+constraint loop of spec 3.4 and the layout of the state are this module's own.
 
 Regenerate the two committed files from the registry and the parameter file:
 
@@ -20,15 +24,23 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MODEL_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "model"))
+TEAM_DIR = os.path.normpath(os.path.join(HERE, "..", ".."))
+MODEL_DIR = os.path.join(TEAM_DIR, "model")
 STATE_FILE = os.path.join(HERE, "state.json")
 ADVISOR_FILE = os.path.join(HERE, "advisor.json")
+
+if TEAM_DIR not in sys.path:    # the server loads this file by path, from any directory
+    sys.path.insert(0, TEAM_DIR)
+
+from sekis import capacity  # noqa: E402
+from sekis.advisor import wording  # noqa: E402
 
 NS = "kz.sekis:"
 
 # Simulated seconds after the epoch at which the fixture clock starts
-# (day 12, 10:24 in shift A, so that a first look shows a working mine).
-FIXTURE_START_S = 12 * 86400 + 2 * 3600 + 24 * 60
+# (12 days and 54 minutes after the 09:30 epoch: day 12, 10:24 in shift A, so
+# that a first look shows a working mine).
+FIXTURE_START_S = 12 * 86400 + 54 * 60
 
 DEFAULT_KNOBS = {
     "target_ktpa": 1000.0, "m_plant": 0.0, "m_haul": 0.0, "m_stopes": 0.0,
@@ -111,6 +123,8 @@ class Model:
     def __init__(self, model_dir=MODEL_DIR):
         self.registry = load_json(os.path.join(model_dir, "registry.json"))
         self.params = load_json(os.path.join(model_dir, "params.json"))
+        # The same two files as the model of the analytic library.
+        self.cap = capacity.Model(self.params, self.registry)
         self.attrs = {t["thingId"][len(NS):]: t["attributes"]
                       for t in self.registry["things"]}
         # Baseline features of every thing, as the registry gives them.
@@ -163,72 +177,14 @@ def ramp_km(model, decline, elevation):
     return (portal - elevation) * k * model.p("decline.length_factor") / 1000.0
 
 
-def cycle_minutes(model, decline, elevation, trucks_on_decline):
-    p = model.p
-    length = ramp_km(model, decline, elevation)
-    surface = p(f"decline.{decline}.surface_km")
-    return (p("truck.load_min") + p("truck.dump_min") + p("truck.manoeuvre_min")
-            + 60 * length / p("truck.speed_up_loaded_kmh")
-            + 60 * length / p("truck.speed_down_empty_kmh")
-            + 60 * surface / p("truck.speed_flat_loaded_kmh")
-            + 60 * surface / p("truck.speed_flat_empty_kmh")
-            + p("haul.K_BAY") * (trucks_on_decline - 1))
-
-
-def haul_capacity(model, knobs, centroid):
-    p = model.p
-    trucks = active_trucks(knobs)
-    by_decline = {"tu1": [], "tu2": []}
-    for truck in trucks:
-        by_decline[truck_decline(model, knobs, truck)].append(truck)
-    hours = p("regime.working_days") * p("regime.shifts") * p("regime.shift_h")
-    factor = (hours * p("regime.productive_h") / p("regime.shift_h")
-              * p("truck.availability") * p("haul.K_HAUL") / 1000.0)
-    total = 0.0
-    for decline, names in by_decline.items():
-        if not names:
-            continue
-        minutes = cycle_minutes(model, decline, centroid, len(names))
-        for truck in names:
-            total += model.attrs[truck]["payload_t"] * 60.0 / minutes * factor
-    return total
-
-
 def fleet_kw(model, knobs):
     return sum(model.attrs[name]["engine_kw"]
                for name in active_trucks(knobs) + active_lhds(knobs))
 
 
-def air_supply(model, knobs):
-    p = model.p
-    supply = p("vent.supply_base")
-    if stage(knobs, "fan_vs2_off"):
-        supply -= p("vent.fan_vs2.duty_m3s")
-    if stage(knobs, "m_vent") >= 1:
-        supply += p("vent.measure_V1.delta_m3s")
-    if stage(knobs, "m_vent") >= 2:
-        supply += p("vent.measure_V2.delta_m3s")
-    return float(supply)
-
-
 def line_rated_tph(model, knobs, number):
     """Rated feed of plant line `number` for the current plant stage, 0 if not built."""
-    p = model.p
-    per_hour = 1000.0 / (365 * 24 * p("plant.availability"))  # t/h per kt/yr
-    m_plant = stage(knobs, "m_plant")
-    if number <= 3:
-        ktpa = (p("plant.stages_ktpa")[0] if m_plant >= 1 else p("plant.nameplate_ktpa")) / 3.0
-    elif number <= 5:
-        ktpa = p("plant.line45_ktpa") if m_plant >= 2 else 0.0
-    else:
-        ktpa = p("plant.line6_ktpa") if m_plant >= 3 else 0.0
-    return ktpa * per_hour
-
-
-def plant_capacity(model, knobs):
-    per_hour = 1000.0 / (365 * 24 * model.p("plant.availability"))
-    down = stage(knobs, "line_down")
-    return sum(line_rated_tph(model, knobs, n) for n in range(1, 7) if n != down) / per_hour
+    return capacity.plant(model.cap, stage(knobs, "m_plant")).lines[number - 1].rated_tph
 
 
 def tailings_free_kt(model, knobs):
@@ -249,51 +205,37 @@ def gold_koz(model, ktpa, grade):
     return ktpa * 1000.0 * grade * recovery_pct(model, grade) / 100.0 / model.p("gold.g_per_oz") / 1000.0
 
 
+def capacity_state(model, knobs, centroid=None, free_kt=None):
+    """State of sekis.capacity for a knob set. `free_kt` (the storage still free,
+    for the projection) is passed as the tailings placed since the epoch."""
+    placed_t = 0.0
+    if free_kt is not None:
+        placed_t = max(0.0, tailings_free_kt(model, knobs) - free_kt) * 1000.0
+    return capacity.State.from_knobs(knobs, centroid_m=centroid, tailings_placed_t=placed_t,
+                                     flooded_levels=tuple(flooded_levels(knobs)))
+
+
 def capacities(model, knobs, centroid=None, free_kt=None):
-    """The eight link capacities, kt/yr, and the quantities they are built from."""
-    p = model.p
-    if centroid is None:
-        centroid = p("stope.centroid_baseline_m")
-    haul = haul_capacity(model, knobs, centroid)
-    supply = air_supply(model, knobs)
-    kw = fleet_kw(model, knobs)
-    allowed_kw = max(0.0, (supply - p("vent.q_base")) / p("vent.q_diesel"))
-    per_stope = p("stope.capacity_design_ktpa") / p("stope.producing_base")
-    producing = producing_stopes(knobs)
+    """The eight link capacities, kt/yr, and the quantities they are built from:
+    sekis.capacity.evaluate in the shape this module works with."""
+    res = capacity.evaluate(model.cap, capacity_state(model, knobs, centroid, free_kt))
     flooded = flooded_levels(knobs)
-    dry = [s for s in producing if "lvl-" + s.split("-")[1] not in flooded]
-    advance = p("dev.advance_boosted") if stage(knobs, "m_dev") else p("dev.advance_vm_per_year")
-    inflow = p("water.inflow_m3h") * knobs["inflow_factor"]
-    working = min(p("water.ps_p150.pumps_working"),
-                  p("water.ps_p150.pumps") - stage(knobs, "pumps_failed_p150"))
-    pump_capacity = max(0, working) * p("water.ps_p150.pump_m3h")
-    margin = pump_capacity / (inflow * 24.0 / 20.0)
-    m_water = stage(knobs, "m_water")
-    reclaim = p("water.measure_W1.reclaim_m3_per_t") if m_water >= 1 else 0.0
-    extra = p("water.measure_W2.extra_intake_m3h") if m_water >= 2 else 0.0
-    water = ((p("water.mine_water_kth_m3yr") + 8.76 * extra)
-             / (p("water.site_m3_per_t") + p("water.plant_m3_per_t") - reclaim))
-    if free_kt is None:
-        free_kt = tailings_free_kt(model, knobs)
-    caps = {
-        "haulage": haul,
-        "ventilation": allowed_kw * haul / kw if kw else 0.0,
-        "stopes": len(producing) * per_stope,
-        "development": advance * p("dev.t_per_vm") / 1000.0,
-        "dewatering": len(dry) * per_stope if flooded else 0.0,
-        "plant": plant_capacity(model, knobs),
-        "water": water,
-        "tailings": free_kt / p("tsf.min_years"),
-    }
-    caps = {link: float(round(value)) for link, value in caps.items()}
-    limiting = [link for link in LINKS if link != "dewatering" or flooded]
-    binding = min(limiting, key=lambda link: (caps[link], LINKS.index(link)))
+    # A link that does not limit (dewatering without a flooded level) is shown as 0.
+    caps = {link: float(res.capacity_rounded[link] or 0) for link in LINKS}
+    binding = res.binding_link
+    air = res.air
     return {
         "caps": caps, "binding": binding, "achievable": caps[binding],
-        "dewatering_limiting": bool(flooded), "dewatering_margin": round(margin, 2),
-        "air_supply": supply, "air_demand": round(p("vent.q_base") + p("vent.q_diesel") * kw, 1),
-        "fleet_kw": kw, "allowed_kw": allowed_kw, "inflow_m3h": inflow,
-        "free_kt": free_kt, "flooded": flooded,
+        "dewatering_limiting": bool(flooded), "dewatering_margin": round(res.dewatering.margin, 2),
+        "air_supply": float(air.supply_m3s), "air_demand": round(air.demand_m3s, 1),
+        "air_used": round(air.used_m3s, 1), "air_spare": round(air.spare_m3s, 1),
+        # Units the hold rule of spec 2.6 keeps waiting for air, in holding order.
+        "held_trucks": list(air.held_trucks), "held_lhds": list(air.held_lhds),
+        "kw_working": air.working_kw, "air": air,
+        "vent_detail": wording.link_detail(model.cap, {}, "ventilation", res),
+        "inflow_m3h": res.dewatering.inflow_m3h,
+        "free_kt": tailings_free_kt(model, knobs) if free_kt is None else free_kt,
+        "flooded": flooded,
     }
 
 
@@ -382,9 +324,11 @@ def plan(model, knobs, target):
             change, text = {knob: float(nxt)}, STAGE_RU[knob][nxt]
         before = cap["caps"][link]
         knobs.update(change)
-        after = capacities(model, knobs)["caps"][link]
+        after = capacities(model, knobs)
+        # Which units the measure returns to work, or leaves waiting for air.
+        text += wording.held_note(link, cap["air"], after["air"])
         steps.append({"link": link, "link_name": LINK_RU[link], "set": change, "text": text,
-                      "cap_before_ktpa": before, "cap_after_ktpa": after})
+                      "cap_before_ktpa": before, "cap_after_ktpa": after["caps"][link]})
     return steps, knobs, capacities(model, knobs)
 
 
@@ -459,6 +403,8 @@ def links_table(model, knobs, cap):
         if knob:
             row.update(stage=stage(knobs, knob), stage_max=KNOB_MAX[knob],
                        detail=STAGE_RU[knob][stage(knobs, knob)])
+            if link == "ventilation":   # supply, demand and the units that wait for air
+                row["detail"] = cap["vent_detail"]
         else:
             row["detail"] = f"запас насосов ×{ru_num(cap['dewatering_margin'], 2)}"
         rows.append(row)
@@ -547,6 +493,10 @@ def effects(model, before_knobs, after_knobs, label, revision):
     lower_is_better = {"air_demand_m3s", "water_deficit_m3h", "discharge_m3h"}
     for key, name, unit, digits in EFFECT_KPIS:
         add(key, name, unit, digits, kb[key], ka[key], better_up=key not in lower_is_better)
+        if key == "air_demand_m3s":     # then the units that wait for air, as the advisor words it
+            held = wording.held_item(before, after)
+            if held:
+                items.append(dict(held, text=held["text"].rstrip(".")))   # no full stop in this list
     if kb["dewatering_margin"] != ka["dewatering_margin"]:
         add("dewatering_margin", "Запас производительности насосов", "крат", 2,
             kb["dewatering_margin"], ka["dewatering_margin"])
@@ -794,29 +744,10 @@ def sawtooth(sim_h, inflow, pump, low, high, volume):
     return high - (high - low) * (t - fill_h) / drain_h, True, 0.0
 
 
-def held_by_ventilation(model, knobs, cap):
-    """Units held by the ventilation rule of spec 2.6, in holding order."""
-    p = model.p
-    trucks, lhds = active_trucks(knobs), active_lhds(knobs)
-    kw = cap["fleet_kw"]
-    budget = cap["allowed_kw"]
-    held = []
-    step = 0
-    while kw > budget:
-        take_lhd = step % 3 == 2
-        pool = lhds if take_lhd else trucks
-        floor = p("vent.min_active_lhd") if take_lhd else p("vent.min_active_trucks")
-        if len(pool) <= floor:
-            other = trucks if take_lhd else lhds
-            other_floor = p("vent.min_active_trucks") if take_lhd else p("vent.min_active_lhd")
-            if len(other) <= other_floor:
-                break
-            pool = other
-        unit = pool.pop()
-        held.append(unit)
-        kw -= model.attrs[unit]["engine_kw"]
-        step += 1
-    return held, kw
+def held_by_ventilation(cap):
+    """Units held by the ventilation rule of spec 2.6 (sekis.capacity.hold_units)
+    and the engine power of the units left working."""
+    return cap["held_trucks"] + cap["held_lhds"], cap["kw_working"]
 
 
 def build_state(model, base, knobs, revision=0, label="Базовый режим", sim_s=FIXTURE_START_S,
@@ -843,7 +774,7 @@ def build_state(model, base, knobs, revision=0, label="Базовый режим
     working = shift != "blast"
     flooded = cap["flooded"]
     grade_factor = knobs["grade_gpt"] / p("plant.grade_base")
-    held, kw_running = held_by_ventilation(model, knobs, cap)
+    held, kw_running = held_by_ventilation(cap)
 
     # ---- stopes
     producing = producing_stopes(knobs)
@@ -1235,7 +1166,7 @@ def build_state(model, base, knobs, revision=0, label="Базовый режим
         trucks_active=float(len([t for t in running if t not in held])),
         diesel_kw_active=float(kw_running),
         air_supply_m3s=supply, air_demand_m3s=round(demand, 1),
-        air_margin_pct=round(100.0 * (supply - demand) / demand, 1),
+        air_margin_pct=round(100.0 * (supply - demand) / supply, 1),
         units_held_vent=float(len(held)), inflow_m3h=round(inflow, 1), pumped_m3h=pumped_now,
         flood_volume_m3=flood_volume)
     f("enterprise").update(

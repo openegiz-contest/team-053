@@ -2,7 +2,8 @@
 productive blocks inside a shift, and rolling means for the displayed rates.
 
 Simulated time is counted in seconds from the epoch. A day starts with shift A at the hour
-``regime.shift_a_start_h``; an epoch at another time of day is supported.
+``regime.shift_a_start_h``; the epoch may lie at any time of the day. The epoch of ``sim.epoch``
+lies inside the first productive block of shift A, so that a run opens on a working mine.
 """
 
 from __future__ import annotations
@@ -91,6 +92,19 @@ class Calendar:
     def index(self, tick: int) -> int:
         """Step of the day for a simulation tick."""
         return (tick + self.offset_steps) % self.steps_per_day
+
+    def worked_s(self, i: int) -> Tuple[int, int]:
+        """Productive seconds already worked at step ``i`` of the day: (in the productive block
+        that is running, in the shift that is running). Both are 0 outside a shift; the first is
+        0 outside a productive block."""
+        second = i * self.step_s
+        for _, shift_start, shift_end in self.shifts:
+            if shift_start <= second < shift_end:
+                blocks = [(start, end) for start, end in self.blocks if shift_start <= start < shift_end]
+                in_block = sum(second - start for start, end in blocks if start <= second < end)
+                in_shift = sum(min(second, end) - start for start, end in blocks if start < second)
+                return in_block, in_shift
+        return 0, 0
 
     def iso(self, t_s: float) -> str:
         """ISO 8601 clock for a simulated time."""
