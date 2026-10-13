@@ -16,7 +16,7 @@
 //   inbox     the stope text moves into the stope boxes, which are large enough
 //             at this scale; the right gutter keeps stations, fans and the summary
 
-import { stateLabel } from '../panels/dict.js';
+import { STOPE_ORDER, stateLabel } from '../panels/dict.js';
 
 const BASE_FONT = 9.5;          // px, the smallest text size on the sheet
 const MAX_FONT_SCALE = 1.5;
@@ -26,8 +26,7 @@ const WEST_MIN = 0.5;           // the surface west of the mine may be drawn clo
 const VARIANTS = ['two', 'oneState', 'three', 'inbox', 'one'];       // in the order of preference
 const LINES = { one: 1, oneState: 1, two: 2, three: 3, inbox: 3 };
 const TOLERANCE = 0.9;          // a preferred variant may cost this share of the drawing scale
-const STOPE_STATES = ['planned', 'preparation', 'drilling', 'charging', 'awaiting_blast',
-  'ventilating', 'mucking', 'backfilling', 'standby', 'flooded'];
+const STOPE_STATES = STOPE_ORDER;
 
 function widths(measure, fontScale, variant) {
   const F = BASE_FONT * fontScale;

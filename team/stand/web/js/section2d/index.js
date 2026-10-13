@@ -8,7 +8,7 @@
 // underground.js, units.js, surface.js and tables.js draw the sheet and register
 // their live updates, viewport.js zooms and pans, card.js is the hover card.
 
-import { NS } from '../panels/dict.js';
+import { NS, STOPE_ORDER, stopeColor } from '../panels/dict.js';
 import { el } from '../panels/format.js';
 import { S, createMeasure, setText } from './svg.js';
 import { readModel } from './model.js';
@@ -52,6 +52,8 @@ export async function mount(container, geometry) {
 
   if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
   const root = el('div', { class: 'sx-root' });
+  // The stope colours come from the one palette in panels/dict.js.
+  for (const state of STOPE_ORDER) root.style.setProperty(`--st-${state}`, stopeColor(state));
   const sheet = S('g', { class: 'sx-sheet' });
   const svg = S('svg', { class: 'sx-svg', 'aria-label': 'Продольный разрез рудника' },
     S('defs', {},
@@ -59,7 +61,7 @@ export async function mount(container, geometry) {
         S('rect', { width: 5, height: 5, fill: '#0f151c' }),
         S('line', { x1: 0, y1: 0, x2: 0, y2: 5, stroke: '#2a3644', 'stroke-width': 1.6 })),
       S('pattern', { id: `${uid}-blast`, width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(-45)' },
-        S('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: '#f2dc5c', 'stroke-opacity': 0.6, 'stroke-width': 2.4 }))),
+        S('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: stopeColor('awaiting_blast'), 'stroke-opacity': 0.6, 'stroke-width': 2.4 }))),
     sheet);
   const tools = el('div', { class: 'sx-tools' },
     el('button', { type: 'button', title: 'Отдалить', 'aria-label': 'Отдалить', text: '−', onclick: () => viewport.zoomBy(1 / 1.5) }),

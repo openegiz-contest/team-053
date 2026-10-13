@@ -110,6 +110,19 @@ class SectionFilesTest(unittest.TestCase):
         self.assertNotIn("var(--accent", css)
         self.assertIn("prefers-reduced-motion", css)
 
+    def test_stope_palette_is_one_map_in_dict(self):
+        dict_js = read(os.path.join(WEB_DIR, "js", "panels", "dict.js"))
+        block = re.search(r"STOPE_COLORS = \{(.*?)\};", dict_js, re.S).group(1)
+        palette = dict(re.findall(r"(\w+): '(#[0-9a-f]{6})'", block))
+        self.assertEqual(len(palette), 10)
+        tokens = dict(re.findall(r"--(\w+): (#[0-9a-f]{6});", read(os.path.join(WEB_DIR, "css", "tokens.css"))))
+        for state, token in (("awaiting_blast", "warn"), ("standby", "idle"),
+                             ("planned", "planned"), ("flooded", "flood")):
+            self.assertEqual(palette[state], tokens[token], state)
+        # The accent belongs to the binding link, and the section holds no stope colour of its own.
+        self.assertNotIn(tokens["accent"], palette.values())
+        self.assertNotRegex(read(os.path.join(SECTION_DIR, "section.css")), r"--st-\w+:")
+
 
 class SectionGeometryTest(unittest.TestCase):
     """What the drawing reads from geometry.json."""

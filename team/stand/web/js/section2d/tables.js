@@ -3,7 +3,7 @@
 // pump station and underground fans on the right), the mine summary line, the
 // legend and the scale bar. Every label is a real <text> with a live value.
 
-import { stateLabel, stateTone } from '../panels/dict.js';
+import { STOPE_ORDER, VEHICLE_MARKS, stateLabel, stateTone } from '../panels/dict.js';
 import { fmt, isNum, withUnit } from '../panels/format.js';
 import { S, line, set, setText, text } from './svg.js';
 import { levelAir, levelLabel, shortName } from './model.js';
@@ -18,8 +18,6 @@ function stopeName(x, y, stope, cls) {
   return S('text', { x, y, class: cls }, S('tspan', { class: 'sx-pre' }, 'Блок '), stope.short);
 }
 
-const STOPE_LEGEND = ['drilling', 'charging', 'awaiting_blast', 'ventilating', 'mucking',
-  'backfilling', 'standby', 'preparation', 'flooded', 'planned'];
 
 export function buildTables(ctx) {
   const { L, M, layers, measure } = ctx;
@@ -359,14 +357,15 @@ export function buildTables(ctx) {
   const way = (cls, state, double) => S('g', { class: `sx-decline ${double ? 'double' : 'single'} ${cls || ''}`, 'data-state': state },
     S('path', { class: 'way', d: `M${-half} 0H${half}` }), double ? S('path', { class: 'core', d: `M${-half} 0H${half}` }) : null);
 
-  group('Блоки', STOPE_LEGEND.map((token) => [
+  group('Блоки', STOPE_ORDER.map((token) => [
     S('g', { class: 'sx-chip', 'data-state': token },
       S('rect', { class: 'swatch', x: -F * 0.37, y: -F * 0.37, width: F * 0.74, height: F * 0.74 })),
     stateLabel(token, 'stope')]));
   group('Техника', [
     [truck('loaded'), 'самосвал с рудой'],
     [truck('empty'), 'порожний'],
-    [truck('empty', 'warn'), 'ждёт или простаивает'],
+    [truck('empty', 'warn'), VEHICLE_MARKS.held],
+    [truck('empty', 'fail'), VEHICLE_MARKS.repair],
     [S('g', { class: 'sx-unit lhd', 'data-state': 'legend' }, S('circle', { class: 'mark', r: F * 0.3 })), 'ПДМ'],
     [S('g', { class: 'sx-unit drill_rig', 'data-state': 'legend' },
       S('path', { class: 'mark', d: `M${-tri} ${tri * 0.8}L0 ${-tri}L${tri} ${tri * 0.8}Z` })), 'буровая'],

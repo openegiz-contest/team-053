@@ -64,7 +64,7 @@ const STATES = {
   empty: ['руды нет', 'fail'],
   starved: ['нет руды', 'warn'],
   water_limited: ['ограничение по воде', 'warn'],
-  off: ['остановлена', 'fail'],
+  off: ['остановлена', 'idle'],
   // tailings
   ok: ['запас достаточен', 'ok'],
   short_horizon: ['запас менее трёх лет', 'warn'],
@@ -80,7 +80,7 @@ const STATES = {
 const STATES_BY_KIND = {
   pump_station: { idle: ['насосы ждут уровня', 'ok'] },
   lhd: { idle: ['ожидание', 'idle'], mucking: ['отгрузка руды', 'ok'] },
-  plant_line: { maintenance: ['плановый ремонт', 'warn'] },
+  plant_line: { maintenance: ['плановый ремонт', 'warn'], off: ['остановлена', 'idle'] },
   level: { production: ['добычной', 'ok'], development: ['проходка', 'info'] },
   tailings_dam: { standby: ['в резерве', 'idle'] },
   haul_truck: { maintenance: ['ремонт', 'fail'] },
@@ -102,6 +102,35 @@ export function stateTone(token, kind) {
   const entry = stateEntry(token, kind);
   return entry ? entry[1] : 'idle';
 }
+
+// The one palette of the stope production states, shared by the 3D scene and
+// the long section (both legends list them in STOPE_ORDER). Hex strings; the
+// colours of awaiting_blast, standby, planned and flooded equal the page tokens
+// --warn, --idle, --planned and --flood (css/tokens.css). Orange --accent is
+// reserved for the binding link and is not part of the palette.
+export const STOPE_COLORS = {
+  drilling: '#7ea2cf',
+  charging: '#a493dc',
+  awaiting_blast: '#f2dc5c',
+  ventilating: '#c9d2dc',
+  mucking: '#d9a53a',
+  backfilling: '#a87650',
+  standby: '#5d6c80',
+  preparation: '#8698b0',
+  flooded: '#58a6e6',
+  planned: '#8796ab',
+};
+export const STOPE_ORDER = Object.keys(STOPE_COLORS);
+
+/** Hex colour of a stope state; an unknown token gets the colour of standby. */
+export function stopeColor(state) {
+  return Object.prototype.hasOwnProperty.call(STOPE_COLORS, state)
+    ? STOPE_COLORS[state] : STOPE_COLORS.standby;
+}
+
+// Wording of the ring around a vehicle (waiting or held: warn tone; maintenance:
+// fail tone), the same in the legends of both views.
+export const VEHICLE_MARKS = { held: 'ждёт или простаивает', repair: 'ремонт' };
 
 export const KIND_RU = {
   enterprise: 'Предприятие', mine: 'Подземный рудник', level: 'Горизонт', stope: 'Очистной блок',

@@ -3,6 +3,7 @@
 // panels; the values below are the fallback when a token is missing.
 
 import * as THREE from 'three';
+import { STOPE_COLORS, stopeColor } from '../panels/dict.js';
 
 const TOKEN_FALLBACK = {
   ok: '#3ec79a', warn: '#f2dc5c', fail: '#dc4046', planned: '#8796ab', idle: '#5d6c80',
@@ -10,7 +11,9 @@ const TOKEN_FALLBACK = {
   line: '#273341', 'line-strong': '#3a4959',
 };
 
-// Scene-only colours: rock, ground and materials that are not states.
+// Scene-only colours: rock, ground and materials that are not states. The stope
+// states are not here: they come from panels/dict.js (stopeColor), the one
+// palette of the scene and the long section.
 const SCENE = {
   background: '#0a0e13',
   ground: '#66757a',
@@ -43,23 +46,6 @@ const SCENE = {
   plateQuiet: '#33404e',
 };
 
-// Stope states (spec 4.3): drilling grey-blue, awaiting_blast orange,
-// ventilating haze, mucking gold, backfilling brown, standby dim, flooded blue.
-const STOPE = {
-  drilling: '#6190c2',
-  charging: '#9a86c7',
-  awaiting_blast: '#ef6f4a',
-  ventilating: '#c3ccd6',
-  mucking: '#e3b341',
-  backfilling: '#8a6a4a',
-  standby: '#3b4551',
-  preparation: '#5a7186',
-  flooded: '#58a6e6',
-  planned: '#8796ab',
-};
-export const STOPE_ORDER = ['drilling', 'charging', 'awaiting_blast', 'ventilating', 'mucking',
-  'backfilling', 'standby', 'flooded'];
-
 export const GRADE_MIN = 1.4;   // g/t, dark end of the grade ramp
 export const GRADE_MAX = 2.7;   // g/t, bright end
 const GRADE_LOW = '#4a3b22';
@@ -82,12 +68,12 @@ export function createPalette() {
   return {
     css,
     cssScene: SCENE,
-    cssStope: STOPE,
+    cssStope: STOPE_COLORS,
     cssGrade: [GRADE_LOW, GRADE_HIGH],
     /** Colour of a state tone: ok | warn | fail | planned | idle | flood | info. */
     tone: (tone) => color(css[tone] || css.idle),
     scene: (name) => color(SCENE[name]),
-    stope: (state) => color(STOPE[state] || STOPE.standby),
+    stope: (state) => color(stopeColor(state)),
     /** Sequential ramp for the gold grade of a stope. */
     grade(value, out) {
       const t = Math.max(0, Math.min(1, (value - GRADE_MIN) / (GRADE_MAX - GRADE_MIN)));

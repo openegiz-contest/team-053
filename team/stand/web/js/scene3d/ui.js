@@ -2,9 +2,9 @@
 // colours are the page tokens), the camera preset bar, the legend line, the
 // debug overlay and the message shown when the graphics context is lost.
 
-import { stateLabel } from '../panels/dict.js';
+import { STOPE_ORDER, VEHICLE_MARKS, stateLabel, stopeColor } from '../panels/dict.js';
 import { el, fmt, setText } from '../panels/format.js';
-import { GRADE_MAX, GRADE_MIN, STOPE_ORDER } from './palette.js';
+import { GRADE_MAX, GRADE_MIN } from './palette.js';
 
 const CSS = `
 .s3d-root { position: absolute; inset: 0; overflow: hidden; background: #0a0e13; touch-action: none;
@@ -101,7 +101,8 @@ export function createOverlay(root, palette, { onPreset, onGrade, onZoom }) {
     el('i', { class: cls || null, style: cls ? `border-color: ${color}` : `background: ${color}` }), text);
   const stateLegend = el('span', { style: 'display: contents' },
     el('span', { text: 'Блоки:' }),
-    STOPE_ORDER.map((state) => swatch(palette.cssStope[state], stateLabel(state, 'stope'))));
+    STOPE_ORDER.map((state) => swatch(stopeColor(state), stateLabel(state, 'stope'),
+      state === 'planned' ? 's3d-dash' : null)));
   const gradeLegend = el('span', { style: 'display: contents', hidden: true },
     el('span', { text: 'Блоки, содержание золота:' }),
     el('span', null, fmt(GRADE_MIN, 1) + ' ',
@@ -112,8 +113,8 @@ export function createOverlay(root, palette, { onPreset, onGrade, onZoom }) {
     el('span', { text: 'Самосвалы:' }),
     swatch(palette.cssScene.truckLoaded, 'с рудой'),
     swatch(palette.cssScene.truckEmpty, 'порожний'),
-    swatch(palette.css.warn, 'простой', 's3d-ring'),
-    swatch(palette.css.fail, 'ремонт', 's3d-ring'),
+    swatch(palette.css.warn, VEHICLE_MARKS.held, 's3d-ring'),
+    swatch(palette.css.fail, VEHICLE_MARKS.repair, 's3d-ring'),
     swatch(palette.css.planned, 'проект', 's3d-dash'));
   // Shown only while the condition holds, so that the tint explains itself.
   const airAlert = el('span', { hidden: true }, el('i', { style: `background: ${palette.css.warn}` }),
