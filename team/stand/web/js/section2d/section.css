@@ -1,0 +1,250 @@
+/* Long section of the mine (SVG). Colours come from the page tokens; a state
+   colour is used only where the state matters. Sizes follow --u, the font scale
+   of the sheet (1 at the smallest text size). */
+
+.sx-root {
+  position: absolute; inset: 0; overflow: hidden;
+  background: var(--sx-bg);
+  font-family: var(--font, system-ui, "Segoe UI", Arial, sans-serif);
+  -webkit-user-select: none; user-select: none;
+
+  --sx-bg: #0a0e13;
+  --sx-drive: #66788c;
+  --sx-air: #d3dbe4;
+  --sx-air-line: #4f6578;
+  --u: 1;
+
+  /* stope cycle */
+  --st-drilling: #7ea2cf;
+  --st-charging: #a493dc;
+  --st-awaiting_blast: var(--warn, #f2dc5c);
+  --st-ventilating: #c9d2dc;
+  --st-mucking: #d9a53a;
+  --st-backfilling: #a87650;
+  --st-standby: var(--idle, #5d6c80);
+  --st-preparation: #8698b0;
+  --st-planned: var(--planned, #8796ab);
+  --st-flooded: var(--flood, #58a6e6);
+}
+
+.sx-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.sx-svg.dragging { cursor: grabbing; }
+.sx-svg .sx-obj { cursor: pointer; }
+.sx-svg.dragging .sx-obj { cursor: grabbing; }
+
+/* ------------------------------------------------------------------- tones */
+
+.sx-root [data-tone="ok"] { --c: var(--ok); }
+.sx-root [data-tone="warn"] { --c: var(--warn); }
+.sx-root [data-tone="fail"] { --c: var(--fail); }
+.sx-root [data-tone="planned"] { --c: var(--planned); }
+.sx-root [data-tone="idle"] { --c: var(--idle); }
+.sx-root [data-tone="flood"] { --c: var(--flood); }
+.sx-root [data-tone="info"] { --c: var(--info); }
+
+.sx-root [data-state="drilling"] { --sc: var(--st-drilling); }
+.sx-root [data-state="charging"] { --sc: var(--st-charging); }
+.sx-root [data-state="awaiting_blast"] { --sc: var(--st-awaiting_blast); }
+.sx-root [data-state="ventilating"] { --sc: var(--st-ventilating); }
+.sx-root [data-state="mucking"] { --sc: var(--st-mucking); }
+.sx-root [data-state="backfilling"] { --sc: var(--st-backfilling); }
+.sx-root [data-state="standby"] { --sc: var(--st-standby); }
+.sx-root [data-state="preparation"] { --sc: var(--st-preparation); }
+.sx-root [data-state="planned"] { --sc: var(--st-planned); }
+.sx-root [data-state="flooded"] { --sc: var(--st-flooded); }
+
+/* -------------------------------------------------------------------- text */
+
+.sx-svg text { fill: var(--text-2); font-variant-numeric: tabular-nums; white-space: pre; }
+.sx-svg .sx-name { fill: var(--text); font-weight: 600; }
+.sx-svg .sx-pre { display: none; }
+.sx-svg .sx-value { fill: var(--text-2); }
+.sx-svg .sx-sub { fill: var(--text-3); }
+.sx-svg .sx-key { fill: var(--text-2); font-size: 0.95em; }
+.sx-svg .sx-note { fill: var(--text-3); font-size: 0.92em; }
+.sx-svg .sx-head { fill: var(--text-3); font-size: 0.9em; letter-spacing: 0.04em; }
+.sx-svg .sx-tag { fill: var(--text); font-size: 0.92em; font-weight: 600; }
+.sx-svg .sx-tag.small { font-size: 0.84em; font-weight: 500; fill: var(--text-2); }
+.sx-svg .sx-tag, .sx-svg .halo, .sx-svg .sx-unit-no {
+  paint-order: stroke; stroke: var(--sx-bg); stroke-width: calc(var(--u) * 2.6px); stroke-linejoin: round;
+}
+.sx-svg .sx-unit-no { fill: var(--text); font-size: 0.8em; font-weight: 600; }
+.sx-svg .sx-inbox text { stroke-width: calc(var(--u) * 2.2px); stroke-opacity: 0.85; }
+.sx-svg .sx-inbox .sx-value { fill: var(--text); }
+.sx-svg .sx-inbox .sx-sub { fill: var(--text-2); }
+.sx-ruler line { stroke: var(--line-strong); stroke-width: 1; }
+.sx-ruler text { fill: var(--text-3); font-size: 0.92em; }
+.sx-scale path { fill: none; stroke: var(--text-3); stroke-width: 1; }
+.sx-scale text { fill: var(--text-3); font-size: 0.92em; }
+.sx-leader { fill: none; stroke: var(--line-strong); stroke-width: 1; }
+.sx-label .dot { fill: var(--c, var(--idle)); }
+.sx-label.sx-row[data-tone="idle"] .dot { fill: var(--line-strong); }
+
+/* ------------------------------------------------------------ ground, rows */
+
+.sx-ground { stroke: #77889b; stroke-width: calc(var(--u) * 1.5px); }
+.sx-guide { stroke: var(--line); stroke-width: 1; }
+.sx-pit { fill: rgba(255, 255, 255, 0.022); stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 5 3; }
+.sx-road { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 1 3; }
+.sx-break { fill: none; stroke: #77889b; stroke-width: 1.3; }
+.sx-break-gap { fill: var(--sx-bg); }
+.sx-hit { fill: none; stroke: transparent; stroke-width: 11px; pointer-events: stroke; }
+.sx-hit-fill { fill: transparent; stroke: none; pointer-events: all; }
+
+/* ------------------------------------------------------------------ levels */
+
+.sx-drive { stroke: var(--sx-drive); stroke-width: calc(var(--u) * 1.7px); transition: stroke 0.6s; }
+.sx-level[data-state="planned"] .sx-drive { stroke: var(--planned); stroke-width: 1px; stroke-dasharray: 5 4; opacity: 0.6; }
+.sx-level[data-air="short"] .sx-drive { stroke: var(--warn); }
+.sx-level[data-state="flooded"] .sx-drive { stroke: var(--flood); }
+.sx-band { fill: var(--warn); opacity: 0; transition: opacity 0.8s; pointer-events: none; }
+.sx-band[data-air="short"] { opacity: 0.13; }
+.sx-water { pointer-events: none; }
+.sx-water .body { fill: var(--flood); opacity: 0.36; transition: transform 3s ease-out; }
+.sx-water .top { stroke: var(--flood); stroke-width: 1.6px; transition: transform 3s ease-out; }
+.sx-water[data-on="0"] .top { display: none; }
+
+/* ------------------------------------------------------------------ stopes */
+
+.sx-backfill { stroke: var(--line-strong); stroke-width: 1; }
+.sx-stope .box { fill: var(--sx-bg); }
+.sx-stope .fill { fill: var(--sc); opacity: 0.6; transition: fill 0.6s; }
+.sx-stope .frame { fill: none; stroke: var(--sc); stroke-width: calc(var(--u) * 1.15px); transition: stroke 0.6s; }
+.sx-stope .hatch { display: none; pointer-events: none; }
+.sx-stope[data-state="awaiting_blast"] .hatch { display: inline; }
+.sx-stope[data-state="standby"] .fill { opacity: 0.3; }
+.sx-stope[data-state="preparation"] .fill { opacity: 0.16; }
+.sx-stope[data-state="preparation"] .frame { stroke-dasharray: 1.5 2.5; }
+.sx-stope[data-state="planned"] .fill { display: none; }
+.sx-stope[data-state="planned"] .box { fill: none; }
+.sx-stope[data-state="planned"] .frame { stroke-dasharray: 4 3; opacity: 0.75; }
+.sx-stope[data-state="flooded"] .fill { opacity: 0.75; }
+.sx-stope .flash { fill: #fff; opacity: 0; pointer-events: none; }
+.sx-stope.blast .flash { animation: sx-flash 1.8s ease-out 1; }
+.sx-chip .swatch { fill: var(--sc); stroke: var(--sc); stroke-width: 1; fill-opacity: 0.6; }
+.sx-chip[data-state="standby"] .swatch { fill-opacity: 0.3; }
+.sx-chip[data-state="preparation"] .swatch { fill-opacity: 0.16; stroke-dasharray: 1.5 2; }
+.sx-chip[data-state="planned"] .swatch { fill: none; stroke-dasharray: 2.5 2; }
+.sx-chip[data-state="flooded"] .swatch { fill-opacity: 0.8; }
+
+/* ----------------------------------------------------------------- airways */
+
+.sx-airway .way { fill: none; stroke: var(--sx-air-line); stroke-width: calc(var(--u) * 1.4px); }
+.sx-airway .way.design { stroke: var(--planned); stroke-width: 1px; stroke-dasharray: 3 3; opacity: 0.7; }
+.sx-airway .flow { fill: none; stroke: var(--sx-air); stroke-opacity: 0.9; stroke-dasharray: 5 6; animation: sx-dash 0.9s linear infinite; }
+.sx-airway .head { fill: var(--sx-air); stroke: var(--sx-bg); stroke-width: 1; }
+
+.sx-fan-symbol .rim { fill: var(--sx-bg); stroke: var(--c, var(--text-3)); stroke-width: calc(var(--u) * 1.3px); }
+.sx-fan-symbol .blades { fill: var(--c, var(--text-3)); transform-box: fill-box; transform-origin: center; }
+.sx-fan[data-state="running"] .blades { animation: sx-spin 1.8s linear infinite; }
+.sx-fan-symbol .cross { display: none; fill: none; stroke: var(--fail); stroke-width: calc(var(--u) * 1.7px); stroke-linecap: round; }
+.sx-fan[data-state="failed"] .cross { display: inline; }
+.sx-fan[data-state="planned"] .rim { stroke-dasharray: 2 2; }
+.sx-fan[data-state="planned"] .blades { opacity: 0.45; }
+
+/* -------------------------------------------------------------- dewatering */
+
+.sx-station { --pipe-w: 1.3px; }
+.sx-station .pipe { fill: none; stroke: var(--flood); stroke-width: var(--pipe-w); opacity: 0.75; stroke-linejoin: round; }
+.sx-station .pipe-flow { fill: none; display: none; stroke: #a9d6ff; stroke-width: var(--pipe-w); stroke-dasharray: 4 7; stroke-linejoin: round; animation: sx-dash 0.9s linear infinite; }
+.sx-station[data-flow="1"] .pipe-flow { display: inline; }
+.sx-station[data-state="failed"] .pipe { stroke: var(--fail); stroke-dasharray: 2 3; opacity: 0.9; }
+.sx-station[data-state="planned"] .pipe { stroke: var(--planned); stroke-dasharray: 3 3; stroke-width: 1px; opacity: 0.7; }
+.sx-station .gauge { fill: var(--sx-bg); stroke: var(--c, var(--text-3)); stroke-width: 1; }
+.sx-station .level { fill: var(--flood); transition: y 1.5s, height 1.5s; }
+.sx-station .pump { fill: var(--sx-bg); stroke: var(--c, var(--text-3)); stroke-width: calc(var(--u) * 1.3px); }
+.sx-station .pump-mark { fill: var(--c, var(--text-3)); }
+.sx-station[data-state="planned"] .pump, .sx-station[data-state="planned"] .gauge { stroke-dasharray: 2 2; }
+
+/* ---------------------------------------------------------------- declines */
+
+.sx-decline { --c: var(--ok); }
+.sx-decline[data-state="closed"] { --c: var(--fail); }
+.sx-decline .way { fill: none; stroke: var(--c); stroke-width: calc(var(--u) * 2px); stroke-linejoin: round; stroke-linecap: round; transition: stroke 0.6s; }
+.sx-decline.double .way { stroke-width: calc(var(--u) * 3.7px); }
+.sx-decline .core { fill: none; stroke: var(--sx-bg); stroke-width: calc(var(--u) * 1.5px); stroke-linejoin: round; }
+.sx-decline .way.design { stroke: var(--planned); stroke-width: 1px; stroke-dasharray: 4 3; opacity: 0.7; }
+.sx-decline.double .way.design { stroke-width: 1px; }
+.sx-decline .nodes .bay { fill: var(--sx-bg); stroke: var(--c); stroke-width: 1.2; }
+.sx-decline .nodes .access { fill: var(--c); }
+.sx-decline .portal { fill: var(--c); stroke: var(--sx-bg); stroke-width: 1; }
+.sx-decline .barrier { display: none; fill: none; stroke: var(--fail); stroke-width: calc(var(--u) * 2.2px); stroke-linecap: round; }
+.sx-decline[data-state="closed"] .barrier { display: inline; }
+
+/* ------------------------------------------------------------------- units */
+
+.sx-unit { transition: transform 2s linear; }
+.sx-unit .mark { fill: var(--sx-bg); stroke: var(--text); stroke-width: calc(var(--u) * 1.15px); stroke-linejoin: round; transform-box: fill-box; transform-origin: center; }
+.sx-unit[data-load="loaded"] .mark { fill: var(--text); }
+.sx-unit.lhd .mark, .sx-unit.drill_rig .mark { stroke: var(--text-2); }
+.sx-unit .ring { fill: none; stroke: none; }
+.sx-unit[data-ring] .ring { stroke: var(--warn); stroke-width: calc(var(--u) * 1.5px); }
+.sx-unit[data-ring="fail"] .ring { stroke: var(--fail); }
+.sx-unit[data-state="parked"] .mark { fill: var(--surface-3); stroke: var(--idle); stroke-width: 0.8px; transform: scale(0.62); }
+.sx-unit[data-state="parked"] .sx-unit-no { display: none; }
+
+/* ----------------------------------------------------------------- surface */
+
+.sx-plant .frame { fill: none; stroke: none; pointer-events: all; }
+.sx-pline .box { fill: var(--sx-bg); stroke: var(--c, var(--text-3)); stroke-width: 1; }
+.sx-pline .fill { fill: var(--c, var(--text-3)); opacity: 0.5; }
+.sx-pline[data-state="planned"] .box { stroke-dasharray: 2.5 2; }
+.sx-pline[data-state="off"] .box { fill: rgba(220, 64, 70, 0.14); }
+.sx-conveyor { stroke: var(--line-strong); stroke-width: 1.2; }
+.sx-rom .heap { fill: var(--bar); stroke: var(--c, var(--text-3)); stroke-width: 1; stroke-linejoin: round; transition: d 1s; }
+.sx-rom[data-tone="ok"] .heap { stroke: var(--text-3); }
+.sx-pond .basin { fill: var(--flood); fill-opacity: 0.55; stroke: var(--flood); stroke-width: 1; }
+.sx-monitor .pin { fill: var(--c, var(--idle)); stroke: var(--sx-bg); stroke-width: 1; }
+.sx-dam .box { fill: var(--sx-bg); stroke: var(--text-3); stroke-width: 1; stroke-linejoin: round; }
+.sx-dam .fill { fill: var(--bar); stroke: none; }
+.sx-dam[data-state="active"] .box { stroke: var(--ok); }
+.sx-dam[data-state="full"] .box { stroke: var(--fail); }
+.sx-dam[data-state="planned"] .box { stroke: var(--planned); stroke-dasharray: 4 3; fill: none; }
+.sx-dam[data-state="planned"] text { fill: var(--text-3); }
+
+/* ----------------------------------------------------- hover and selection */
+
+.sx-obj.hl { filter: brightness(1.45); }
+.sx-label.hl .sx-name { text-decoration: underline; }
+.sx-obj.sel { filter: brightness(1.5) drop-shadow(0 0 2.5px rgba(255, 255, 255, 0.75)); }
+.sx-label.sel .sx-name { text-decoration: underline; fill: #fff; }
+.sx-select { fill: none; stroke: #fff; stroke-width: 1.4px; stroke-dasharray: 3 2.5; pointer-events: none; transition: transform 2s linear; }
+.sx-pulse { fill: none; stroke: #fff; stroke-width: 1.6px; pointer-events: none; transform-box: fill-box; transform-origin: center; animation: sx-pulse 1.7s ease-out 1 forwards; }
+.sx-pulse.locate { animation-duration: 1.2s; }
+
+@keyframes sx-dash { to { stroke-dashoffset: -11; } }
+@keyframes sx-spin { to { transform: rotate(360deg); } }
+@keyframes sx-flash { 0% { opacity: 0.95; } 100% { opacity: 0; } }
+@keyframes sx-pulse { 0% { transform: scale(0.6); opacity: 1; } 100% { transform: scale(4.2); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sx-airway .flow, .sx-station .pipe-flow, .sx-fan .blades { animation: none; }
+  .sx-unit, .sx-select { transition: none; }
+}
+
+/* ------------------------------------------------------------ tools, card */
+
+.sx-tools { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 4px; z-index: 2; }
+.sx-tools button {
+  min-width: 24px; height: 22px; padding: 0 7px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text-2);
+  font: 11.5px/1 var(--font, system-ui, sans-serif);
+}
+.sx-tools button:hover { color: var(--text); background: var(--surface-3); }
+
+.sx-card {
+  position: absolute; z-index: 3; left: 0; top: 0; width: max-content; min-width: 190px; max-width: 300px;
+  padding: 8px 10px 7px; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  font: 12px/1.35 var(--font, system-ui, sans-serif); color: var(--text-2);
+}
+.sx-card[hidden] { display: none; }
+.sx-card-kind { font-size: 11px; color: var(--text-3); }
+.sx-card-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.sx-card-state { display: flex; align-items: center; gap: 6px; margin: 2px 0 5px; color: var(--text); }
+.sx-card-state i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--idle)); }
+.sx-card dl { margin: 0; display: grid; grid-template-columns: auto auto; gap: 1px 12px; }
+.sx-card dt { color: var(--text-3); }
+.sx-card dd { margin: 0; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sx-card-hint { margin-top: 5px; padding-top: 4px; border-top: 1px solid var(--line); font-size: 11px; color: var(--text-3); }
