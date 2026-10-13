@@ -10,6 +10,14 @@ COMPOSE_BASE := docker compose -f deploy/compose/docker-compose.yml
 MINE_MARKER  := deploy/compose/.example-mine
 MINE_COMPOSE := examples/mine/compose.yml
 COMPOSE := $(COMPOSE_BASE)$(if $(wildcard $(MINE_MARKER)), -f $(MINE_COMPOSE))
+# The Sekisovskoye stand: the same idea. Once `make stand` or `make stand-twins`
+# has run, up/down/ps/logs also load team/compose.yml; `make clean` forgets it.
+# COMPOSE_PLATFORM is the command without the stand, for starting the platform.
+STAND_MARKER  := deploy/compose/.sekis
+STAND_COMPOSE := team/compose.yml
+COMPOSE_PLATFORM := $(COMPOSE)
+COMPOSE_STAND := $(COMPOSE_PLATFORM) -f $(STAND_COMPOSE)
+COMPOSE := $(COMPOSE)$(if $(wildcard $(STAND_MARKER)), -f $(STAND_COMPOSE))
 
 ## Start the whole platform with Docker Compose (first run: generates credentials)
 up:
@@ -53,6 +61,63 @@ example-mine-stop:
 clean:
 	$(COMPOSE) down -v --remove-orphans
 	rm -f deploy/compose/.env $(MINE_MARKER)
+
+# `clean` has no recipe line for the stand marker, so it gets a prerequisite.
+# COMPOSE was fixed when this file was read, so `down -v` still sees the stand.
+clean: stand-forget
+
+# ---------------------------------------------------------------------------
+# Sekisovskoye stand: overlay team/compose.yml (see team/SPEC.md, section 5)
+# ---------------------------------------------------------------------------
+.PHONY: stand stand-platform stand-twins stand-test stand-smoke stand-soak stand-forget
+
+## Start the platform and the Sekisovskoye stand, wait until it works, print the URLs
+stand:
+	@bash scripts/compose-env.sh
+	@bash scripts/compose-preflight.sh
+	@$(MAKE) --no-print-directory stand-platform || { \
+	  echo "Платформа не запустилась с первой попытки, пробую ещё раз."; \
+	  $(MAKE) --no-print-directory stand-platform; }
+	@touch $(STAND_MARKER)
+	$(COMPOSE_STAND) up -d --build --wait --wait-timeout 600 || { \
+	  echo "ОШИБКА: стенд не запустился. Журнал подготовки двойников:"; \
+	  $(COMPOSE_STAND) logs --no-color sekis-setup; exit 1; }
+	@bash scripts/stand-wait.sh
+	@bash scripts/stand-urls.sh
+
+# The platform alone, as `make up` starts it (without the URL list).
+stand-platform:
+	$(COMPOSE_PLATFORM) up -d --build --wait --wait-timeout 900
+	@test "$$(docker wait $$($(COMPOSE_PLATFORM) ps -a -q init))" = 0 || { \
+	  echo "ERROR: the init job (policy + Ditto connections) failed:"; $(COMPOSE_PLATFORM) logs init; exit 1; }
+	@bash scripts/compose-wait-ready.sh
+
+## Start the platform and create the 96 + 22 twins only (no simulator, advisor or Stand)
+stand-twins:
+	@bash scripts/compose-env.sh
+	@bash scripts/compose-preflight.sh
+	@$(MAKE) --no-print-directory stand-platform || { \
+	  echo "Платформа не запустилась с первой попытки, пробую ещё раз."; \
+	  $(MAKE) --no-print-directory stand-platform; }
+	@touch $(STAND_MARKER)
+	$(COMPOSE_STAND) up --build --no-deps --exit-code-from sekis-setup sekis-setup
+
+## Run the unit tests of team/tests in the stand image
+stand-test:
+	$(COMPOSE_STAND) build sekis-setup
+	$(COMPOSE_STAND) run --rm --no-deps sekis-setup python -m unittest discover -s tests -v
+
+## End-to-end check of the running stand
+stand-smoke:
+	@bash scripts/stand-smoke.sh
+
+## 60-minute soak test of the stand at the 2.5 Mtpa measure set
+stand-soak:
+	@bash scripts/stand-soak.sh
+
+# Forget the stand overlay (called by `clean`).
+stand-forget:
+	@rm -f $(STAND_MARKER)
 
 # ---------------------------------------------------------------------------
 # Helm deployment (servers): the chart at the repository root

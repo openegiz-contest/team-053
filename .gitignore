@@ -28,3 +28,6 @@ build/WebGL Build.loader.js
 build/WebGL Build.framework.js
 build/WebGL Build.data
 build/WebGL Build.wasm
+
+# Set by `make stand` / `make stand-twins`: compose commands then include the Sekisovskoye overlay
+deploy/compose/.sekis

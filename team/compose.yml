@@ -1,0 +1,104 @@
+# Sekisovskoye overlay: an addition to deploy/compose/docker-compose.yml.
+# Started by `make stand` / `make stand-twins` from the repository root.
+# Relative paths are relative to deploy/compose/ (the directory of the first
+# compose file), as in the other overlays.
+
+x-sekis-env: &sekis-env
+  DITTO_URL: http://ditto-nginx:80
+  DITTO_USER: ditto
+  DITTO_PASSWORD: ${DITTO_PASSWORD}
+  MQTT_HOST: mosquitto
+  MQTT_PORT: "1883"
+  INFLUX_URL: http://influxdb:8086
+  INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+  SIM_SPEEDUP: ${SIM_SPEEDUP:-60}
+  SIM_SEED: ${SIM_SEED:-53}
+  PUBLISH_SCALE: ${PUBLISH_SCALE:-1.0}
+  ADVISOR_URL: http://sekis-advisor:8089
+
+services:
+  # One-shot: PUT the policy, 22 types and 96 things, reset the scenario.
+  # The only service with `build:`: Compose builds every such service at once,
+  # and a second one for the same image tag fails with the containerd image
+  # store. The other three reuse the image; `pull_policy: never` stops Compose
+  # from looking for it on Docker Hub.
+  sekis-setup:
+    build: ../../team
+    image: team053/sekis:local
+    restart: "no"
+    command: ["python", "-m", "sekis.setup_twins"]
+    environment:
+      DITTO_URL: http://ditto-nginx:80
+      DITTO_USER: ditto
+      DITTO_PASSWORD: ${DITTO_PASSWORD}
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  # Simulator: reads the scenario from Ditto, publishes to MQTT.
+  sekis-sim:
+    image: team053/sekis:local
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 256m
+    command: ["python", "-m", "sekis.sim_service"]
+    environment: *sekis-env
+    depends_on:
+      sekis-setup:
+        condition: service_completed_successfully
+    # The service touches /tmp/alive in every loop.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/alive')<30 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  # The module: Expansion Advisor. HTTP on 8089 inside the compose network.
+  sekis-advisor:
+    image: team053/sekis:local
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 128m
+    command: ["python", "-m", "sekis.advisor.service"]
+    environment: *sekis-env
+    expose:
+      - "8089"
+    depends_on:
+      sekis-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/alive')<30 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  # Web Stand and its API.
+  sekis-stand:
+    image: team053/sekis:local
+    pull_policy: never
+    restart: unless-stopped
+    mem_limit: 128m
+    command: ["python", "stand/server.py"]
+    environment: *sekis-env
+    ports:
+      - "${OPENEGIZ_BIND:-127.0.0.1}:${STAND_PORT:-8088}:8088"
+    depends_on:
+      sekis-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+  # Anonymous read-only access, so that the dashboards open without a login and
+  # the Stand scene can be embedded in a text panel.
+  grafana:
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_PANELS_DISABLE_SANITIZE_HTML: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/Sekisovskoye/sekis-overview.json
