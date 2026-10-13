@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Секисовское: цифровой двойник рудника</title>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/stand.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/vendor/three/three.module.min.js",
+      "three/addons/controls/OrbitControls.js": "/vendor/three/OrbitControls.js",
+      "three/addons/renderers/CSS2DRenderer.js": "/vendor/three/CSS2DRenderer.js"
+    }
+  }
+  </script>
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div>
+      <h1 id="hdr-name">Предприятие «Секисовское»</h1>
+      <p>Цифровой двойник: рудник, фабрика, вода, хвосты</p>
+    </div>
+  </div>
+
+  <div class="clock" title="Время симуляции: одна секунда равна одной минуте работы рудника">
+    <span class="clock-time num" id="hdr-time">—</span>
+    <span class="clock-meta">
+      <span id="hdr-date">—</span>
+      <span><span class="shift" id="hdr-shift">—</span> · <span id="hdr-day">сутки —</span></span>
+    </span>
+  </div>
+
+  <dl class="pulse">
+    <div><dt>Выдача руды</dt><dd><span id="hdr-hoist">—</span> <small>т/ч</small></dd></div>
+    <div><dt>Питание фабрики</dt><dd><span id="hdr-feed">—</span> <small>т/ч</small></dd></div>
+    <div><dt>Золото</dt><dd><span id="hdr-gold">—</span> <small>унц./сут</small></dd></div>
+    <div><dt>Запас по воздуху</dt><dd><span id="hdr-air">—</span> <small>%</small></dd></div>
+    <div><dt>Рудный склад</dt><dd><span id="hdr-stock">—</span> <small>т</small></dd></div>
+  </dl>
+
+  <a class="binding-chip" href="#advisor" id="hdr-binding" title="Звено, которое сейчас ограничивает производительность">
+    <span>Узкое место</span>
+    <strong><span id="hdr-binding-name">—</span> · <span class="num" id="hdr-binding-cap">—</span></strong>
+  </a>
+
+  <nav class="topnav" aria-label="Разделы">
+    <a href="#scenarios">Сценарии</a>
+    <a href="#advisor-plan">Лестница мер</a>
+    <a href="#twins">Двойники</a>
+    <a href="#calibration">Калибровка</a>
+    <a href="#assumptions">Данные</a>
+  </nav>
+
+  <span class="conn" id="conn" data-status="wait" title="подключение"><span class="conn-text" id="conn-text">подключение</span></span>
+</header>
+
+<main>
+  <div class="console">
+
+    <section class="card viz" id="mine" aria-label="Рудник">
+      <header class="card-head">
+        <h2>Рудник</h2>
+        <div class="seg" role="group" aria-label="Вид">
+          <button type="button" data-mode="both" aria-pressed="true">Сцена и разрез</button>
+          <button type="button" data-mode="scene3d" aria-pressed="false">3D-сцена</button>
+          <button type="button" data-mode="section2d" aria-pressed="false">Продольный разрез</button>
+        </div>
+        <span class="card-meta" id="viz-meta">—</span>
+      </header>
+      <div class="views" id="views" data-mode="both">
+        <!-- Mount containers of the two view modules (view contract, spec 7.1). -->
+        <div class="view" id="view-scene3d" data-view="scene3d" role="group" aria-label="3D-сцена рудника"></div>
+        <div class="view" id="view-section2d" data-view="section2d" role="group" aria-label="Продольный разрез рудника"></div>
+      </div>
+      <footer class="viz-note">
+        <span>Отметки и сечения — по опубликованным данным; расположение в плане — схема</span>
+        <span id="viz-legend">Отметки в метрах над уровнем моря</span>
+      </footer>
+    </section>
+
+    <div class="side">
+
+      <section class="card sc" id="scenarios" aria-labelledby="scenarios-title">
+        <header class="card-head">
+          <h2 id="scenarios-title">Сценарии</h2>
+          <span class="card-meta" id="sc-revision">ревизия —</span>
+        </header>
+        <div class="card-body">
+          <div>
+            <h3 class="group">Цель переработки</h3>
+            <div class="sc-targets">
+              <button type="button" class="btn" data-preset="base" aria-pressed="false">Базовый режим <small>1,0 млн т/год</small></button>
+              <button type="button" class="btn" data-preset="step1200" aria-pressed="false">Цель 1,2 млн т/год <small>ступень +200 тыс. т</small></button>
+              <button type="button" class="btn" data-preset="step2000" aria-pressed="false">Цель 2,0 млн т/год</button>
+              <button type="button" class="btn" data-preset="step2500" aria-pressed="false">Цель 2,5 млн т/год</button>
+            </div>
+          </div>
+
+          <div>
+            <h3 class="group">Решение советника</h3>
+            <div class="sc-advisor">
+              <button type="button" class="btn primary" data-preset="advisor_next">Снять узкое место</button>
+              <button type="button" class="btn" data-preset="advisor_all">Применить все меры</button>
+            </div>
+            <p class="sc-hint" id="sc-next">—</p>
+          </div>
+
+          <div>
+            <h3 class="group">Меры расширения</h3>
+            <div id="sc-measures"></div>
+          </div>
+
+          <div>
+            <h3 class="group">Нарушения</h3>
+            <div class="sc-toggles">
+              <button type="button" class="btn toggle" data-preset="close_tu2" data-knob="tu2_closed" data-on="1"
+                      data-label-off="Закрыть уклон ТУ-2" data-label-on="Открыть уклон ТУ-2" aria-pressed="false">Закрыть уклон ТУ-2</button>
+              <button type="button" class="btn toggle" data-preset="close_tu1" data-knob="tu1_closed" data-on="1"
+                      data-label-off="Закрыть уклон ТУ-1" data-label-on="Открыть уклон ТУ-1" aria-pressed="false">Закрыть уклон ТУ-1</button>
+              <button type="button" class="btn toggle" data-preset="fan_vs2_fail" data-knob="fan_vs2_off" data-on="1"
+                      data-label-off="Отказ вентилятора ВС-2" data-label-on="Восстановить вентилятор ВС-2" aria-pressed="false">Отказ вентилятора ВС-2</button>
+              <button type="button" class="btn toggle" data-preset="pump_one_fail" data-knob="pumps_failed_p150" data-on="1"
+                      data-label-off="Отказ одного насоса +150" data-label-on="Восстановить насос +150" aria-pressed="false">Отказ одного насоса +150</button>
+              <button type="button" class="btn toggle" data-preset="pump_station_fail" data-knob="pumps_failed_p150" data-on="3"
+                      data-label-off="Обесточена насосная +150" data-label-on="Восстановить насосную +150" aria-pressed="false">Обесточена насосная +150</button>
+              <button type="button" class="btn toggle" data-preset="flood" data-knob="inflow_factor" data-on="2.18"
+                      data-label-off="Паводок: приток 430 м³/ч" data-label-on="Отменить паводок" aria-pressed="false">Паводок: приток 430 м³/ч</button>
+              <button type="button" class="btn toggle" data-preset="grade_drop" data-knob="grade_gpt" data-on="1.76"
+                      data-label-off="Содержание 1,76 г/т" data-label-on="Вернуть 2,05 г/т" aria-pressed="false">Содержание 1,76 г/т</button>
+              <button type="button" class="btn toggle" data-preset="line2_down" data-knob="line_down" data-on="2"
+                      data-label-off="Остановить линию № 2" data-label-on="Запустить линию № 2" aria-pressed="false">Остановить линию № 2</button>
+            </div>
+          </div>
+
+          <div class="sc-foot">
+            <button type="button" class="btn" data-preset="undo" id="sc-undo">Шаг назад</button>
+            <button type="button" class="btn" data-preset="reset">Сброс</button>
+          </div>
+          <p class="sc-message" id="sc-message" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <div class="side-b">
+        <section class="card adv" id="advisor" aria-labelledby="advisor-title">
+          <header class="card-head">
+            <h2 id="advisor-title">Советник по расширению</h2>
+            <span class="card-meta" id="adv-meta">—</span>
+          </header>
+          <div class="card-body" id="adv-body"></div>
+        </section>
+
+        <section class="card changes" id="changes" aria-labelledby="changes-title">
+          <header class="card-head">
+            <h2 id="changes-title">Что изменилось</h2>
+            <span class="card-meta" id="chg-meta">—</span>
+          </header>
+          <div class="card-body scroll" id="chg-body"></div>
+        </section>
+      </div>
+
+    </div>
+  </div>
+
+  <section class="card wide" id="advisor-plan" aria-labelledby="plan-title">
+    <header class="card-head">
+      <h2 id="plan-title">Советник по расширению: лестница мер и прогноз на десять лет</h2>
+      <span class="card-meta" id="plan-meta">—</span>
+    </header>
+    <div class="card-body" id="plan-body"></div>
+  </section>
+
+  <section class="card wide" id="twins" aria-labelledby="twins-title">
+    <header class="card-head">
+      <h2 id="twins-title">Двойники</h2>
+      <span class="card-meta" id="twins-meta">—</span>
+    </header>
+    <div class="card-body" id="twins-body"></div>
+  </section>
+
+  <section class="card wide" id="calibration" aria-labelledby="calibration-title">
+    <header class="card-head">
+      <h2 id="calibration-title">Проверка калибровки</h2>
+      <span class="card-meta" id="cal-meta">—</span>
+    </header>
+    <div class="card-body" id="cal-body"></div>
+  </section>
+
+  <section class="card wide" id="assumptions" aria-labelledby="assumptions-title">
+    <header class="card-head">
+      <h2 id="assumptions-title">Данные и допущения</h2>
+      <span class="card-meta" id="prm-meta">—</span>
+    </header>
+    <div class="card-body" id="prm-body"></div>
+  </section>
+
+  <p class="footnote">Модель построена по открытым данным; работа не связана с AltynGold и не использует закрытых сведений предприятия.</p>
+</main>
+
+<aside class="twin-card" id="twin-card" aria-label="Карточка двойника" hidden></aside>
+
+<noscript>Странице нужен JavaScript: данные двойников читаются со стенда каждые две секунды.</noscript>
+</body>
+</html>

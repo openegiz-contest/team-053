@@ -1,0 +1,906 @@
+{
+ "report_revision": 0,
+ "label": "Базовый режим",
+ "sim_time": "2027-01-13T10:24:00",
+ "target_ktpa": 1000.0,
+ "achievable_ktpa": 926.0,
+ "binding_link": "haulage",
+ "binding_link_name": "Откатка",
+ "target_reached": false,
+ "links": [
+  {
+   "id": "haulage",
+   "name": "Откатка",
+   "cap_ktpa": 926.0,
+   "limiting": true,
+   "binding": true,
+   "knob": "m_haul",
+   "stage": 0,
+   "stage_max": 3,
+   "detail": "самосвалы № 1–5"
+  },
+  {
+   "id": "ventilation",
+   "name": "Вентиляция",
+   "cap_ktpa": 958.0,
+   "limiting": true,
+   "binding": false,
+   "knob": "m_vent",
+   "stage": 0,
+   "stage_max": 2,
+   "detail": "подача 322 м³/с"
+  },
+  {
+   "id": "stopes",
+   "name": "Очистные блоки",
+   "cap_ktpa": 1024.0,
+   "limiting": true,
+   "binding": false,
+   "knob": "m_stopes",
+   "stage": 0,
+   "stage_max": 3,
+   "detail": "четыре очистных блока"
+  },
+  {
+   "id": "development",
+   "name": "Проходка",
+   "cap_ktpa": 1750.0,
+   "limiting": true,
+   "binding": false,
+   "knob": "m_dev",
+   "stage": 0,
+   "stage_max": 1,
+   "detail": "проходка 34 м глубины в год"
+  },
+  {
+   "id": "dewatering",
+   "name": "Водоотлив",
+   "cap_ktpa": 0.0,
+   "limiting": false,
+   "binding": false,
+   "knob": null,
+   "detail": "запас насосов ×2,54"
+  },
+  {
+   "id": "plant",
+   "name": "Фабрика",
+   "cap_ktpa": 1000.0,
+   "limiting": true,
+   "binding": false,
+   "knob": "m_plant",
+   "stage": 0,
+   "stage_max": 3,
+   "detail": "три линии, 1 000 тыс. т/год"
+  },
+  {
+   "id": "water",
+   "name": "Водоснабжение",
+   "cap_ktpa": 1000.0,
+   "limiting": true,
+   "binding": false,
+   "knob": "m_water",
+   "stage": 0,
+   "stage_max": 2,
+   "detail": "без оборотной воды"
+  },
+  {
+   "id": "tailings",
+   "name": "Хвостохранилище",
+   "cap_ktpa": 1057.0,
+   "limiting": true,
+   "binding": false,
+   "knob": "m_tailings",
+   "stage": 0,
+   "stage_max": 1,
+   "detail": "действующие дамбы"
+  }
+ ],
+ "next_measure": {
+  "link": "haulage",
+  "link_name": "Откатка",
+  "set": {
+   "m_haul": 1.0
+  },
+  "text": "ввести самосвалы № 6 и № 7",
+  "cap_before_ktpa": 926.0,
+  "cap_after_ktpa": 1388.0
+ },
+ "measures_needed": 1,
+ "sequence": [
+  {
+   "link": "haulage",
+   "link_name": "Откатка",
+   "set": {
+    "m_haul": 1.0
+   },
+   "text": "ввести самосвалы № 6 и № 7",
+   "cap_before_ktpa": 926.0,
+   "cap_after_ktpa": 1388.0
+  }
+ ],
+ "kpi": {
+  "gold_koz_year": 51.9,
+  "gold_gain_koz_year": 0.0,
+  "grade_gpt": 2.05,
+  "recovery_pct": 84.97,
+  "air_demand_m3s": 317.2,
+  "air_supply_m3s": 322.0,
+  "water_deficit_m3h": 0.0,
+  "discharge_m3h": 5.1,
+  "permit_m3h": 218.8,
+  "tailings_years_left": 3.2,
+  "stockpile_days_left": 215.0,
+  "dewatering_margin": 2.54
+ },
+ "sustainable_baseline": {
+  "ktpa": 926.0,
+  "gold_koz_year": 51.9
+ },
+ "ladder": [
+  {
+   "target_ktpa": 1000.0,
+   "steps": [
+    {
+     "link": "haulage",
+     "link_name": "Откатка",
+     "set": {
+      "m_haul": 1.0
+     },
+     "text": "ввести самосвалы № 6 и № 7",
+     "cap_before_ktpa": 926.0,
+     "cap_after_ktpa": 1388.0
+    }
+   ],
+   "achievable_ktpa": 1000.0,
+   "binding_link": "plant",
+   "binding_link_name": "Фабрика",
+   "reached": true,
+   "gold_koz_year": 56.0,
+   "gold_gain_koz_year": 4.1,
+   "grade_gpt": 2.05,
+   "recovery_pct": 84.97,
+   "air_demand_m3s": 369.9,
+   "air_supply_m3s": 322.0,
+   "water_deficit_m3h": 0.0,
+   "discharge_m3h": 0.0,
+   "permit_m3h": 218.8,
+   "tailings_years_left": 3.2,
+   "stockpile_days_left": null,
+   "dewatering_margin": 2.54
+  },
+  {
+   "target_ktpa": 1200.0,
+   "steps": [
+    {
+     "link": "haulage",
+     "link_name": "Откатка",
+     "set": {
+      "m_haul": 1.0
+     },
+     "text": "ввести самосвалы № 6 и № 7",
+     "cap_before_ktpa": 926.0,
+     "cap_after_ktpa": 1388.0
+    },
+    {
+     "link": "plant",
+     "link_name": "Фабрика",
+     "set": {
+      "m_plant": 1.0
+     },
+     "text": "ступень +200 тыс. т/год: линии № 1–3 на 49,63 т/ч",
+     "cap_before_ktpa": 1000.0,
+     "cap_after_ktpa": 1200.0
+    },
+    {
+     "link": "water",
+     "link_name": "Водоснабжение",
+     "set": {
+      "m_water": 1.0
+     },
+     "text": "оборот воды из хвостохранилища, 0,6 м³/т",
+     "cap_before_ktpa": 1000.0,
+     "cap_after_ktpa": 1533.0
+    },
+    {
+     "link": "stopes",
+     "link_name": "Очистные блоки",
+     "set": {
+      "m_stopes": 1.0
+     },
+     "text": "пятый очистной блок, ПДМ № 5, буровая установка № 3",
+     "cap_before_ktpa": 1024.0,
+     "cap_after_ktpa": 1279.0
+    },
+    {
+     "link": "ventilation",
+     "link_name": "Вентиляция",
+     "set": {
+      "m_vent": 1.0
+     },
+     "text": "вентилятор на восстающем ВПВ, +105 м³/с",
+     "cap_before_ktpa": 958.0,
+     "cap_after_ktpa": 1667.0
+    },
+    {
+     "link": "tailings",
+     "link_name": "Хвостохранилище",
+     "set": {
+      "m_tailings": 1.0
+     },
+     "text": "новая карта хвостохранилища, 6,0 млн т",
+     "cap_before_ktpa": 1057.0,
+     "cap_after_ktpa": 3057.0
+    }
+   ],
+   "achievable_ktpa": 1200.0,
+   "binding_link": "plant",
+   "binding_link_name": "Фабрика",
+   "reached": true,
+   "gold_koz_year": 67.2,
+   "gold_gain_koz_year": 15.3,
+   "grade_gpt": 2.05,
+   "recovery_pct": 84.97,
+   "air_demand_m3s": 385.7,
+   "air_supply_m3s": 427.0,
+   "water_deficit_m3h": 0.0,
+   "discharge_m3h": 42.8,
+   "permit_m3h": 218.8,
+   "tailings_years_left": 7.6,
+   "stockpile_days_left": null,
+   "dewatering_margin": 2.54
+  },
+  {
+   "target_ktpa": 2000.0,
+   "steps": [
+    {
+     "link": "haulage",
+     "link_name": "Откатка",
+     "set": {
+      "m_haul": 1.0
+     },
+     "text": "ввести самосвалы № 6 и № 7",
+     "cap_before_ktpa": 926.0,
+     "cap_after_ktpa": 1388.0
+    },
+    {
+     "link": "plant",
+     "link_name": "Фабрика",
+     "set": {
+      "m_plant": 1.0
+     },
+     "text": "ступень +200 тыс. т/год: линии № 1–3 на 49,63 т/ч",
+     "cap_before_ktpa": 1000.0,
+     "cap_after_ktpa": 1200.0
+    },
+    {
+     "link": "water",
+     "link_name": "Водоснабжение",
+     "set": {
+      "m_water": 1.0
+     },
+     "text": "оборот воды из хвостохранилища, 0,6 м³/т",
+     "cap_before_ktpa": 1000.0,
+     "cap_after_ktpa": 1533.0
+    },
+    {
+     "link": "stopes",
+     "link_name": "Очистные блоки",
+     "set": {
+      "m_stopes": 1.0
+     },
+     "text": "пятый очистной блок, ПДМ № 5, буровая установка № 3",
+     "cap_before_ktpa": 1024.0,
+     "cap_after_ktpa": 1279.0
+    },
+    {
+     "link": "ventilation",
+     "link_name": "Вентиляция",
+     "set": {
+      "m_vent": 1.0
+     },
+     "text": "вентилятор на восстающем ВПВ, +105 м³/с",
+     "cap_before_ktpa": 958.0,
+     "cap_after_ktpa": 1667.0
+    },
+    {
+     "link": "tailings",
+     "link_name": "Хвостохранилище",
+     "set": {
+      "m_tailings": 1.0
+     },
+     "text": "новая карта хвостохранилища, 6,0 млн т",
+     "cap_before_ktpa": 1057.0,
+     "cap_after_ktpa": 3057.0
+    },
+    {
+     "link": "plant",
+     "link_name": "Фабрика",
+     "set": {
+      "m_plant": 2.0
+     },
+     "text": "пустить линии № 4 и № 5 (2 000 тыс. т/год)",
+     "cap_before_ktpa": 1200.0,
+     "cap_after_ktpa": 2000.0
+    },
+    {
+     "link": "stopes",
+     "link_name": "Очистные блоки",
+     "set": {
+      "m_stopes": 2.0
+     },
+     "text": "восемь блоков, ПДМ № 6–8, буровая установка № 4",
+     "cap_before_ktpa": 1279.0,
+     "cap_after_ktpa": 2047.0
+    },
+    {
+     "link": "ventilation",
+     "link_name": "Вентиляция",
+     "set": {
+      "m_vent": 2.0
+     },
+     "text": "ствол ВС-3 с вентилятором, +240 м³/с",
+     "cap_before_ktpa": 1355.0,
+     "cap_after_ktpa": 2671.0
+    },
+    {
+     "link": "haulage",
+     "link_name": "Откатка",
+     "set": {
+      "m_haul": 2.0
+     },
+     "text": "ввести самосвалы № 8–10",
+     "cap_before_ktpa": 1388.0,
+     "cap_after_ktpa": 2078.0
+    },
+    {
+     "link": "water",
+     "link_name": "Водоснабжение",
+     "set": {
+      "m_water": 2.0
+     },
+     "text": "дополнительный водозабор до 150 м³/ч",
+     "cap_before_ktpa": 1533.0,
+     "cap_after_ktpa": 2700.0
+    },
+    {
+     "link": "development",
+     "link_name": "Проходка",
+     "set": {
+      "m_dev": 1.0
+     },
+     "text": "вторая проходческая бригада, 50 м глубины в год",
+     "cap_before_ktpa": 1750.0,
+     "cap_after_ktpa": 2573.0
+    }
+   ],
+   "achievable_ktpa": 2000.0,
+   "binding_link": "plant",
+   "binding_link_name": "Фабрика",
+   "reached": true,
+   "gold_koz_year": 112.0,
+   "gold_gain_koz_year": 60.1,
+   "grade_gpt": 2.05,
+   "recovery_pct": 84.97,
+   "air_demand_m3s": 512.0,
+   "air_supply_m3s": 667.0,
+   "water_deficit_m3h": 0.0,
+   "discharge_m3h": 0.0,
+   "permit_m3h": 218.8,
+   "tailings_years_left": 4.6,
+   "stockpile_days_left": null,
+   "dewatering_margin": 2.54
+  },
+  {
+   "target_ktpa": 2500.0,
+   "steps": [
+    {
+     "link": "haulage",
+     "link_name": "Откатка",
+     "set": {
+      "m_haul": 1.0
+     },
+     "text": "ввести самосвалы № 6 и № 7",
+     "cap_before_ktpa": 926.0,
+     "cap_after_ktpa": 1388.0
+    },
+    {
+     "link": "plant",
+     "link_name": "Фабрика",
+     "set": {
+      "m_plant": 1.0
+     },
+     "text": "ступень +200 тыс. т/год: линии № 1–3 на 49,63 т/ч",
+     "cap_before_ktpa": 1000.0,
+     "cap_after_ktpa": 1200.0
+    },
+    {
+     "link": "water",
+     "link_name": "Водоснабжение",
+     "set": {
+      "m_water": 1.0
+     },
+     "text": "оборот воды из хвостохранилища, 0,6 м³/т",
+     "cap_before_ktpa": 1000.0,
+     "cap_after_ktpa": 1533.0
+    },
+    {
+     "link": "stopes",
+     "link_name": "Очистные блоки",
+     "set": {
+      "m_stopes": 1.0
+     },
+     "text": "пятый очистной блок, ПДМ № 5, буровая установка № 3",
+     "cap_before_ktpa": 1024.0,
+     "cap_after_ktpa": 1279.0
+    },
+    {
+     "link": "ventilation",
+     "link_name": "Вентиляция",
+     "set": {
+      "m_vent": 1.0
+     },
+     "text": "вентилятор на восстающем ВПВ, +105 м³/с",
+     "cap_before_ktpa": 958.0,
+     "cap_after_ktpa": 1667.0
+    },
+    {
+     "link": "tailings",
+     "link_name": "Хвостохранилище",
+     "set": {
+      "m_tailings": 1.0
+     },
+     "text": "новая карта хвостохранилища, 6,0 млн т",
+     "cap_before_ktpa": 1057.0,
+     "cap_after_ktpa": 3057.0
+    },
+    {
+     "link": "plant",
+     "link_name": "Фабрика",
+     "set": {
+      "m_plant": 2.0
+     },
+     "text": "пустить линии № 4 и № 5 (2 000 тыс. т/год)",
+     "cap_before_ktpa": 1200.0,
+     "cap_after_ktpa": 2000.0
+    },
+    {
+     "link": "stopes",
+     "link_name": "Очистные блоки",
+     "set": {
+      "m_stopes": 2.0
+     },
+     "text": "восемь блоков, ПДМ № 6–8, буровая установка № 4",
+     "cap_before_ktpa": 1279.0,
+     "cap_after_ktpa": 2047.0
+    },
+    {
+     "link": "ventilation",
+     "link_name": "Вентиляция",
+     "set": {
+      "m_vent": 2.0
+     },
+     "text": "ствол ВС-3 с вентилятором, +240 м³/с",
+     "cap_before_ktpa": 1355.0,
+     "cap_after_ktpa": 2671.0
+    },
+    {
+     "link": "haulage",
+     "link_name": "Откатка",
+     "set": {
+      "m_haul": 2.0
+     },
+     "text": "ввести самосвалы № 8–10",
+     "cap_before_ktpa": 1388.0,
+     "cap_after_ktpa": 2078.0
+    },
+    {
+     "link": "water",
+     "link_name": "Водоснабжение",
+     "set": {
+      "m_water": 2.0
+     },
+     "text": "дополнительный водозабор до 150 м³/ч",
+     "cap_before_ktpa": 1533.0,
+     "cap_after_ktpa": 2700.0
+    },
+    {
+     "link": "development",
+     "link_name": "Проходка",
+     "set": {
+      "m_dev": 1.0
+     },
+     "text": "вторая проходческая бригада, 50 м глубины в год",
+     "cap_before_ktpa": 1750.0,
+     "cap_after_ktpa": 2573.0
+    },
+    {
+     "link": "plant",
+     "link_name": "Фабрика",
+     "set": {
+      "m_plant": 3.0
+     },
+     "text": "пустить линию № 6 (2 500 тыс. т/год)",
+     "cap_before_ktpa": 2000.0,
+     "cap_after_ktpa": 2500.0
+    },
+    {
+     "link": "stopes",
+     "link_name": "Очистные блоки",
+     "set": {
+      "m_stopes": 3.0
+     },
+     "text": "десять блоков, ПДМ № 9 и № 10, буровая установка № 5",
+     "cap_before_ktpa": 2047.0,
+     "cap_after_ktpa": 2559.0
+    },
+    {
+     "link": "haulage",
+     "link_name": "Откатка",
+     "set": {
+      "m_haul": 3.0
+     },
+     "text": "ввести самосвалы № 11 и № 12",
+     "cap_before_ktpa": 2078.0,
+     "cap_after_ktpa": 2515.0
+    }
+   ],
+   "achievable_ktpa": 2500.0,
+   "binding_link": "plant",
+   "binding_link_name": "Фабрика",
+   "reached": true,
+   "gold_koz_year": 140.0,
+   "gold_gain_koz_year": 88.2,
+   "grade_gpt": 2.05,
+   "recovery_pct": 84.97,
+   "air_demand_m3s": 596.3,
+   "air_supply_m3s": 667.0,
+   "water_deficit_m3h": 0.0,
+   "discharge_m3h": 0.0,
+   "permit_m3h": 218.8,
+   "tailings_years_left": 3.7,
+   "stockpile_days_left": null,
+   "dewatering_margin": 2.54
+  }
+ ],
+ "projection": {
+  "rows": [
+   {
+    "year": 2027,
+    "achievable_ktpa": 926.0,
+    "binding_link": "haulage",
+    "binding_link_name": "Откатка",
+    "centroid_m": 75,
+    "gold_koz": 51.9,
+    "gold_total_koz": 51.9,
+    "tailings_stored_kt": 3790.0,
+    "tailings_free_kt": 2246.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2028,
+    "achievable_ktpa": 893.0,
+    "binding_link": "haulage",
+    "binding_link_name": "Откатка",
+    "centroid_m": 57.0,
+    "gold_koz": 50.0,
+    "gold_total_koz": 101.9,
+    "tailings_stored_kt": 4683.0,
+    "tailings_free_kt": 1353.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2029,
+    "achievable_ktpa": 864.0,
+    "binding_link": "haulage",
+    "binding_link_name": "Откатка",
+    "centroid_m": 40.0,
+    "gold_koz": 48.4,
+    "gold_total_koz": 150.3,
+    "tailings_stored_kt": 5547.0,
+    "tailings_free_kt": 489.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2030,
+    "achievable_ktpa": 489.0,
+    "binding_link": "tailings",
+    "binding_link_name": "Хвостохранилище",
+    "centroid_m": 23.0,
+    "gold_koz": 27.4,
+    "gold_total_koz": 177.7,
+    "tailings_stored_kt": 6036.0,
+    "tailings_free_kt": 0.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2031,
+    "achievable_ktpa": 0.0,
+    "binding_link": "tailings",
+    "binding_link_name": "Хвостохранилище",
+    "centroid_m": 13.0,
+    "gold_koz": 0.0,
+    "gold_total_koz": 177.7,
+    "tailings_stored_kt": 6036.0,
+    "tailings_free_kt": 0.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2032,
+    "achievable_ktpa": 0.0,
+    "binding_link": "tailings",
+    "binding_link_name": "Хвостохранилище",
+    "centroid_m": 13.0,
+    "gold_koz": 0.0,
+    "gold_total_koz": 177.7,
+    "tailings_stored_kt": 6036.0,
+    "tailings_free_kt": 0.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2033,
+    "achievable_ktpa": 0.0,
+    "binding_link": "tailings",
+    "binding_link_name": "Хвостохранилище",
+    "centroid_m": 13.0,
+    "gold_koz": 0.0,
+    "gold_total_koz": 177.7,
+    "tailings_stored_kt": 6036.0,
+    "tailings_free_kt": 0.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2034,
+    "achievable_ktpa": 0.0,
+    "binding_link": "tailings",
+    "binding_link_name": "Хвостохранилище",
+    "centroid_m": 13.0,
+    "gold_koz": 0.0,
+    "gold_total_koz": 177.7,
+    "tailings_stored_kt": 6036.0,
+    "tailings_free_kt": 0.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2035,
+    "achievable_ktpa": 0.0,
+    "binding_link": "tailings",
+    "binding_link_name": "Хвостохранилище",
+    "centroid_m": 13.0,
+    "gold_koz": 0.0,
+    "gold_total_koz": 177.7,
+    "tailings_stored_kt": 6036.0,
+    "tailings_free_kt": 0.0,
+    "water_deficit_m3h": 0.0
+   },
+   {
+    "year": 2036,
+    "achievable_ktpa": 0.0,
+    "binding_link": "tailings",
+    "binding_link_name": "Хвостохранилище",
+    "centroid_m": 13.0,
+    "gold_koz": 0.0,
+    "gold_total_koz": 177.7,
+    "tailings_stored_kt": 6036.0,
+    "tailings_free_kt": 0.0,
+    "water_deficit_m3h": 0.0
+   }
+  ],
+  "storage_runs_out_year": 2030,
+  "target_missed_year": 2027
+ },
+ "effects": {
+  "label": "Базовый режим",
+  "revision": 0,
+  "items": []
+ },
+ "calibration": [
+  {
+   "id": "C1",
+   "title": "Золото за 2025 финансовый год",
+   "kind": "analytic",
+   "unit": "унц.",
+   "reported": 53852,
+   "model": 54133,
+   "deviation": 0.52,
+   "deviation_unit": "%",
+   "tolerance": "±1,5 %",
+   "passed": true,
+   "source": "факт B"
+  },
+  {
+   "id": "C2",
+   "title": "Золото за 2024 финансовый год",
+   "kind": "analytic",
+   "unit": "унц.",
+   "reported": 37279,
+   "model": 37308,
+   "deviation": 0.08,
+   "deviation_unit": "%",
+   "tolerance": "±1,5 %",
+   "passed": true,
+   "source": "факт B"
+  },
+  {
+   "id": "C3",
+   "title": "Руда, выданная на поверхность: симулятор, 60 суток, в пересчёте на год",
+   "kind": "simulator",
+   "unit": "т/год",
+   "reported": 926422,
+   "model": null,
+   "deviation": null,
+   "deviation_unit": "%",
+   "tolerance": "±3 %",
+   "passed": null,
+   "source": "факт B"
+  },
+  {
+   "id": "C4",
+   "title": "Золото за I полугодие 2026 г.",
+   "kind": "analytic",
+   "unit": "унц.",
+   "reported": 23906,
+   "model": 23827,
+   "deviation": -0.33,
+   "deviation_unit": "%",
+   "tolerance": "±1,5 %",
+   "passed": true,
+   "source": "факт D1"
+  },
+  {
+   "id": "C4",
+   "title": "Золото за I полугодие 2025 г.",
+   "kind": "analytic",
+   "unit": "унц.",
+   "reported": 25081,
+   "model": 25219,
+   "deviation": 0.55,
+   "deviation_unit": "%",
+   "tolerance": "±1,5 %",
+   "passed": true,
+   "source": "факт D1"
+  },
+  {
+   "id": "C5",
+   "title": "Извлечение при содержании 2,29 г/т",
+   "kind": "analytic",
+   "unit": "%",
+   "reported": 85.42,
+   "model": 85.36,
+   "deviation": -0.06,
+   "deviation_unit": "п.п.",
+   "tolerance": "±0,25 п.п.",
+   "passed": true,
+   "source": "факт B, D1"
+  },
+  {
+   "id": "C5",
+   "title": "Извлечение при содержании 2,05 г/т",
+   "kind": "analytic",
+   "unit": "%",
+   "reported": 85.07,
+   "model": 84.97,
+   "deviation": -0.1,
+   "deviation_unit": "п.п.",
+   "tolerance": "±0,25 п.п.",
+   "passed": true,
+   "source": "факт B, D1"
+  },
+  {
+   "id": "C5",
+   "title": "Извлечение при содержании 2,04 г/т",
+   "kind": "analytic",
+   "unit": "%",
+   "reported": 84.75,
+   "model": 84.96,
+   "deviation": 0.21,
+   "deviation_unit": "п.п.",
+   "tolerance": "±0,25 п.п.",
+   "passed": true,
+   "source": "факт B, D1"
+  },
+  {
+   "id": "C5",
+   "title": "Извлечение при содержании 1,76 г/т",
+   "kind": "analytic",
+   "unit": "%",
+   "reported": 84.55,
+   "model": 84.5,
+   "deviation": -0.05,
+   "deviation_unit": "п.п.",
+   "tolerance": "±0,25 п.п.",
+   "passed": true,
+   "source": "факт B, D1"
+  },
+  {
+   "id": "C6",
+   "title": "Потребность в воздухе базового парка (пик)",
+   "kind": "analytic",
+   "unit": "м³/с",
+   "reported": 322,
+   "model": 317.2,
+   "deviation": -1.49,
+   "deviation_unit": "%",
+   "tolerance": "95–100 % от отчёта",
+   "passed": true,
+   "source": "факт A5"
+  },
+  {
+   "id": "C7",
+   "title": "Потребность в воздухе при половине мощности парка",
+   "kind": "analytic",
+   "unit": "м³/с",
+   "reported": 252,
+   "model": 248.6,
+   "deviation": -1.35,
+   "deviation_unit": "%",
+   "tolerance": "±3 %",
+   "passed": true,
+   "source": "факт A5"
+  },
+  {
+   "id": "C8",
+   "title": "Переработка руды: симулятор, 60 суток, в пересчёте на год",
+   "kind": "simulator",
+   "unit": "т/год",
+   "reported": 1000000,
+   "model": null,
+   "deviation": null,
+   "deviation_unit": "%",
+   "tolerance": "±3 %",
+   "passed": null,
+   "source": "факт B2"
+  },
+  {
+   "id": "C9",
+   "title": "Осадок илоотстойников при притоке 197 м³/ч",
+   "kind": "analytic",
+   "unit": "т/год",
+   "reported": 64.3,
+   "model": 64.8,
+   "deviation": 0.78,
+   "deviation_unit": "%",
+   "tolerance": "±2 %",
+   "passed": true,
+   "source": "факт A6"
+  },
+  {
+   "id": "C10",
+   "title": "Водный баланс при 1 000 тыс. т/год: площадка и фабрика",
+   "kind": "analytic",
+   "unit": "тыс. м³/год",
+   "reported": 1725.72,
+   "model": 1726.0,
+   "deviation": 0.02,
+   "deviation_unit": "%",
+   "tolerance": "±0,5 %",
+   "passed": true,
+   "source": "факт A6"
+  },
+  {
+   "id": "C11",
+   "title": "Баланс массы за 60 суток: выдано = склад + переработано; переработано = хвосты",
+   "kind": "simulator",
+   "unit": "%",
+   "reported": null,
+   "model": null,
+   "deviation": null,
+   "deviation_unit": "%",
+   "tolerance": "±0,1 %",
+   "passed": null,
+   "source": "тождество"
+  },
+  {
+   "id": "C12",
+   "title": "Золото при 2,0 млн т/год и содержании 2,05 г/т",
+   "kind": "analytic",
+   "unit": "унц./год",
+   "reported": 100000,
+   "model": 112008,
+   "deviation": 12.01,
+   "deviation_unit": "%",
+   "tolerance": "не менее отчётного",
+   "passed": true,
+   "source": "факт B2"
+  }
+ ]
+}

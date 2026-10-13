@@ -1,0 +1,281 @@
+// Stand page: owns fetching and hands the data to the panels and to the two
+// view modules. View contract (spec 7.1): a view module exports
+// mount(container, geometry) -> { update(state), focus(thingId), dispose() };
+// update() is called with the unchanged answer of GET /api/state every 2 s.
+// If scene3d.mount throws, the section is mounted in the scene's container.
+// A view whose container is hidden by the view switch gets no update() until it
+// is shown again; then it gets the latest state at once.
+//
+// A view reports a click on an object with a bubbling DOM event:
+//   container.dispatchEvent(new CustomEvent('sekis:select',
+//     { bubbles: true, detail: { thingId: 'kz.sekis:truck-01' } }))
+
+import { getAdvisor, getGeometry, getParams, getScenario, getState } from './panels/api.js';
+import { createAdvisor, createPlan, normalize } from './panels/advisor.js';
+import { createAssumptions } from './panels/assumptions.js';
+import { createCalibration } from './panels/calibration.js';
+import { createChanges } from './panels/changes.js';
+import { NS } from './panels/dict.js';
+import { el, fmt, isNum, setText } from './panels/format.js';
+import { createHeader } from './panels/header.js';
+import { createScenarios } from './panels/scenarios.js';
+import { createTwins } from './panels/twins.js';
+
+const POLL_MS = 2000;
+const ADVISOR_REFRESH_MS = 30000;
+const VIEW_MODULES = { scene3d: './scene3d/index.js', section2d: './section2d/index.js' };
+const VIEW_TEXT = {
+  scene3d: ['3D-сцена рудника', 'модуль сцены не подключён'],
+  section2d: ['Продольный разрез рудника', 'модуль разреза не подключён'],
+};
+const EMBED = { '/embed/scene': 'scene3d', '/embed/section': 'section2d' }[location.pathname] || null;
+
+const viewsBox = document.getElementById('views');
+const containers = {
+  scene3d: document.getElementById('view-scene3d'),
+  section2d: document.getElementById('view-section2d'),
+};
+const mounted = [];   // { name, container, instance }
+
+let lastState = null;
+let report = null;
+let advisorModel = null;
+let advisorFetchedAt = 0;
+let polling = false;
+let failures = 0;
+// A page address may name a twin to open: /?twin=kz.sekis:truck-01
+let pendingTwin = new URLSearchParams(location.search).get('twin');
+
+const header = createHeader();
+const advisorPanel = createAdvisor();
+const planPanel = createPlan();
+const changesPanel = createChanges();
+const calibrationPanel = createCalibration();
+const assumptionsPanel = createAssumptions();
+const twinsPanel = createTwins({ onSelect: (id) => focusThing(id) });
+const scenariosPanel = createScenarios({
+  onChanged: (result) => {
+    changesPanel.noteAction(result);
+    advisorFetchedAt = 0;
+    refresh();
+  },
+});
+
+// -------------------------------------------------------------------- views
+
+function setMode(mode) {
+  viewsBox.dataset.mode = mode;
+  for (const button of document.querySelectorAll('.viz .seg button')) {
+    button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+  }
+  updateViews();
+}
+
+const isShown = (container) => container.getClientRects().length > 0;
+
+function updateViews() {
+  if (lastState) eachView((view) => view.update && view.update(lastState), null, true);
+}
+
+function placeholder(name, detail) {
+  const [title, absent] = VIEW_TEXT[name];
+  containers[name].replaceChildren(el('div', { class: 'view-empty' },
+    el('strong', { text: title }), el('span', { text: detail || absent })));
+}
+
+async function loadModule(name) {
+  try {
+    const module = await import(VIEW_MODULES[name]);
+    return typeof module.mount === 'function' ? module : null;
+  } catch (error) {
+    return null;   // the module is not in this build
+  }
+}
+
+async function mountInto(module, name, geometry) {
+  const container = containers[name];
+  container.replaceChildren();
+  const instance = await module.mount(container, geometry);
+  mounted.push({ name, container, instance: instance || {} });
+}
+
+async function mountViews(geometry) {
+  const wanted = EMBED ? [EMBED] : ['scene3d', 'section2d'];
+  if (!geometry) {
+    for (const name of wanted) placeholder(name, 'геометрия сцены не получена');
+    return;
+  }
+  const section = await loadModule('section2d');
+  let sectionInScene = false;
+  if (wanted.includes('scene3d')) {
+    const scene = await loadModule('scene3d');
+    if (!scene) {
+      placeholder('scene3d');
+    } else {
+      try {
+        await mountInto(scene, 'scene3d', geometry);
+      } catch (error) {
+        console.warn('scene3d.mount failed, the section takes its place', error);
+        try {
+          if (!section) throw error;
+          await mountInto(section, 'scene3d', geometry);
+          sectionInScene = true;
+        } catch (inner) {
+          placeholder('scene3d', '3D-сцена недоступна в этом браузере');
+        }
+      }
+    }
+  }
+  if (sectionInScene) {      // one section is enough: the second container is not used
+    setMode('scene3d');
+    document.querySelector('.viz .seg').hidden = true;
+    return;
+  }
+  if (wanted.includes('section2d')) {
+    if (!section) {
+      placeholder('section2d');
+    } else {
+      try {
+        await mountInto(section, 'section2d', geometry);
+      } catch (error) {
+        console.warn('section2d.mount failed', error);
+        placeholder('section2d', 'разрез недоступен');
+      }
+    }
+  }
+}
+
+function eachView(action, except, shownOnly) {
+  for (const view of mounted) {
+    if (view.container === except || (shownOnly && !isShown(view.container))) continue;
+    try {
+      action(view.instance);
+    } catch (error) {
+      console.error(`view ${view.name}`, error);
+    }
+  }
+}
+
+/** Select a twin everywhere: the table row, the card and both views. */
+function focusThing(thingId, sourceContainer) {
+  twinsPanel.select(thingId, { scroll: true });
+  if (thingId) eachView((view) => view.focus && view.focus(thingId), sourceContainer);
+}
+
+document.addEventListener('sekis:select', (event) => {
+  const thingId = event.detail && event.detail.thingId;
+  if (thingId) focusThing(thingId, event.target.closest ? event.target.closest('.view') : null);
+});
+
+// --------------------------------------------------------------------- data
+
+function advisorDue(state) {
+  const age = performance.now() - advisorFetchedAt;
+  if (!report) return age >= POLL_MS;
+  const twin = (state.things[NS + 'advisor'] && state.things[NS + 'advisor'].f) || {};
+  if (isNum(report.report_revision)) {
+    if (report.report_revision !== state.revision) return true;            // scenario moved on
+    if (isNum(twin.report_revision) && twin.report_revision !== report.report_revision) return true;
+    return age >= ADVISOR_REFRESH_MS;
+  }
+  return age >= 3 * POLL_MS;   // a report without a revision is simply re-read
+}
+
+function vizSummary(state) {
+  const f = (name) => (state.things[NS + name] && state.things[NS + name].f) || {};
+  const mine = f('mine');
+  const onRamp = [f('decline-tu1').trucks_on_ramp, f('decline-tu2').trucks_on_ramp].filter(isNum);
+  const parts = [
+    `самосвалов в работе: ${fmt(mine.trucks_active)}`,
+    onRamp.length ? `на уклонах: ${fmt(onRamp.reduce((a, b) => a + b, 0))}` : null,
+    isNum(mine.units_held_vent) && mine.units_held_vent > 0 ? `в простое по воздуху: ${fmt(mine.units_held_vent)}` : null,
+    `воздух: ${fmt(mine.air_demand_m3s)} из ${fmt(mine.air_supply_m3s)} м³/с`,
+    `приток воды: ${fmt(mine.inflow_m3h)} м³/ч`,
+    isNum(mine.flood_volume_m3) && mine.flood_volume_m3 > 0 ? `затоплено: ${fmt(mine.flood_volume_m3)} м³` : null,
+  ];
+  return parts.filter(Boolean).join(' · ');
+}
+
+function render(state) {
+  advisorModel = normalize(report, state);
+  header.update(state, advisorModel);
+  scenariosPanel.update(state, advisorModel);
+  advisorPanel.update(advisorModel);
+  planPanel.update(advisorModel);
+  changesPanel.update(state, advisorModel);
+  calibrationPanel.update(advisorModel.calibration);
+  twinsPanel.update(state);
+  setText(document.getElementById('viz-meta'), vizSummary(state));
+  updateViews();
+  if (pendingTwin && state.things[pendingTwin]) {
+    focusThing(pendingTwin);
+    pendingTwin = null;
+  }
+}
+
+async function refresh() {
+  if (polling) return;
+  polling = true;
+  try {
+    const state = await getState();
+    if (!state || typeof state.things !== 'object') throw new Error('bad state');
+    lastState = state;
+    failures = 0;
+    if (advisorDue(state)) {
+      advisorFetchedAt = performance.now();
+      try {
+        report = await getAdvisor();
+      } catch (error) {
+        // The bars keep working from the advisor twin; the report is retried.
+      }
+    }
+    render(state);
+    if (state.mode === 'fixture') header.connection('ok', 'образец данных, без Ditto');
+    else if (isNum(state.age_s) && state.age_s > 10) header.connection('stale', `данные Ditto устарели на ${fmt(state.age_s)} с`);
+    else if (!Object.keys(state.things).length) header.connection('stale', 'двойники ещё не получены');
+    else header.connection('ok', 'данные двойников из Ditto');
+  } catch (error) {
+    failures += 1;
+    if (failures >= 2) header.connection('down', 'нет связи со стендом');
+  } finally {
+    polling = false;
+  }
+}
+
+// --------------------------------------------------------------------- start
+
+function start() {
+  if (EMBED) {
+    document.documentElement.dataset.embed = EMBED;
+    setMode(EMBED);
+  } else {
+    setMode(window.innerHeight >= 900 && window.innerWidth >= 1500 ? 'both' : 'scene3d');
+    document.querySelector('.viz .seg').addEventListener('click', (event) => {
+      const button = event.target.closest('button[data-mode]');
+      if (button) setMode(button.dataset.mode);
+    });
+  }
+  for (const [name, container] of Object.entries(containers)) {
+    placeholder(name, 'загрузка');
+    if ('ResizeObserver' in window) {   // the current size of each mount container, for the views
+      new ResizeObserver(() => {
+        container.dataset.size = `${container.clientWidth}x${container.clientHeight}`;
+      }).observe(container);
+    }
+  }
+
+  getGeometry().then(mountViews).then(() => {
+    updateViews();
+    const selected = twinsPanel.selected();
+    if (selected) eachView((view) => view.focus && view.focus(selected));
+  });
+  if (!EMBED) {
+    getScenario().then((info) => scenariosPanel.setInfo(info)).catch(() => {});
+    getParams().then((params) => assumptionsPanel.render(params)).catch(() => assumptionsPanel.render(null));
+  }
+  refresh();
+  setInterval(refresh, POLL_MS);
+  window.sekisStand = { focus: focusThing, state: () => lastState, advisor: () => advisorModel };
+}
+
+start();

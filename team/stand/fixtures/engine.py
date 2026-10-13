@@ -1,0 +1,1275 @@
+"""Fixture engine of the Stand: a deterministic stand-in for Ditto, the simulator
+and the advisor, used only with STAND_FIXTURE=1 (standard library only).
+
+It is not the simulator and not the Expansion Advisor. It turns a knob set and a
+clock into (a) a full 96-thing state in the shape of GET /api/state and (b) an
+advisor report in the shape of GET /api/advisor, with the analytic formulas of
+spec section 2.3 and the constraint loop of section 3.4, so that every scenario
+button changes something visible on the page without the stack.
+
+Regenerate the two committed files from the registry and the parameter file:
+
+    python stand/fixtures/engine.py --write
+"""
+
+import copy
+import datetime
+import json
+import math
+import os
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "model"))
+STATE_FILE = os.path.join(HERE, "state.json")
+ADVISOR_FILE = os.path.join(HERE, "advisor.json")
+
+NS = "kz.sekis:"
+
+# Simulated seconds after the epoch at which the fixture clock starts
+# (day 12, 10:24 in shift A, so that a first look shows a working mine).
+FIXTURE_START_S = 12 * 86400 + 2 * 3600 + 24 * 60
+
+DEFAULT_KNOBS = {
+    "target_ktpa": 1000.0, "m_plant": 0.0, "m_haul": 0.0, "m_stopes": 0.0,
+    "m_vent": 0.0, "m_dev": 0.0, "m_water": 0.0, "m_tailings": 0.0,
+    "tu1_closed": 0.0, "tu2_closed": 0.0, "fan_vs2_off": 0.0,
+    "pumps_failed_p150": 0.0, "inflow_factor": 1.0, "grade_gpt": 2.05,
+    "line_down": 0.0,
+}
+
+LINKS = ["haulage", "ventilation", "stopes", "development", "dewatering",
+         "plant", "water", "tailings"]
+LINK_RU = {
+    "haulage": "Откатка", "ventilation": "Вентиляция", "stopes": "Очистные блоки",
+    "development": "Проходка", "dewatering": "Водоотлив", "plant": "Фабрика",
+    "water": "Водоснабжение", "tailings": "Хвостохранилище",
+}
+LINK_KNOB = {"haulage": "m_haul", "ventilation": "m_vent", "stopes": "m_stopes",
+             "development": "m_dev", "plant": "m_plant", "water": "m_water",
+             "tailings": "m_tailings"}
+KNOB_MAX = {"m_plant": 3, "m_haul": 3, "m_stopes": 3, "m_vent": 2, "m_dev": 1,
+            "m_water": 2, "m_tailings": 1}
+STAGE_RU = {
+    "m_haul": ["самосвалы № 1–5", "ввести самосвалы № 6 и № 7",
+               "ввести самосвалы № 8–10", "ввести самосвалы № 11 и № 12"],
+    "m_plant": ["три линии, 1 000 тыс. т/год",
+                "ступень +200 тыс. т/год: линии № 1–3 на 49,63 т/ч",
+                "пустить линии № 4 и № 5 (2 000 тыс. т/год)",
+                "пустить линию № 6 (2 500 тыс. т/год)"],
+    "m_stopes": ["четыре очистных блока",
+                 "пятый очистной блок, ПДМ № 5, буровая установка № 3",
+                 "восемь блоков, ПДМ № 6–8, буровая установка № 4",
+                 "десять блоков, ПДМ № 9 и № 10, буровая установка № 5"],
+    "m_vent": ["подача 322 м³/с", "вентилятор на восстающем ВПВ, +105 м³/с",
+               "ствол ВС-3 с вентилятором, +240 м³/с"],
+    "m_dev": ["проходка 34 м глубины в год",
+              "вторая проходческая бригада, 50 м глубины в год"],
+    "m_water": ["без оборотной воды", "оборот воды из хвостохранилища, 0,6 м³/т",
+                "дополнительный водозабор до 150 м³/ч"],
+    "m_tailings": ["действующие дамбы", "новая карта хвостохранилища, 6,0 млн т"],
+}
+RESTORE_PUMPS_RU = "восстановить насосы станции гор. +150 м"
+
+# Trucks, LHDs, rigs and producing stopes by measure stage (spec 3.1).
+TRUCKS_BY_STAGE = [5, 7, 10, 12]
+LHDS_BY_STAGE = [4, 5, 8, 10]
+RIGS_BY_STAGE = [2, 3, 4, 5]
+STOPES_BY_STAGE = [4, 5, 8, 10]
+STOPE_ORDER = ([f"stp-{lv}-1" for lv in ("p150", "p100", "p050", "000")]
+               + [f"stp-{lv}-2" for lv in ("p150", "p100", "p050", "000")]
+               + [f"stp-{lv}-3" for lv in ("p150", "p100", "p050", "000")]
+               + [f"stp-m050-{i}" for i in (1, 2, 3)])
+DAM_ORDER = ["tsf-dam4", "tsf-dam2", "tsf-dam3", "tsf-cell5"]
+
+# Schematic plan positions of spec 4.2, used when model/geometry.json is absent.
+# X of a decline at even and at odd multiples of 50 m of elevation.
+DECLINE_X = {"tu1": (-330.0, 25.8), "tu2": (30.0, 385.8)}
+DECLINE_Z = {"tu1": 120.0, "tu2": 150.0}
+ROM_PAD = (-305.0, 430.0, -215.0)
+STOPE_X = {"1": -200.0, "2": 0.0, "3": 200.0}
+DRIVE_Z, DRAW_Z = 40.0, 10.0
+
+
+def ru_num(value, digits=0):
+    """Russian number: no-break space between thousands, comma as decimal mark."""
+    if value is None:
+        return "—"
+    rounded = round(float(value), digits)
+    text = f"{abs(rounded):,.{digits}f}".replace(",", " ").replace(".", ",")
+    return ("−" if rounded < 0 else "") + text
+
+
+def load_json(path):
+    with open(path, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+class Model:
+    """Registry and parameters, read once."""
+
+    def __init__(self, model_dir=MODEL_DIR):
+        self.registry = load_json(os.path.join(model_dir, "registry.json"))
+        self.params = load_json(os.path.join(model_dir, "params.json"))
+        self.attrs = {t["thingId"][len(NS):]: t["attributes"]
+                      for t in self.registry["things"]}
+        # Baseline features of every thing, as the registry gives them.
+        self.baseline = {t["thingId"]: {fid: body["properties"]["value"]
+                                        for fid, body in t["features"].items()}
+                         for t in self.registry["things"]}
+
+    def p(self, key):
+        return self.params[key]["value"]
+
+
+# --------------------------------------------------------------- capacities
+
+def stage(knobs, knob):
+    return int(round(knobs.get(knob, 0)))
+
+
+def active_trucks(knobs):
+    return [f"truck-{i:02d}" for i in range(1, TRUCKS_BY_STAGE[stage(knobs, "m_haul")] + 1)]
+
+
+def active_lhds(knobs):
+    return [f"lhd-{i:02d}" for i in range(1, LHDS_BY_STAGE[stage(knobs, "m_stopes")] + 1)]
+
+
+def active_rigs(knobs):
+    return [f"rig-{i:02d}" for i in range(1, RIGS_BY_STAGE[stage(knobs, "m_stopes")] + 1)]
+
+
+def producing_stopes(knobs):
+    return STOPE_ORDER[:STOPES_BY_STAGE[stage(knobs, "m_stopes")]]
+
+
+def flooded_levels(knobs):
+    """The fixture shows the end state of a dead +150 m station at once."""
+    return ["lvl-m050", "lvl-000"] if stage(knobs, "pumps_failed_p150") >= 3 else []
+
+
+def truck_decline(model, knobs, truck):
+    """Decline a truck uses: its home one, or the other while home is closed."""
+    home = model.attrs[truck]["link_home_decline"].rsplit("-", 1)[1]
+    if stage(knobs, f"{home}_closed"):
+        return "tu1" if home == "tu2" else "tu2"
+    return home
+
+
+def ramp_km(model, decline, elevation):
+    k = 1.0 / math.sin(math.radians(model.p("decline.slope_deg")))
+    portal = model.p(f"decline.{decline}.portal_m")
+    return (portal - elevation) * k * model.p("decline.length_factor") / 1000.0
+
+
+def cycle_minutes(model, decline, elevation, trucks_on_decline):
+    p = model.p
+    length = ramp_km(model, decline, elevation)
+    surface = p(f"decline.{decline}.surface_km")
+    return (p("truck.load_min") + p("truck.dump_min") + p("truck.manoeuvre_min")
+            + 60 * length / p("truck.speed_up_loaded_kmh")
+            + 60 * length / p("truck.speed_down_empty_kmh")
+            + 60 * surface / p("truck.speed_flat_loaded_kmh")
+            + 60 * surface / p("truck.speed_flat_empty_kmh")
+            + p("haul.K_BAY") * (trucks_on_decline - 1))
+
+
+def haul_capacity(model, knobs, centroid):
+    p = model.p
+    trucks = active_trucks(knobs)
+    by_decline = {"tu1": [], "tu2": []}
+    for truck in trucks:
+        by_decline[truck_decline(model, knobs, truck)].append(truck)
+    hours = p("regime.working_days") * p("regime.shifts") * p("regime.shift_h")
+    factor = (hours * p("regime.productive_h") / p("regime.shift_h")
+              * p("truck.availability") * p("haul.K_HAUL") / 1000.0)
+    total = 0.0
+    for decline, names in by_decline.items():
+        if not names:
+            continue
+        minutes = cycle_minutes(model, decline, centroid, len(names))
+        for truck in names:
+            total += model.attrs[truck]["payload_t"] * 60.0 / minutes * factor
+    return total
+
+
+def fleet_kw(model, knobs):
+    return sum(model.attrs[name]["engine_kw"]
+               for name in active_trucks(knobs) + active_lhds(knobs))
+
+
+def air_supply(model, knobs):
+    p = model.p
+    supply = p("vent.supply_base")
+    if stage(knobs, "fan_vs2_off"):
+        supply -= p("vent.fan_vs2.duty_m3s")
+    if stage(knobs, "m_vent") >= 1:
+        supply += p("vent.measure_V1.delta_m3s")
+    if stage(knobs, "m_vent") >= 2:
+        supply += p("vent.measure_V2.delta_m3s")
+    return float(supply)
+
+
+def line_rated_tph(model, knobs, number):
+    """Rated feed of plant line `number` for the current plant stage, 0 if not built."""
+    p = model.p
+    per_hour = 1000.0 / (365 * 24 * p("plant.availability"))  # t/h per kt/yr
+    m_plant = stage(knobs, "m_plant")
+    if number <= 3:
+        ktpa = (p("plant.stages_ktpa")[0] if m_plant >= 1 else p("plant.nameplate_ktpa")) / 3.0
+    elif number <= 5:
+        ktpa = p("plant.line45_ktpa") if m_plant >= 2 else 0.0
+    else:
+        ktpa = p("plant.line6_ktpa") if m_plant >= 3 else 0.0
+    return ktpa * per_hour
+
+
+def plant_capacity(model, knobs):
+    per_hour = 1000.0 / (365 * 24 * model.p("plant.availability"))
+    down = stage(knobs, "line_down")
+    return sum(line_rated_tph(model, knobs, n) for n in range(1, 7) if n != down) / per_hour
+
+
+def tailings_free_kt(model, knobs):
+    p = model.p
+    free = p("tsf.dam4_capacity_t") * (1 - p("tsf.dam4_fill_start")) + 2 * p("tsf.dam23_free_t")
+    if stage(knobs, "m_tailings"):
+        free += p("tsf.measure_X1_t")
+    return free / 1000.0
+
+
+def recovery_pct(model, grade):
+    p = model.p
+    value = p("plant.recovery.intercept_pct") + p("plant.recovery.slope_pct_per_gpt") * grade
+    return max(p("plant.recovery.min_pct"), min(p("plant.recovery.max_pct"), value))
+
+
+def gold_koz(model, ktpa, grade):
+    return ktpa * 1000.0 * grade * recovery_pct(model, grade) / 100.0 / model.p("gold.g_per_oz") / 1000.0
+
+
+def capacities(model, knobs, centroid=None, free_kt=None):
+    """The eight link capacities, kt/yr, and the quantities they are built from."""
+    p = model.p
+    if centroid is None:
+        centroid = p("stope.centroid_baseline_m")
+    haul = haul_capacity(model, knobs, centroid)
+    supply = air_supply(model, knobs)
+    kw = fleet_kw(model, knobs)
+    allowed_kw = max(0.0, (supply - p("vent.q_base")) / p("vent.q_diesel"))
+    per_stope = p("stope.capacity_design_ktpa") / p("stope.producing_base")
+    producing = producing_stopes(knobs)
+    flooded = flooded_levels(knobs)
+    dry = [s for s in producing if "lvl-" + s.split("-")[1] not in flooded]
+    advance = p("dev.advance_boosted") if stage(knobs, "m_dev") else p("dev.advance_vm_per_year")
+    inflow = p("water.inflow_m3h") * knobs["inflow_factor"]
+    working = min(p("water.ps_p150.pumps_working"),
+                  p("water.ps_p150.pumps") - stage(knobs, "pumps_failed_p150"))
+    pump_capacity = max(0, working) * p("water.ps_p150.pump_m3h")
+    margin = pump_capacity / (inflow * 24.0 / 20.0)
+    m_water = stage(knobs, "m_water")
+    reclaim = p("water.measure_W1.reclaim_m3_per_t") if m_water >= 1 else 0.0
+    extra = p("water.measure_W2.extra_intake_m3h") if m_water >= 2 else 0.0
+    water = ((p("water.mine_water_kth_m3yr") + 8.76 * extra)
+             / (p("water.site_m3_per_t") + p("water.plant_m3_per_t") - reclaim))
+    if free_kt is None:
+        free_kt = tailings_free_kt(model, knobs)
+    caps = {
+        "haulage": haul,
+        "ventilation": allowed_kw * haul / kw if kw else 0.0,
+        "stopes": len(producing) * per_stope,
+        "development": advance * p("dev.t_per_vm") / 1000.0,
+        "dewatering": len(dry) * per_stope if flooded else 0.0,
+        "plant": plant_capacity(model, knobs),
+        "water": water,
+        "tailings": free_kt / p("tsf.min_years"),
+    }
+    caps = {link: float(round(value)) for link, value in caps.items()}
+    limiting = [link for link in LINKS if link != "dewatering" or flooded]
+    binding = min(limiting, key=lambda link: (caps[link], LINKS.index(link)))
+    return {
+        "caps": caps, "binding": binding, "achievable": caps[binding],
+        "dewatering_limiting": bool(flooded), "dewatering_margin": round(margin, 2),
+        "air_supply": supply, "air_demand": round(p("vent.q_base") + p("vent.q_diesel") * kw, 1),
+        "fleet_kw": kw, "allowed_kw": allowed_kw, "inflow_m3h": inflow,
+        "free_kt": free_kt, "flooded": flooded,
+    }
+
+
+def water_balance(model, knobs, mine_ktpa, plant_ktpa):
+    """Year-average water flows in m3/h for given mine and plant rates.
+
+    Mine water is taken as available also while the +150 m station is down (the
+    fixture has no pond storage model); that failure shows as flooding only.
+    """
+    p = model.p
+    inflow = p("water.inflow_m3h") * knobs["inflow_factor"]
+    pumped = inflow
+    site = p("water.site_m3_per_t") * mine_ktpa * 1000.0 / 8760.0
+    plant = p("water.plant_m3_per_t") * plant_ktpa * 1000.0 / 8760.0
+    m_water = stage(knobs, "m_water")
+    reclaim = (p("water.measure_W1.reclaim_m3_per_t") * plant_ktpa * 1000.0 / 8760.0
+               if m_water >= 1 else 0.0)
+    shortfall = max(0.0, site + plant - pumped - reclaim)
+    extra = min(shortfall, p("water.measure_W2.extra_intake_m3h")) if m_water >= 2 else 0.0
+    return {
+        "mine_water": pumped, "site_use": site, "plant_supply": plant, "reclaim": reclaim,
+        "extra_intake": extra, "deficit": max(0.0, shortfall - extra),
+        "discharge": max(0.0, pumped + reclaim - site - plant),
+    }
+
+
+def plant_running(model, knobs, cap):
+    """(plant rate in kt/yr after the water limit, water balance, water factor)."""
+    plant_cap = cap["caps"]["plant"]
+    balance = water_balance(model, knobs, cap["achievable"], plant_cap)
+    demand = balance["plant_supply"]
+    factor = 1.0 if demand <= 0 else max(0.0, 1.0 - balance["deficit"] / demand)
+    return plant_cap * factor, balance, factor
+
+
+def kpis(model, knobs, cap=None):
+    """KPIs of a knob set.
+
+    Gold is counted at the sustainable rate (what the mine can deliver); water
+    and tailings at the rate the plant runs while the stockpile lasts.
+    """
+    p = model.p
+    cap = cap or capacities(model, knobs)
+    rate = cap["achievable"]
+    plant_rate = min(cap["caps"]["plant"], rate)
+    grade = knobs["grade_gpt"]
+    base = capacities(model, DEFAULT_KNOBS)["achievable"]
+    plant_now, balance, _ = plant_running(model, knobs, cap)
+    mined_tpd = rate * 1000.0 / p("regime.working_days")
+    milled_tpd = plant_now * 1000.0 / p("regime.plant_days")
+    draw = milled_tpd - mined_tpd
+    return {
+        "gold_koz_year": round(gold_koz(model, plant_rate, grade), 1),
+        "gold_gain_koz_year": round(gold_koz(model, plant_rate, grade)
+                                    - gold_koz(model, base, p("plant.grade_base")), 1),
+        "grade_gpt": grade, "recovery_pct": round(recovery_pct(model, grade), 2),
+        "air_demand_m3s": cap["air_demand"], "air_supply_m3s": cap["air_supply"],
+        "water_deficit_m3h": round(balance["deficit"], 1),
+        "discharge_m3h": round(balance["discharge"], 1),
+        "permit_m3h": p("water.permit_m3h"),
+        "tailings_years_left": round(cap["free_kt"] / plant_now, 1) if plant_now else None,
+        # None: the plant mills less than the mine delivers, the stockpile grows.
+        "stockpile_days_left": round(p("stockpile.start_t") / draw, 0) if draw > 1 else None,
+        "dewatering_margin": cap["dewatering_margin"],
+    }
+
+
+# ------------------------------------------------------------ advisor logic
+
+def plan(model, knobs, target):
+    """Constraint loop of spec 3.4: (steps, final knobs, final capacities)."""
+    knobs = dict(knobs)
+    steps = []
+    for _ in range(40):
+        cap = capacities(model, knobs)
+        link = cap["binding"]
+        if cap["achievable"] >= target:
+            break
+        if link == "dewatering":
+            change, text = {"pumps_failed_p150": 0.0}, RESTORE_PUMPS_RU
+        else:
+            knob = LINK_KNOB[link]
+            nxt = stage(knobs, knob) + 1
+            if nxt > KNOB_MAX[knob]:
+                break
+            change, text = {knob: float(nxt)}, STAGE_RU[knob][nxt]
+        before = cap["caps"][link]
+        knobs.update(change)
+        after = capacities(model, knobs)["caps"][link]
+        steps.append({"link": link, "link_name": LINK_RU[link], "set": change, "text": text,
+                      "cap_before_ktpa": before, "cap_after_ktpa": after})
+    return steps, knobs, capacities(model, knobs)
+
+
+def apply_changes(model, knobs, mode):
+    """Knob changes the advisor proposes: one step ('next') or the whole sequence."""
+    steps, _, _ = plan(model, knobs, knobs["target_ktpa"])
+    if mode == "next":
+        steps = steps[:1]
+    changes = {}
+    for step in steps:
+        changes.update(step["set"])
+    return {"mode": mode, "changes": changes, "steps": steps}
+
+
+def ladder(model, knobs):
+    rows = []
+    for target in (1000.0, 1200.0, 2000.0, 2500.0):
+        start = dict(knobs)
+        for knob in KNOB_MAX:
+            start[knob] = 0.0
+        start["target_ktpa"] = target
+        steps, final, cap = plan(model, start, target)
+        row = {"target_ktpa": target, "steps": steps, "achievable_ktpa": cap["achievable"],
+               "binding_link": cap["binding"], "binding_link_name": LINK_RU[cap["binding"]],
+               "reached": cap["achievable"] >= target}
+        row.update(kpis(model, final, cap))
+        rows.append(row)
+    return rows
+
+
+def projection(model, knobs, first_year=2027, years=10):
+    p = model.p
+    centroid = p("stope.centroid_baseline_m")
+    free = tailings_free_kt(model, knobs)
+    capacity_total = free + p("tsf.dam4_capacity_t") * p("tsf.dam4_fill_start") / 1000.0
+    rows, runs_out, missed, gold_total = [], None, None, 0.0
+    for year in range(first_year, first_year + years):
+        cap = capacities(model, knobs, centroid=centroid, free_kt=free)
+        others = {l: v for l, v in cap["caps"].items()
+                  if l != "tailings" and (l != "dewatering" or cap["dewatering_limiting"])}
+        link = min(others, key=lambda l: (others[l], LINKS.index(l)))
+        rate = others[link]
+        if free < rate:  # storage is the limit: only the free volume can be milled
+            rate, link = max(0.0, free), "tailings"
+            runs_out = runs_out or year
+        plant_rate = min(rate, cap["caps"]["plant"])
+        gold = gold_koz(model, plant_rate, knobs["grade_gpt"])
+        gold_total += gold
+        balance = water_balance(model, knobs, rate, plant_rate)
+        free = max(0.0, free - plant_rate)
+        if missed is None and rate < knobs["target_ktpa"]:
+            missed = year
+        rows.append({
+            "year": year, "achievable_ktpa": float(round(rate)), "binding_link": link,
+            "binding_link_name": LINK_RU[link], "centroid_m": round(centroid, 0),
+            "gold_koz": round(gold, 1), "gold_total_koz": round(gold_total, 1),
+            "tailings_stored_kt": float(round(capacity_total - free)),
+            "tailings_free_kt": float(round(free)),
+            "water_deficit_m3h": round(balance["deficit"], 1),
+        })
+        centroid -= rate * 1000.0 / p("dev.t_per_vm")
+    return {"rows": rows, "storage_runs_out_year": runs_out, "target_missed_year": missed}
+
+
+def links_table(model, knobs, cap):
+    rows = []
+    for link in LINKS:
+        knob = LINK_KNOB.get(link)
+        limiting = link != "dewatering" or cap["dewatering_limiting"]
+        row = {"id": link, "name": LINK_RU[link], "cap_ktpa": cap["caps"][link],
+               "limiting": limiting, "binding": link == cap["binding"], "knob": knob}
+        if knob:
+            row.update(stage=stage(knobs, knob), stage_max=KNOB_MAX[knob],
+                       detail=STAGE_RU[knob][stage(knobs, knob)])
+        else:
+            row["detail"] = f"запас насосов ×{ru_num(cap['dewatering_margin'], 2)}"
+        rows.append(row)
+    return rows
+
+
+EFFECT_KPIS = [
+    ("grade_gpt", "Содержание золота в руде", "г/т", 2),
+    ("recovery_pct", "Извлечение", "%", 2),
+    ("gold_koz_year", "Золото", "тыс. унц./год", 1),
+    ("air_supply_m3s", "Подача воздуха", "м³/с", 0),
+    ("air_demand_m3s", "Потребность в воздухе", "м³/с", 1),
+    ("water_deficit_m3h", "Дефицит воды", "м³/ч", 1),
+    ("discharge_m3h", "Сброс в ручей Волчевка", "м³/ч", 1),
+    ("tailings_years_left", "Запас хвостохранилищ", "лет", 1),
+    ("stockpile_days_left", "Запас рудного склада", "сут", 0),
+]
+
+
+def effects(model, before_knobs, after_knobs, label, revision):
+    """Before -> after of every capacity and KPI that the last change moved."""
+    if before_knobs is None:
+        return {"label": label, "revision": revision, "items": []}
+    before, after = capacities(model, before_knobs), capacities(model, after_knobs)
+    kb, ka = kpis(model, before_knobs, before), kpis(model, after_knobs, after)
+    items = []
+
+    def add(key, name, unit, digits, old, new, better_up=True):
+        if old is None or new is None:
+            if key == "stockpile_days_left" and old != new:
+                grows = new is None
+                items.append({
+                    "id": key, "name": name, "unit": unit, "before": old, "after": new,
+                    "trend": "better" if grows else "worse",
+                    "text": ("Рудный склад пополняется: фабрика перерабатывает меньше, чем выдаёт рудник"
+                             if grows else
+                             f"Рудный склад расходуется: запаса хватит на {ru_num(new)} сут"),
+                })
+            return
+        if round(old, digits) == round(new, digits):
+            return
+        delta = new - old
+        sign = "+" if delta > 0 else "−"
+        items.append({
+            "id": key, "name": name, "unit": unit, "before": old, "after": new,
+            "trend": "better" if (delta > 0) == better_up else "worse",
+            "text": f"{name}: {ru_num(old, digits)} → {ru_num(new, digits)} {unit} "
+                    f"({sign}{ru_num(abs(delta), digits)})",
+        })
+
+    if before["binding"] != after["binding"]:
+        items.append({
+            "id": "binding_link", "name": "Узкое место", "unit": "", "trend": "neutral",
+            "before": before["binding"], "after": after["binding"],
+            "text": f"Узкое место: {LINK_RU[before['binding']].lower()} → "
+                    f"{LINK_RU[after['binding']].lower()}",
+        })
+    add("achievable_ktpa", "Достижимая производительность", "тыс. т/год", 0,
+        before["achievable"], after["achievable"])
+    for link in LINKS:
+        if link == "dewatering" and not (before["dewatering_limiting"] or after["dewatering_limiting"]):
+            continue
+        if link == "dewatering" and before["dewatering_limiting"] != after["dewatering_limiting"]:
+            flooded = after["dewatering_limiting"]
+            items.append({
+                "id": "cap_dewatering_ktpa", "name": LINK_RU[link], "unit": "тыс. т/год",
+                "before": before["caps"][link], "after": after["caps"][link],
+                "trend": "worse" if flooded else "better",
+                "text": (f"Водоотлив: затоплены нижние горизонты, очистные блоки дают "
+                         f"{ru_num(after['caps'][link])} тыс. т/год" if flooded
+                         else "Водоотлив: затопление снято, звено не ограничивает"),
+            })
+            continue
+        add(f"cap_{link}_ktpa", LINK_RU[link], "тыс. т/год", 0,
+            before["caps"][link], after["caps"][link])
+    failed_before = stage(before_knobs, "pumps_failed_p150")
+    failed_after = stage(after_knobs, "pumps_failed_p150")
+    if failed_before != failed_after and 3 not in (failed_before, failed_after):
+        items.append({
+            "id": "pumps_available", "name": "Насосы станции гор. +150 м", "unit": "шт.",
+            "before": 3 - failed_before, "after": 3 - failed_after,
+            "trend": "worse" if failed_after > failed_before else "better",
+            "text": (f"Насосы станции гор. +150 м: исправных {3 - failed_before} → "
+                     f"{3 - failed_after}; производительность водоотлива сохранена за счёт резерва"),
+        })
+    lower_is_better = {"air_demand_m3s", "water_deficit_m3h", "discharge_m3h"}
+    for key, name, unit, digits in EFFECT_KPIS:
+        add(key, name, unit, digits, kb[key], ka[key], better_up=key not in lower_is_better)
+    if kb["dewatering_margin"] != ka["dewatering_margin"]:
+        add("dewatering_margin", "Запас производительности насосов", "крат", 2,
+            kb["dewatering_margin"], ka["dewatering_margin"])
+    return {"label": label, "revision": revision, "items": items}
+
+
+def calibration(model):
+    """Analytic checks of spec 2.9; simulator checks are listed without a value."""
+    p = model.p
+    rows = []
+
+    def row(cid, title, unit, reported, value, tolerance, passed, deviation=None,
+            deviation_unit="%", kind="analytic", source=""):
+        if deviation is None and value is not None and reported:
+            deviation = (value - reported) / reported * 100.0
+        rows.append({"id": cid, "title": title, "kind": kind, "unit": unit,
+                     "reported": reported, "model": value,
+                     "deviation": None if deviation is None else round(deviation, 2),
+                     "deviation_unit": deviation_unit, "tolerance": tolerance,
+                     "passed": passed, "source": source})
+
+    def gold(milled, grade):
+        return milled * grade * recovery_pct(model, grade) / 100.0 / p("gold.g_per_oz")
+
+    def within(value, reported, tol_pct):
+        return abs(value - reported) / reported * 100.0 <= tol_pct
+
+    for cid, title, key, source in (
+            ("C1", "Золото за 2025 финансовый год", "calib.c1", "факт B"),
+            ("C2", "Золото за 2024 финансовый год", "calib.c2", "факт B")):
+        value = gold(p(f"{key}.milled_t"), p(f"{key}.grade_gpt"))
+        tol = p(f"{key}.tol_pct")
+        row(cid, title, "унц.", p(f"{key}.reported_oz"), round(value),
+            f"±{ru_num(tol, 1)} %", within(value, p(f"{key}.reported_oz"), tol), source=source)
+    row("C3", "Руда, выданная на поверхность: симулятор, 60 суток, в пересчёте на год", "т/год",
+        p("calib.c3.reported_t"), None, f"±{ru_num(p('calib.c3.tol_pct'))} %", None,
+        kind="simulator", source="факт B")
+    for half, title in (("h1_2026", "Золото за I полугодие 2026 г."),
+                        ("h1_2025", "Золото за I полугодие 2025 г.")):
+        key = f"calib.c4.{half}"
+        value = gold(p(f"{key}.milled_t"), p(f"{key}.grade_gpt"))
+        tol = p("calib.c4.tol_pct")
+        row("C4", title, "унц.", p(f"{key}.reported_oz"), round(value), f"±{ru_num(tol, 1)} %",
+            within(value, p(f"{key}.reported_oz"), tol), source="факт D1")
+    for grade, reported in zip(p("calib.c5.grades_gpt"), p("calib.c5.reported_pct")):
+        value = recovery_pct(model, grade)
+        tol = p("calib.c5.tol_points")
+        row("C5", f"Извлечение при содержании {ru_num(grade, 2)} г/т", "%", reported,
+            round(value, 2), f"±{ru_num(tol, 2)} п.п.", abs(value - reported) <= tol,
+            deviation=value - reported, deviation_unit="п.п.", source="факт B, D1")
+    demand = p("vent.q_base") + p("vent.q_diesel") * fleet_kw(model, DEFAULT_KNOBS)
+    low, high = p("calib.c6.band_pct")
+    reported = p("calib.c6.reported_m3s")
+    row("C6", "Потребность в воздухе базового парка (пик)", "м³/с", reported, round(demand, 1),
+        f"{low}–{high} % от отчёта", low <= demand / reported * 100.0 <= high, source="факт A5")
+    half_demand = p("vent.q_base") + p("vent.q_diesel") * fleet_kw(model, DEFAULT_KNOBS) / 2.0
+    row("C7", "Потребность в воздухе при половине мощности парка", "м³/с",
+        p("calib.c7.reported_m3s"), round(half_demand, 1), f"±{ru_num(p('calib.c7.tol_pct'))} %",
+        within(half_demand, p("calib.c7.reported_m3s"), p("calib.c7.tol_pct")), source="факт A5")
+    row("C8", "Переработка руды: симулятор, 60 суток, в пересчёте на год", "т/год",
+        p("calib.c8.reported_t"), None, f"±{ru_num(p('calib.c8.tol_pct'))} %", None,
+        kind="simulator", source="факт B2")
+    sludge = p("water.inflow_m3h") * 8760 * p("pond.tss_in_mgl") * p("pond.efficiency") / 1e6
+    row("C9", "Осадок илоотстойников при притоке 197 м³/ч", "т/год", p("calib.c9.reported_t_yr"),
+        round(sludge, 1), f"±{ru_num(p('calib.c9.tol_pct'))} %",
+        within(sludge, p("calib.c9.reported_t_yr"), p("calib.c9.tol_pct")), source="факт A6")
+    demand_water = (p("water.site_m3_per_t") + p("water.plant_m3_per_t")) * p("plant.nameplate_ktpa")
+    row("C10", "Водный баланс при 1 000 тыс. т/год: площадка и фабрика", "тыс. м³/год",
+        p("calib.c10.reported_kth_m3yr"), round(demand_water, 2),
+        f"±{ru_num(p('calib.c10.tol_pct'), 1)} %",
+        within(demand_water, p("calib.c10.reported_kth_m3yr"), p("calib.c10.tol_pct")),
+        source="факт A6")
+    row("C11", "Баланс массы за 60 суток: выдано = склад + переработано; переработано = хвосты",
+        "%", None, None, f"±{ru_num(p('calib.c11.tol_pct'), 1)} %", None, kind="simulator",
+        source="тождество")
+    gold_2000 = gold(p("calib.c12.target_ktpa") * 1000.0, p("plant.grade_base"))
+    row("C12", "Золото при 2,0 млн т/год и содержании 2,05 г/т", "унц./год",
+        p("calib.c12.min_oz"), round(gold_2000), "не менее отчётного",
+        gold_2000 > p("calib.c12.min_oz"), source="факт B2")
+    return rows
+
+
+def build_report(model, knobs, before_knobs=None, revision=0, label="Базовый режим",
+                 sim_time=None):
+    """Advisor report in the shape served by GET /api/advisor."""
+    cap = capacities(model, knobs)
+    steps, _, _ = plan(model, knobs, knobs["target_ktpa"])
+    report = {
+        "report_revision": revision, "label": label, "sim_time": sim_time,
+        "target_ktpa": knobs["target_ktpa"], "achievable_ktpa": cap["achievable"],
+        "binding_link": cap["binding"], "binding_link_name": LINK_RU[cap["binding"]],
+        "target_reached": cap["achievable"] >= knobs["target_ktpa"],
+        "links": links_table(model, knobs, cap),
+        "next_measure": steps[0] if steps else None,
+        "measures_needed": len(steps), "sequence": steps,
+        "kpi": kpis(model, knobs, cap),
+        "sustainable_baseline": {
+            "ktpa": capacities(model, DEFAULT_KNOBS)["achievable"],
+            "gold_koz_year": round(gold_koz(model, capacities(model, DEFAULT_KNOBS)["achievable"],
+                                            model.p("plant.grade_base")), 1)},
+        "ladder": ladder(model, knobs),
+        "projection": projection(model, knobs),
+        "effects": effects(model, before_knobs, knobs, label, revision),
+        "calibration": calibration(model),
+    }
+    return report
+
+
+def advisor_features(report):
+    """Features of kz.sekis:advisor (spec 3.4) taken from a report."""
+    caps = {row["id"]: row for row in report["links"]}
+    nxt = report["next_measure"]
+    kpi = report["kpi"]
+    features = {
+        "binding_link": report["binding_link"],
+        "next_measure": ("none" if not nxt else
+                         "restore_pumps" if nxt["link"] == "dewatering" else next(iter(nxt["set"]))),
+        "measures_needed": float(report["measures_needed"]),
+        "target_ktpa": report["target_ktpa"], "achievable_ktpa": report["achievable_ktpa"],
+        "dewatering_margin": kpi["dewatering_margin"],
+        "report_revision": float(report["report_revision"]),
+    }
+    for link in LINKS:
+        row = caps[link]
+        features[f"cap_{link}_ktpa"] = row["cap_ktpa"] if row["limiting"] else 0.0
+    for key in ("gold_koz_year", "gold_gain_koz_year", "air_demand_m3s", "water_deficit_m3h",
+                "discharge_m3h", "tailings_years_left", "stockpile_days_left"):
+        features[key] = float(kpi[key] or 0.0)
+    return features
+
+
+# ----------------------------------------------------------------- the state
+
+def base_state(model):
+    """State skeleton from the registry: static part and baseline features."""
+    things = {}
+    for thing in model.registry["things"]:
+        attrs = thing["attributes"]
+        things[thing["thingId"]] = {
+            "kind": attrs["kind"], "name": attrs["name"], "parent": attrs.get("_parents"),
+            "attrs": attrs, "f": dict(model.baseline[thing["thingId"]]),
+        }
+    return {"sim_time": model.p("sim.epoch"), "revision": 0, "things": things}
+
+
+def sim_clock(model, sim_s):
+    epoch = datetime.datetime.fromisoformat(model.p("sim.epoch"))
+    now = epoch + datetime.timedelta(seconds=sim_s)
+    hour = now.hour + now.minute / 60.0
+    p = model.p
+    if p("regime.shift_a_start_h") <= hour < p("regime.shift_a_end_h"):
+        shift = "A"
+    elif hour >= p("regime.shift_b_start_h") or hour < p("regime.shift_b_end_h"):
+        shift = "B"
+    else:
+        shift = "blast"
+    # Hours worked since the day started at 08:00, without the blast windows.
+    since = (hour - 8.0) % 24.0
+    worked = min(since, 11.0) + max(0.0, min(since, 23.0) - 12.0)
+    return now.replace(microsecond=0).isoformat(), shift, hour, worked
+
+
+def lerp3(a, b, t):
+    return tuple(a[i] + (b[i] - a[i]) * t for i in range(3))
+
+
+def along(points, t):
+    """Point at fraction t (0..1) of the length of a polyline."""
+    lengths = [math.dist(points[i], points[i + 1]) for i in range(len(points) - 1)]
+    left = max(0.0, min(1.0, t)) * sum(lengths)
+    for i, length in enumerate(lengths):
+        if left <= length or i == len(lengths) - 1:
+            return lerp3(points[i], points[i + 1], left / length if length else 0.0)
+        left -= length
+    return tuple(points[-1])
+
+
+class Paths:
+    """Where mobile units are drawn: from model/geometry.json when it is there and
+    has the expected shape, otherwise from the schematic constants above."""
+
+    def __init__(self, model, model_dir=MODEL_DIR):
+        self.model = model
+        self.declines, self.roads, self.objects = {}, {}, {}
+        try:
+            geometry = load_json(os.path.join(model_dir, "geometry.json"))
+            self.objects = geometry["objects"]
+            for token in ("tu1", "tu2"):
+                self.declines[token] = [tuple(pt) for pt in
+                                        self.objects[f"{NS}decline-{token}"]["points"]]
+                self.roads[token] = [tuple(pt) for pt in
+                                     geometry["scenery"][f"road-{token}"]["points"]]
+        except (OSError, ValueError, KeyError, TypeError):
+            self.declines, self.roads, self.objects = {}, {}, {}
+
+    def decline(self, token, elevation):
+        """Point of a decline at an elevation: (x, y, z)."""
+        points = self.declines.get(token)
+        if points:
+            for a, b in zip(points, points[1:]):
+                if a[1] >= elevation >= b[1] and a[1] != b[1]:
+                    return lerp3(a, b, (a[1] - elevation) / (a[1] - b[1]))
+        even, odd = DECLINE_X[token]
+        k = math.floor(elevation / 50.0)
+        frac = elevation / 50.0 - k
+        a, b = (even, odd) if k % 2 == 0 else (odd, even)
+        return (a + (b - a) * frac, elevation, DECLINE_Z[token])
+
+    def road(self, token, t):
+        """Point of the surface haul road, t = 0 at the portal, 1 at the ROM pad."""
+        points = self.roads.get(token)
+        if points:
+            return along(points, t)
+        portal = self.decline(token, self.model.p(f"decline.{token}.portal_m"))
+        return lerp3(portal, ROM_PAD, t)
+
+    def level_route(self, token, stope, t):
+        """Point between the decline access (t = 0) and the stope draw point (t = 1)."""
+        attrs = self.model.attrs
+        level = float(attrs[attrs[stope]["link_level"][len(NS):]]["elevation_m"])
+        access = self.decline(token, level)
+        x = STOPE_X[stope[-1]]
+        draw = (self.objects.get(NS + stope) or {}).get("draw_point") or (x, level, DRAW_Z)
+        return along([access, (access[0], level, DRIVE_Z), (draw[0], level, DRIVE_Z),
+                      tuple(draw)], t)
+
+    def stope(self, stope):
+        return self.level_route("tu1", stope, 1.0)
+
+    def parking(self, name, fallback):
+        centre = (self.objects.get(NS + name) or {}).get("center")
+        return tuple(centre) if centre else fallback
+
+
+def sawtooth(sim_h, inflow, pump, low, high, volume):
+    """Sump level, pumping flag and hours to the next start for a fill/drain cycle."""
+    if inflow <= 0:
+        return low, False, 0.0
+    span = (high - low) / 100.0 * volume
+    fill_h = span / inflow
+    drain_h = span / max(1.0, pump - inflow)
+    t = sim_h % (fill_h + drain_h)
+    if t < fill_h:
+        return low + (high - low) * t / fill_h, False, (100.0 - low) / 100.0 * volume / inflow - t
+    return high - (high - low) * (t - fill_h) / drain_h, True, 0.0
+
+
+def held_by_ventilation(model, knobs, cap):
+    """Units held by the ventilation rule of spec 2.6, in holding order."""
+    p = model.p
+    trucks, lhds = active_trucks(knobs), active_lhds(knobs)
+    kw = cap["fleet_kw"]
+    budget = cap["allowed_kw"]
+    held = []
+    step = 0
+    while kw > budget:
+        take_lhd = step % 3 == 2
+        pool = lhds if take_lhd else trucks
+        floor = p("vent.min_active_lhd") if take_lhd else p("vent.min_active_trucks")
+        if len(pool) <= floor:
+            other = trucks if take_lhd else lhds
+            other_floor = p("vent.min_active_trucks") if take_lhd else p("vent.min_active_lhd")
+            if len(other) <= other_floor:
+                break
+            pool = other
+        unit = pool.pop()
+        held.append(unit)
+        kw -= model.attrs[unit]["engine_kw"]
+        step += 1
+    return held, kw
+
+
+def build_state(model, base, knobs, revision=0, label="Базовый режим", sim_s=FIXTURE_START_S,
+                report=None, paths=None):
+    """Full state for GET /api/state at a knob set and a simulated time."""
+    p = model.p
+    paths = paths or Paths(model)
+    attrs = model.attrs
+    report = report or build_report(model, knobs, revision=revision, label=label)
+    cap = capacities(model, knobs)
+    # The static part comes from the base state; every feature starts from its
+    # registry baseline, so nothing of an earlier moment leaks into this one.
+    things = {tid: {"kind": t["kind"], "name": t["name"], "parent": t["parent"],
+                    "attrs": t["attrs"], "f": dict(model.baseline.get(tid, t["f"]))}
+              for tid, t in base["things"].items()}
+
+    def f(name):
+        return things[NS + name]["f"]
+
+    sim_time, shift, hour, worked_h = sim_clock(model, sim_s)
+    sim_h = sim_s / 3600.0
+    sim_min = sim_s / 60.0
+    sim_day = sim_s / 86400.0
+    working = shift != "blast"
+    flooded = cap["flooded"]
+    grade_factor = knobs["grade_gpt"] / p("plant.grade_base")
+    held, kw_running = held_by_ventilation(model, knobs, cap)
+
+    # ---- stopes
+    producing = producing_stopes(knobs)
+    stope_state = {}
+    for name in [n for n in attrs if n.startswith("stp-")]:
+        level = "lvl-" + name.split("-")[1]
+        st = f(name)
+        st["grade"] = round(attrs[name]["grade_gpt"] * grade_factor, 2)
+        if level in flooded:
+            state = "flooded"
+        elif name in producing:
+            index = producing.index(name)
+            since_blast = (sim_h - 8.0 - 12.0 * index) % 48.0
+            blasts = int((sim_h - 8.0 - 12.0 * index) // 48.0) + 1
+            st["ore_remaining_t"] = round(max(0.0, attrs[name]["ore_initial_t"]
+                                              - max(0, blasts) * p("stope.blast_t")), 1)
+            st["broken_ore_t"], st["drilled_pct"] = 0.0, 0.0
+            if since_blast < 0.5:
+                state, st["broken_ore_t"] = "ventilating", p("stope.blast_t")
+            elif since_blast < 24.0:
+                state = "mucking"
+                st["broken_ore_t"] = round(p("stope.blast_t") * (24.0 - since_blast) / 23.5, 1)
+                st["mucked_today_t"] = round(p("stope.blast_t") - st["broken_ore_t"], 1)
+            elif since_blast < 40.0:
+                state, st["drilled_pct"] = "drilling", round((since_blast - 24.0) / 16.0 * 100.0, 1)
+            elif since_blast < 45.0:
+                state, st["drilled_pct"] = "charging", 100.0
+            else:
+                state, st["drilled_pct"] = "awaiting_blast", 100.0
+        elif name.startswith("stp-m050"):
+            state = "preparation"
+        elif name.startswith("stp-m100"):
+            state = "planned"
+        else:
+            state = "standby"
+        st["state"] = state
+        stope_state[name] = state
+
+    # ---- LHDs and rigs
+    lhd_stope = {}
+    for index, name in enumerate(sorted(n for n in attrs if n.startswith("lhd-"))):
+        unit = f(name)
+        active = name in active_lhds(knobs) or name in held
+        stope = producing[index] if index < len(producing) else None
+        if not active or stope is None:
+            x, y, z = paths.parking(name, (-300.0 + 12.0 * index, 430.0, -200.0))
+            unit.update(state="parked", stope="none", pos_x=x, pos_y=y, pos_z=z)
+            continue
+        x, y, z = paths.stope(stope)
+        unit.update(stope=stope, pos_x=x, pos_y=y, pos_z=z)
+        if stope_state[stope] == "flooded":      # pulled back to the level drive, engine off
+            x, y, z = paths.level_route("tu1", stope, 0.6)
+            unit.update(state="idle", pos_x=x, pos_y=y, pos_z=z)
+        elif name in held:
+            unit["state"] = "standby_vent"
+            things[NS + stope]["f"]["state"] = stope_state[stope] = "standby"
+        elif not working:
+            unit.update(state="shift_break", tonnes_today=round(140.0 * worked_h, 1))
+        else:
+            unit.update(state="mucking" if stope_state[stope] == "mucking" else "idle",
+                        tonnes_today=round(140.0 * worked_h, 1))
+            lhd_stope[stope] = name
+    drilling = [s for s in producing if stope_state[s] == "drilling"]
+    for index, name in enumerate(sorted(n for n in attrs if n.startswith("rig-"))):
+        unit = f(name)
+        x, y, z = paths.parking(name, (-300.0 + 12.0 * index, 430.0, -180.0))
+        if name not in active_rigs(knobs):
+            unit.update(state="parked", stope="none", pos_x=x, pos_y=y, pos_z=z)
+        elif index < len(drilling):
+            x, y, z = paths.stope(drilling[index])
+            unit.update(state="drilling" if working else "shift_break", stope=drilling[index],
+                        pos_x=x + 30.0, pos_y=y, pos_z=z, metres_today=round(22.0 * worked_h, 1))
+        else:   # between stopes, on the drive of the level of the next block
+            home = producing[index % len(producing)]
+            x, y, z = paths.level_route("tu1", home, 0.5)
+            unit.update(state="tramming" if working else "shift_break", stope="none",
+                        pos_x=x, pos_y=y, pos_z=z, metres_today=round(9.0 * worked_h, 1))
+
+    # ---- trucks
+    running = [t for t in active_trucks(knobs)]
+    by_decline = {"tu1": [], "tu2": []}
+    for name in running:
+        by_decline[truck_decline(model, knobs, name)].append(name)
+    stats = {d: {"on_ramp": 0, "waiting": 0, "trips": 0.0, "tonnes": 0.0, "cycles": []}
+             for d in by_decline}
+    level_kw = {}
+    mucking = [s for s in producing if stope_state[s] == "mucking"] or \
+              [s for s in producing if stope_state[s] != "flooded"]
+    for index, name in enumerate(sorted(n for n in attrs if n.startswith("truck-"))):
+        unit = f(name)
+        info = attrs[name]
+        if name not in running and name not in held:
+            x, y, z = paths.parking(name, (-320.0 + 14.0 * index, 430.0, -220.0))
+            unit.update(state="parked", payload=0.0, grade=0.0, speed=0.0, decline="none",
+                        chainage_m=0.0, elevation=y, pos_x=x, pos_y=y, pos_z=z)
+            continue
+        decline = truck_decline(model, knobs, name)
+        portal = p(f"decline.{decline}.portal_m")
+        bottom = p(f"decline.{decline}.bottom_m")
+        reachable = [s for s in mucking if attrs[attrs[s]["link_level"][len(NS):]]["elevation_m"] >= bottom]
+        peers = by_decline[decline]
+        slot = peers.index(name) if name in peers else 0
+        if name in held or not working or not reachable:
+            # Waiting on the haul road just outside the portal, one behind another.
+            x, y, z = paths.road(decline, 0.03 + 0.03 * index)
+            unit.update(state="held_vent" if name in held else "shift_break", payload=0.0,
+                        grade=0.0, speed=0.0, decline="none", chainage_m=0.0, elevation=round(y, 1),
+                        pos_x=round(x, 1), pos_y=round(y, 1), pos_z=round(z, 1))
+            continue
+        stope = reachable[slot % len(reachable)]
+        level_z = float(attrs[attrs[stope]["link_level"][len(NS):]]["elevation_m"])
+        length = ramp_km(model, decline, level_z)
+        surface = p(f"decline.{decline}.surface_km")
+        payload = float(info["payload_t"])
+        ore_grade = things[NS + stope]["f"]["grade"]
+        v = {k: p(f"truck.speed_{k}_kmh") for k in ("up_loaded", "down_empty", "flat_loaded", "flat_empty")}
+        segments = [
+            ("surface_haul", 60 * surface / v["flat_empty"], False, v["flat_empty"]),
+            ("descending", 60 * length / v["down_empty"], False, v["down_empty"]),
+            ("tram_level", 0.75, False, 8.0),
+            ("queue_load", 0.5, False, 0.0),
+            ("loading", p("truck.load_min"), True, 0.0),
+            ("tram_level", 0.75, True, 8.0),
+            ("hauling_up", 60 * length / v["up_loaded"], True, v["up_loaded"]),
+            ("surface_haul", 60 * surface / v["flat_loaded"], True, v["flat_loaded"]),
+            ("dumping", p("truck.dump_min"), True, 0.0),
+        ]
+        total = sum(seg[1] for seg in segments)
+        phase = (sim_min + total * slot / max(1, len(peers))) % total
+        number = 0
+        for number, seg in enumerate(segments):
+            if phase < seg[1]:
+                break
+            phase -= seg[1]
+        state, duration, loaded, speed = segments[number]
+        frac = phase / duration if duration else 0.0
+        elevation, chainage = portal, 0.0
+        if number == 0:
+            pos = paths.road(decline, 1.0 - frac)
+        elif number == 1:
+            elevation = portal - (portal - level_z) * frac
+            pos = paths.decline(decline, elevation)
+            if len(peers) >= 4 and 0.45 < frac < 0.55:
+                state, speed = "waiting_bay", 0.0
+                stats[decline]["waiting"] += 1
+        elif number in (2, 3, 4, 5):
+            elevation = level_z
+            t = frac if number == 2 else 1.0 - frac if number == 5 else 1.0
+            pos = paths.level_route(decline, stope, t)
+        elif number == 6:
+            elevation = level_z + (portal - level_z) * frac
+            pos = paths.decline(decline, elevation)
+        elif number == 7:
+            pos = paths.road(decline, frac)
+        else:
+            pos = paths.road(decline, 1.0)
+        if number in (0, 7, 8):
+            elevation = pos[1]
+        if number in (1, 6):
+            stats[decline]["on_ramp"] += 1
+        if 1 <= number <= 6:
+            chainage = ramp_km(model, decline, elevation) * 1000.0
+            level = attrs[stope]["link_level"][len(NS):]
+            level_kw[level] = level_kw.get(level, 0.0) + info["engine_kw"]
+        trips = math.floor(worked_h * 60.0 / (total / 0.81))
+        stats[decline]["trips"] += trips
+        stats[decline]["tonnes"] += trips * payload
+        stats[decline]["cycles"].append(total / 0.81)
+        if state == "loading" and stope in lhd_stope:
+            f(lhd_stope[stope])["state"] = "loading_truck"
+        unit.update(state=state, payload=payload if loaded and number != 4 else
+                    round(payload * frac, 1) if number == 4 else 0.0,
+                    grade=ore_grade if loaded else 0.0, speed=speed,
+                    decline=decline if 1 <= number <= 6 else "none",
+                    chainage_m=round(chainage, 1), elevation=round(elevation, 1),
+                    pos_x=round(pos[0], 1), pos_y=round(pos[1], 1), pos_z=round(pos[2], 1),
+                    trips_today=float(trips), tonnes_today=trips * payload)
+    for decline, data in stats.items():
+        d = f(f"decline-{decline}")
+        d.update(state="closed" if stage(knobs, f"{decline}_closed") else "open",
+                 trucks_on_ramp=float(data["on_ramp"]), trucks_waiting_in_bays=float(data["waiting"]),
+                 loaded_trips_today=float(data["trips"]), ore_today_t=float(data["tonnes"]),
+                 avg_cycle_min=round(sum(data["cycles"]) / len(data["cycles"]), 1) if data["cycles"] else 0.0)
+
+    # ---- throughput
+    rate = cap["achievable"]                      # mine, kt/yr
+    mined_tpd = rate * 1000.0 / p("regime.working_days")
+    productive_h = p("regime.shifts") * p("regime.productive_h")
+    hoisted_tph = mined_tpd / productive_h if working else 0.0
+
+    # ---- ventilation
+    supply = cap["air_supply"]
+    demand = p("vent.q_base") + p("vent.q_diesel") * kw_running
+    m_vent = stage(knobs, "m_vent")
+    fan_state = {
+        "fan-vs1": "running", "fan-ug-p320": "running",
+        "fan-vs2": "failed" if stage(knobs, "fan_vs2_off") else "running",
+        "fan-vpv": "running" if m_vent >= 1 else "planned",
+        "fan-vs3": "running" if m_vent >= 2 else "planned",
+    }
+    for name, state in fan_state.items():
+        duty = float(attrs[name]["duty_m3s"]) if state == "running" else 0.0
+        f(name).update(state=state, air_flow_m3s=duty,
+                       pressure=float(attrs[name]["pressure_pa"]) if duty else 0.0,
+                       power_kw=round(duty * attrs[name]["pressure_pa"] / p("vent.fan_efficiency") / 1000.0, 1))
+    airway_flow = {
+        "shaft-vs1": f("fan-vs1")["air_flow_m3s"], "shaft-vs2": f("fan-vs2")["air_flow_m3s"],
+        "shaft-vs3": f("fan-vs3")["air_flow_m3s"], "raise-vpv": f("fan-vpv")["air_flow_m3s"],
+        "raise-vhv-tu1": f("fan-ug-p320")["air_flow_m3s"] / 2.0,
+        "raise-vhv-tu2": f("fan-ug-p320")["air_flow_m3s"] / 2.0,
+        "raise-vhv-exhaust": supply,
+    }
+    for name, flow in airway_flow.items():
+        planned = (name == "shaft-vs3" and m_vent < 2) or (name == "raise-vpv" and m_vent < 1)
+        f(name).update(state="planned" if planned else "in_service", air_flow_m3s=round(flow, 1),
+                       air_velocity_ms=round(flow / attrs[name]["section_m2"], 1))
+    levels = sorted(n for n in attrs if n.startswith("lvl-"))
+    open_levels = [n for n in levels if attrs[n]["role"] != "planned"]
+    for stope, lhd in lhd_stope.items():
+        level = attrs[stope]["link_level"][len(NS):]
+        level_kw[level] = level_kw.get(level, 0.0) + attrs[lhd]["engine_kw"]
+    required = {n: p("vent.q_base") / len(open_levels) + p("vent.q_diesel") * level_kw.get(n, 0.0)
+                for n in open_levels}
+    total_required = sum(required.values())
+    inflow = cap["inflow_m3h"]
+    upper = [n for n in open_levels if attrs[n]["elevation_m"] >= 150]
+    for name in levels:
+        lv = f(name)
+        own = [s for s in producing if attrs[s]["link_level"] == NS + name]
+        lv["state"] = "flooded" if name in flooded else attrs[name]["role"]
+        if name in required:
+            share = p("water.upper_share") / len(upper) if name in upper else \
+                (1 - p("water.upper_share")) / (len(open_levels) - len(upper))
+            lv.update(air_required_m3s=round(required[name], 1),
+                      air_flow_m3s=round(supply * required[name] / total_required, 1),
+                      diesel_kw=float(level_kw.get(name, 0.0)),
+                      water_inflow_m3h=round(inflow * share, 1),
+                      active_stopes=float(sum(1 for s in own if stope_state[s] not in ("flooded", "standby"))),
+                      ore_today_t=round(sum(things[NS + s]["f"]["mucked_today_t"] for s in own), 1))
+
+    # ---- dewatering
+    failed = stage(knobs, "pumps_failed_p150")
+    low_inflow = inflow * (1 - p("water.upper_share"))
+    high_inflow = inflow * p("water.upper_share") + low_inflow
+    dead = failed >= 3
+
+    def pump_kw(flow, head):
+        return round(1000 * 9.81 * flow / 3600.0 * head * p("water.pump_head_factor")
+                     / p("water.pump_efficiency") / 1000.0, 1)
+
+    m050 = f("ps-m050")
+    if dead:
+        m050.update(state="alarm_high", inflow_m3h=round(low_inflow, 1), pumped_m3h=0.0,
+                    sump_level_pct=100.0, pumps_running=0.0, pumps_available=2.0, power_kw=0.0,
+                    hours_to_overflow=0.0)
+    else:
+        unit = p("water.ps_m050.pump_m3h")
+        pump = unit if low_inflow < unit else 2 * unit
+        level, on, hours = sawtooth(sim_h, low_inflow, pump, p("water.ps_m050.stop_pct"),
+                                    p("water.ps_m050.start1_pct"), p("water.ps_m050.sump_m3"))
+        m050.update(state="pumping" if on else "idle", inflow_m3h=round(low_inflow, 1),
+                    pumped_m3h=float(pump) if on else 0.0, sump_level_pct=round(level, 1),
+                    pumps_running=float(pump / unit) if on else 0.0, pumps_available=2.0,
+                    power_kw=pump_kw(pump, p("water.head_ps_m050_m")) if on else 0.0,
+                    hours_to_overflow=round(hours, 1))
+    p150 = f("ps-p150")
+    if dead:
+        p150.update(state="failed", inflow_m3h=round(high_inflow, 1), pumped_m3h=0.0,
+                    sump_level_pct=100.0, pumps_running=0.0, pumps_available=0.0, power_kw=0.0,
+                    hours_to_overflow=0.0)
+    else:
+        unit = p("water.ps_p150.pump_m3h")
+        two = high_inflow >= unit
+        pump = 2 * unit if two else unit
+        high = p("water.ps_p150.start2_pct") if two else p("water.ps_p150.start1_pct")
+        level, on, hours = sawtooth(sim_h + 0.7, high_inflow, pump, p("water.ps_p150.stop_pct"),
+                                    high, p("water.ps_p150.sump_m3"))
+        p150.update(state="pumping" if on else "idle", inflow_m3h=round(high_inflow, 1),
+                    pumped_m3h=float(pump) if on else 0.0, sump_level_pct=round(level, 1),
+                    pumps_running=float(pump / unit) if on else 0.0,
+                    pumps_available=float(p("water.ps_p150.pumps") - failed),
+                    power_kw=pump_kw(pump, p("water.head_ps_p150_m")) if on else 0.0,
+                    hours_to_overflow=round(hours, 1))
+    f("ps-m200")["state"] = "planned"
+    flood_volume = 1800.0 if dead else 0.0
+
+    # ---- plant, stockpile, tailings
+    down = stage(knobs, "line_down")
+    plant_cap = cap["caps"]["plant"]
+    _, balance, water_factor = plant_running(model, knobs, cap)
+    feed = 0.0
+    lines_running = 0
+    for number in range(1, 7):
+        line = f(f"plant-line-{number}")
+        rated = line_rated_tph(model, knobs, number)
+        if rated <= 0:
+            line.update(state="planned", feed_tph=0.0, utilisation_pct=0.0, milled_today_t=0.0)
+        elif number == down:
+            line.update(state="off", feed_tph=0.0, utilisation_pct=0.0, milled_today_t=0.0)
+        else:
+            tph = rated * water_factor
+            line.update(state="water_limited" if water_factor < 0.999 else "running",
+                        feed_tph=round(tph, 2), utilisation_pct=round(100.0 * water_factor, 1),
+                        milled_today_t=round(tph * ((hour - 8.0) % 24.0), 1))
+            feed += tph
+            lines_running += 1
+    feed_grade = round(knobs["grade_gpt"], 2)
+    recovery = recovery_pct(model, feed_grade)
+    gold_day = (feed * 24.0 * p("plant.availability") * feed_grade * recovery / 100.0
+                / p("gold.g_per_oz"))
+    f("plant").update(state="water_limited" if water_factor < 0.999 else "running",
+                      feed_tph=round(feed, 1), feed_grade=feed_grade,
+                      recovery_pct=round(recovery, 2), gold_poured_oz_day=round(gold_day, 1),
+                      capacity_ktpa=plant_cap, lines_running=float(lines_running),
+                      water_demand_m3h=round(p("water.plant_m3_per_t") * feed, 1),
+                      tailings_tph=round(feed, 1))
+    milled_tpd = feed * 24.0 * p("plant.availability")   # planned maintenance averaged
+    stock = max(0.0, p("stockpile.start_t") + (mined_tpd - milled_tpd) * sim_day)
+    draw = milled_tpd - mined_tpd
+    f("rom-stockpile").update(
+        state="empty" if stock < p("plant.min_stockpile_t") else "low" if stock < 5000 else "normal",
+        tonnes=round(stock), grade=feed_grade, inflow_tph=round(hoisted_tph, 1),
+        outflow_tph=round(feed, 1), days_of_feed=round(stock / draw, 1) if draw > 1 else 0.0)
+    milled_total = milled_tpd * sim_day
+    remaining = milled_total
+    free_total = 0.0
+    stored_total = 0.0
+    active_dam = None
+    for name in DAM_ORDER:
+        dam = f(name)
+        capacity = float(attrs[name]["capacity_t"])
+        start = capacity * p("tsf.dam4_fill_start") if name == "tsf-dam4" else \
+            capacity - p("tsf.dam23_free_t") if name in ("tsf-dam2", "tsf-dam3") else 0.0
+        built = name != "tsf-cell5" or stage(knobs, "m_tailings")
+        added = min(remaining, capacity - start) if built else 0.0
+        remaining -= added
+        stored = start + added
+        is_full = stored >= capacity - 1.0
+        if not built:
+            state = "planned"
+        elif is_full:
+            state = "full"
+        elif active_dam is None:
+            state, active_dam = "active", name
+        else:
+            state = "standby"
+        dam.update(state=state, stored_t=round(stored), fill_pct=round(100.0 * stored / capacity, 1),
+                   free_capacity_t=round(capacity - stored) if built else 0.0,
+                   inflow_tph=round(feed, 1) if state == "active" else 0.0)
+        if built:
+            free_total += capacity - stored
+        stored_total += stored
+    years_left = free_total / (milled_tpd * p("regime.plant_days")) if milled_tpd else 0.0
+    f("tailings").update(
+        state="full" if free_total <= 0 else "short_horizon" if years_left < p("tsf.min_years") else "ok",
+        stored_t=round(stored_total), free_capacity_t=round(free_total), inflow_tpd=round(milled_tpd),
+        years_left=round(years_left, 1), reclaim_m3h=round(balance["reclaim"], 1))
+
+    # ---- water
+    f("water").update(
+        state="deficit" if balance["deficit"] > 0.5 else
+        "discharge_over_permit" if balance["discharge"] > p("water.permit_m3h") else "balanced",
+        mine_water_m3h=round(balance["mine_water"], 1), site_use_m3h=round(balance["site_use"], 1),
+        plant_supply_m3h=round(balance["plant_supply"] - balance["deficit"], 1),
+        reclaim_m3h=round(balance["reclaim"], 1), extra_intake_m3h=round(balance["extra_intake"], 1),
+        deficit_m3h=round(balance["deficit"], 1), discharge_m3h=round(balance["discharge"], 1))
+    flow = balance["mine_water"]
+    retention = p("pond.volume_m3") / 2.0 / flow if flow else 0.0
+    tss_out = p("pond.tss_in_mgl") * (1 - p("pond.efficiency") * min(1.0, 2 * retention / p("pond.settling_h")))
+    for name in ("pond-upper", "pond-lower"):
+        f(name).update(state="in_service", inflow_m3h=round(flow, 1), retention_h=round(retention, 1),
+                       tss_in_mgl=p("pond.tss_in_mgl"), tss_out_mgl=round(tss_out, 2),
+                       sludge_t_year=round(flow * 8760 * p("pond.tss_in_mgl") * p("pond.efficiency") / 1e6 / 2.0, 1))
+    use = 100.0 * balance["discharge"] / p("water.permit_m3h")
+    f("mon-volchevka").update(
+        state="exceeded" if use > 100 else "warning" if use > p("water.permit_warning_pct") else "normal",
+        discharge_m3h=round(balance["discharge"], 1), intake_m3h=0.0, tss_mgl=round(tss_out, 2),
+        permit_use_pct=round(use, 1))
+    f("mon-sekisovka").update(state="normal", discharge_m3h=0.0,
+                              intake_m3h=round(balance["extra_intake"], 1), tss_mgl=0.0,
+                              permit_use_pct=0.0)
+
+    # ---- mine, enterprise, scenario, advisor
+    pumped_now = p150["pumped_m3h"]
+    f("mine").update(
+        state="blast_window" if not working else "restricted_air" if held else "production",
+        ore_hoisted_tph=round(hoisted_tph, 1), ore_hoisted_today_t=round(mined_tpd * worked_h / 22.0),
+        ore_hoisted_total_t=round(mined_tpd * sim_day),
+        trucks_active=float(len([t for t in running if t not in held])),
+        diesel_kw_active=float(kw_running),
+        air_supply_m3s=supply, air_demand_m3s=round(demand, 1),
+        air_margin_pct=round(100.0 * (supply - demand) / demand, 1),
+        units_held_vent=float(len(held)), inflow_m3h=round(inflow, 1), pumped_m3h=pumped_now,
+        flood_volume_m3=flood_volume)
+    f("enterprise").update(
+        sim_time=sim_time, sim_day=round(sim_day, 3), shift=shift,
+        ore_mined_tpd=round(mined_tpd), ore_milled_tpd=round(milled_tpd),
+        gold_poured_oz_day=round(gold_day, 1), gold_poured_total_oz=round(gold_day * sim_day),
+        annual_rate_ktpa=rate, binding_link=cap["binding"])
+    scenario = f("scenario")
+    scenario.update({knob: float(value) for knob, value in knobs.items()})
+    scenario.update(revision=float(revision), label=label)
+    f("advisor").update(advisor_features(report))
+    for thing in things.values():   # every number in features is a JSON float
+        for key, value in thing["f"].items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                thing["f"][key] = float(value)
+    return {"sim_time": sim_time, "revision": int(revision), "label": label, "things": things}
+
+
+def write_files():
+    model = Model()
+    base = base_state(model)
+    report = build_report(model, DEFAULT_KNOBS, sim_time=sim_clock(model, FIXTURE_START_S)[0])
+    state = build_state(model, base, DEFAULT_KNOBS, report=report)
+    print("positions from model/geometry.json" if Paths(model).declines
+          else "positions from the built-in schematic (model/geometry.json not usable)")
+    for path, data in ((STATE_FILE, state), (ADVISOR_FILE, report)):
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=1)
+            handle.write("\n")
+        print(f"written {path}")
+
+
+if __name__ == "__main__":
+    if "--write" in sys.argv:
+        write_files()
+    else:
+        print(__doc__)

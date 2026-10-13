@@ -1,0 +1,47 @@
+/* Design tokens of the Stand. The views (3D scene, long section) read the same
+   custom properties, so that a state has one colour everywhere on the page. */
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg: #0b1016;
+  --surface: #121921;
+  --surface-2: #18212b;
+  --surface-3: #202b37;
+  --line: #273341;
+  --line-strong: #3a4959;
+
+  /* ink */
+  --text: #e9eef4;
+  --text-2: #a8b5c3;
+  --text-3: #73839a;
+
+  /* the one accent: the binding link, limits, the primary action */
+  --accent: #ff8a24;
+  --accent-soft: rgba(255, 138, 36, 0.14);
+  --accent-ink: #1b1005;
+
+  /* state tones; each is also carried by a marker shape and a label */
+  --ok: #3ec79a;
+  --warn: #f2dc5c;
+  --fail: #dc4046;
+  --fail-text: #f2777c;
+  --planned: #8796ab;
+  --idle: #5d6c80;
+  --flood: #58a6e6;
+  --info: #9fb3c8;
+
+  /* neutral data ink for bars that are not the binding one */
+  --bar: #6f8399;
+  --bar-track: #1b2530;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Liberation Sans", Arial, sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, "Liberation Mono", Menlo, monospace;
+
+  --radius: 6px;
+  --gap: 12px;
+  --topbar-h: 56px;
+  --side-a: 344px;   /* scenarios column */
+  --side-b: 392px;   /* advisor column */
+}
