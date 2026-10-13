@@ -548,7 +548,7 @@ class TestParams(ParamsCase):
         self.assertAlmostEqual(v["truck.mtbf_h"] / (v["truck.mtbf_h"] + v["truck.mttr_h"]), v["truck.availability"])
         self.assertEqual(v["haul.K_BAY"], 0.75)
         self.assertAlmostEqual(v["haul.K_HAUL"], 0.811, places=3)
-        self.assertEqual(v["sim.op_delay_factor"], 0.81)
+        self.assertEqual(v["sim.op_delay_factor"], 0.785)  # tuned by the simulator, spec 10 item 3
         self.assertLessEqual(v["sim.op_delay_factor_min"], v["sim.op_delay_factor"])
         self.assertLessEqual(v["sim.op_delay_factor"], v["sim.op_delay_factor_max"])
         self.assertEqual((v["vent.supply_2022"], v["vent.supply_base"]), (252, 322))

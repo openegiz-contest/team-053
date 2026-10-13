@@ -56,9 +56,9 @@
     "source": "ASSUMPTION: displayed 'now' rates are rolling 2-simulated-hour means (spec 2.1)"
   },
   "sim.op_delay_factor": {
-    "value": 0.81,
+    "value": 0.785,
     "unit": "-",
-    "source": "ASSUMPTION: simulator-only calibration knob for check C3; start value 0.81, tuned in the range below"
+    "source": "ASSUMPTION: simulator-only calibration knob for check C3, tuned from the starting value 0.81: with the bay rules of spec 2.4 a truck waits about 0.5 min per trip for opposing traffic, while the haulage formula books K_BAY x (n - 1) = 2.25 min on TU2; 0.785 puts the mean of 60-day baseline runs over many seeds on the analytic haulage capacity"
   },
   "sim.op_delay_factor_min": {
     "value": 0.7,
@@ -699,5 +699,90 @@
     "value": 0.5,
     "unit": "share of the baseline fleet power",
     "source": "ASSUMPTION: check C7 of spec 2.9 compares the 2022 air supply (vent.supply_2022) with the demand at half the baseline fleet power, taking the 2022 fleet as half of the fleet at the epoch"
+  },
+  "regime.shift_end_allowance_h": {
+    "value": 0.75,
+    "unit": "h",
+    "source": "ASSUMPTION: travel and inspection at each end of a shift (spec 2.1 names the figure; params.json carries only the resulting regime.productive_h)"
+  },
+  "regime.meal_h": {
+    "value": 1.0,
+    "unit": "h",
+    "source": "ASSUMPTION: meal break in the middle of a shift (spec 2.1); 11 - 2 x 0.75 - 1 = 8.5 productive hours, taken as two blocks of 4.25 h"
+  },
+  "sim.last_trip_min_fraction": {
+    "value": 0.5,
+    "unit": "share of a truck cycle",
+    "source": "ASSUMPTION: a truck starts a trip while at least half of its expected cycle fits into the productive time left and finishes it in the end-of-shift allowance; on average the trips of a block then equal productive time / cycle time, as the haulage formula assumes"
+  },
+  "sim.cycle_stats_trips": {
+    "value": 20,
+    "unit": "trips",
+    "source": "ASSUMPTION: decline.avg_cycle_min is the mean over the last 20 completed trips"
+  },
+  "stope.ring_prep_during_mucking": {
+    "value": 1,
+    "unit": "flag 0/1",
+    "source": "ASSUMPTION: the next ring is drilled and charged while the broken ore of the previous one is mucked (drilling and extraction are on different sublevels); 0 restores the strictly sequential cycle of spec 2.5"
+  },
+  "stope.blast_max_broken_rings": {
+    "value": 1.0,
+    "unit": "rings of stope.blast_t",
+    "source": "ASSUMPTION: a ring is fired only when no more than one ring of broken ore is left in the stope; this stock is the buffer between stoping and haulage"
+  },
+  "stope.start_broken_rings": {
+    "value": 1.0,
+    "unit": "rings of stope.blast_t",
+    "source": "ASSUMPTION: at the epoch the mine is in steady operation: each producing stope holds one ring of broken ore and the rings are staggered one shift apart"
+  },
+  "rig.drill_m_per_ring": {
+    "value": 180,
+    "unit": "m",
+    "source": "ASSUMPTION: about 8 t of ore per drilled metre in ring drilling: 1421.5 t / 8 t/m"
+  },
+  "rig.tram_kmh": {
+    "value": 5.0,
+    "unit": "km/h",
+    "source": "ASSUMPTION: tramming speed of a drill rig between stopes"
+  },
+  "lhd.shuttle_period_min": {
+    "value": 2.0,
+    "unit": "min",
+    "source": "ASSUMPTION: one LHD run between the draw point and the level drive, there and back (position display only)"
+  },
+  "vent.split_decline_raise_tu1_share": {
+    "value": 0.5,
+    "unit": "share",
+    "source": "ASSUMPTION: the air of the underground fan is split evenly between the raises that run alongside the two declines (airflow display of raise-vhv-tu1 and raise-vhv-tu2)"
+  },
+  "water.sump_start_pct": {
+    "value": 40,
+    "unit": "% sump level",
+    "source": "ASSUMPTION: both sumps are 40 % full at the epoch, inside their pumping band"
+  },
+  "water.sump_alarm_pct": {
+    "value": 95,
+    "unit": "% sump level",
+    "source": "ASSUMPTION: a pump station reports alarm_high from 95 % sump level"
+  },
+  "pond.start_fill": {
+    "value": 1.0,
+    "unit": "share of pond.volume_m3",
+    "source": "ASSUMPTION: the settling ponds are full at the epoch (flow-through ponds)"
+  },
+  "water.intake_pond_fill": {
+    "value": 0.5,
+    "unit": "share of pond.volume_m3",
+    "source": "ASSUMPTION: the extra river intake (measure W2) runs, up to its capacity, while the ponds are less than half full; with fuller ponds no river water is taken"
+  },
+  "water.pond_reserve_fill": {
+    "value": 0.25,
+    "unit": "share of pond.volume_m3",
+    "source": "ASSUMPTION: with the ponds less than a quarter full the plant is throttled to the feed the water sources sustain (cap.water_balance feed limit at the steady pump yield), so a lasting deficit shows as water-limited lines and not as stop-and-go with the pump cycle"
+  },
+  "stockpile.low_days_of_feed": {
+    "value": 1.0,
+    "unit": "days",
+    "source": "ASSUMPTION: the ROM stockpile reports low below one day of plant feed"
   }
 }

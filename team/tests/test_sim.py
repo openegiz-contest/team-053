@@ -1444,13 +1444,15 @@ class TestParameters(SimCase):
             self.assertNotIn(pid, params, f"{pid} is in params.json now: drop it from MISSING_PARAMS")
 
     def test_tuned_delay_factor_is_inside_its_range(self):
-        value, unit, source, replaces = TUNED_PARAMS["sim.op_delay_factor"]
+        # the tuned value (0.785) lives in params.json; TUNED_PARAMS is empty but still works
+        value = MODEL.p("sim.op_delay_factor")
+        self.assertEqual(value, 0.785)
         self.assertTrue(MODEL.p("sim.op_delay_factor_min") <= value <= MODEL.p("sim.op_delay_factor_max"))
-        self.assertTrue(source.startswith("ASSUMPTION: "))
+        for pid, (tuned, unit, source, replaces) in TUNED_PARAMS.items():
+            self.assertTrue(source.startswith("ASSUMPTION: "), pid)
         sim = new_sim()
-        in_file = MODEL.p("sim.op_delay_factor")
-        self.assertEqual(sim.p("sim.op_delay_factor"), value if in_file == replaces else in_file)
-        self.assertEqual(sim.haul.k_delay, sim.p("sim.op_delay_factor"))
+        self.assertEqual(sim.p("sim.op_delay_factor"), value)
+        self.assertEqual(sim.haul.k_delay, value)
 
     def test_package_uses_the_standard_library_only(self):
         import ast
