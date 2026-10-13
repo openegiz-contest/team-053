@@ -724,3 +724,14 @@ No mine plan is public, so plan positions are schematic. Fleet size in 2026, pum
 2. Docker for agents: is `wsl -d Ubuntu-24.04 -- docker version` usable from the agent shell, and may rehearsals run `docker system prune -af --volumes` there?
 3. Three load-bearing assumptions are accepted as written unless a better public source is known: tailings free capacity (about 3.2 Mt at the epoch), plant water 1.123 m³/t, baseline air supply 322 m³/s.
 4. Who pushes to `origin/main`: default is the orchestrator after the human's daily look, with pushes on 19, 22, 24 and 25 October.
+
+## 9. Decisions taken after package B1 (13 October)
+
+These settle ambiguities package B1 found. They override sections 2 and 3 where they differ.
+
+1. **Water supply in the analytic library** (`capacity.py`, the advisor's bars): supply is the mine inflow, `water.inflow_m3h × inflow_factor`, as a long-run average. `C_water` is not changed by pump failures and keeps ignoring `inflow_factor` (flood surplus is discharged, not used).
+2. **Water supply in the simulator** (the transient the Stand shows): pumped mine water enters the settling ponds; the plant draws from the ponds. While `ps-p150` is failed nothing reaches the ponds, their stored volume falls, and when it is empty the plant feed is limited to `WaterBalance.feed_limit_tph` for the remaining sources (reclaim and extra intake, if the measures are active). The `pump_station_fail` row of 3.3 therefore gains one visible effect: the pond reserve counts down in hours, then the plant slows. If this costs package C1 more than half a day, fall back to decision 1 in the simulator too and say so in the report.
+3. **Feed grade**: the simulator rescales the grades of the producing stopes so that their tonnage-weighted mean equals `grade_gpt` (`Stopes.mean_grade_gpt` gives the unscaled mean). The advisor and the simulator then pour the same gold.
+4. **Plant line rates** come from `capacity.plant()`; the registry attribute `rated_tph` is static. The simulator publishes the stage-dependent rate as the feature the plant-line type already has for throughput; no new feature is added.
+5. **Everything else B1 reported** (haulage not capped at the decline bottom, the unreachable 80 % recovery floor, sludge without a retention factor, `air_margin_pct = (supply − demand) / supply × 100`, `achievable_ktpa` unrounded) stays as implemented.
+6. **Counts in section 0**: the Stand has eight disturbance buttons (section 3.2 is authoritative), not seven.

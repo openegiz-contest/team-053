@@ -619,5 +619,85 @@
     "value": 7,
     "unit": "%",
     "source": "ASSUMPTION: simulated throughput with the full 2.0 Mtpa measure set stays within 7 % of the analytic minimum of haulage and stopes (spec 2.9)"
+  },
+  "ladder.m_haul.trucks": {
+    "value": [5, 7, 10, 12],
+    "unit": "active trucks by stage of m_haul",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: trucks 01-05 are the baseline fleet (fleet.base.trucks_ad30 + fleet.base.trucks_ad45), then 01-07, 01-10 and 01-12; the purchase steps are a design choice of the what-if scenarios"
+  },
+  "ladder.m_stopes.producing": {
+    "value": [4, 5, 8, 10],
+    "unit": "producing stopes by stage of m_stopes",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: stope.producing_base at stage 0, then 5, 8 and 10 producing stopes; the steps are a design choice of the what-if scenarios"
+  },
+  "ladder.m_stopes.lhds": {
+    "value": [4, 5, 8, 10],
+    "unit": "active LHDs by stage of m_stopes",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: one LHD per producing stope (spec 2.5), so LHDs 01-04, 01-05, 01-08, 01-10; stage 0 equals fleet.base.lhd_r1300 + fleet.base.lhd_r1700"
+  },
+  "ladder.m_stopes.rigs": {
+    "value": [2, 3, 4, 5],
+    "unit": "drill rigs in service by stage of m_stopes",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: fleet.base.rigs at stage 0, then 3, 4 and 5 rigs, enough for the producing stopes of each stage at stope.stopes_per_rig"
+  },
+  "stope.stopes_per_rig": {
+    "value": 2,
+    "unit": "producing stopes per drill rig",
+    "source": "ASSUMPTION: a rig serves one stope at a time and drilling takes stope.drilling_shifts of the stope.cycle_shifts cycle, so one rig keeps two stopes producing (spec 2.5: N_producing <= 2 x rigs)"
+  },
+  "ladder.m_vent.fans": {
+    "value": [["fan-vs1", "fan-ug-p320", "fan-vs2"], ["fan-vs1", "fan-ug-p320", "fan-vs2", "fan-vpv"], ["fan-vs1", "fan-ug-p320", "fan-vs2", "fan-vpv", "fan-vs3"]],
+    "unit": "names of the running main fans by stage of m_vent",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: the three fans of vent.supply_base (322 m3/s), then fan-vpv on raise VPV (vent.measure_V1, 427 m3/s), then fan-vs3 on the new shaft VS3 (vent.measure_V2, 667 m3/s); the totals are the sums of the fan duties in registry.json"
+  },
+  "ladder.m_plant.capacity_ktpa": {
+    "value": [1000, 1200, 2000, 2500],
+    "unit": "kt/yr by stage of m_plant",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: plant.nameplate_ktpa at stage 0, then the three values of plant.stages_ktpa; taking each published figure as one stage is a design choice of the what-if scenarios"
+  },
+  "ladder.m_plant.lines": {
+    "value": [3, 3, 5, 6],
+    "unit": "plant lines in service by stage of m_plant",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: stage 1 debottlenecks lines 1-3 (plant.lines), stage 2 adds lines 4 and 5 (plant.line45_ktpa each), stage 3 adds line 6 (plant.line6_ktpa); the split into lines is not published"
+  },
+  "ladder.m_dev.advance_vm_per_year": {
+    "value": [34, 50],
+    "unit": "m of depth/yr by stage of m_dev",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: dev.advance_vm_per_year at stage 0, dev.advance_boosted (second development crew) at stage 1"
+  },
+  "ladder.m_water.reclaim_m3_per_t": {
+    "value": [0, 0.6, 0.6],
+    "unit": "m3/t milled by stage of m_water",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: no tailings reclaim at stage 0, water.measure_W1.reclaim_m3_per_t at stages 1 and 2"
+  },
+  "ladder.m_water.extra_intake_m3h": {
+    "value": [0, 0, 150],
+    "unit": "m3/h by stage of m_water",
+    "source": "ASSUMPTION: measure ladder of spec 3.1: no extra intake at stages 0 and 1, water.measure_W2.extra_intake_m3h at stage 2 (reclaim plus extra intake)"
+  },
+  "ladder.m_tailings.dams": {
+    "value": [["tsf-dam4", "tsf-dam2", "tsf-dam3"], ["tsf-dam4", "tsf-dam2", "tsf-dam3", "tsf-cell5"]],
+    "unit": "names of the built tailings dams in fill order, by stage of m_tailings",
+    "source": "ASSUMPTION: measure ladder of spec 3.1 and fill order of spec 2.7: dam 4, dam 2, dam 3 at stage 0; stage 1 adds the new cell tsf-cell5 (tsf.measure_X1_t), filled last"
+  },
+  "water.pumping_norm_h": {
+    "value": 20,
+    "unit": "h per day",
+    "source": "ASSUMPTION: design norm behind the dewatering margin of spec 2.3: the working pumps clear the daily inflow in 20 h (factor 24/20), the sizing rule already used for water.ps_p150.pump_m3h; the norm is not in the facts file"
+  },
+  "phys.gravity_m_s2": {
+    "value": 9.81,
+    "unit": "m/s2",
+    "source": "ASSUMPTION: physical constant in the pump power formula of spec 2.7 (standard gravity, rounded), not a model assumption"
+  },
+  "phys.water_density_kg_m3": {
+    "value": 1000,
+    "unit": "kg/m3",
+    "source": "ASSUMPTION: physical constant in the pump power formula of spec 2.7 (density of water; suspended solids of the mine water are neglected), not a model assumption"
+  },
+  "calib.c7.fleet_power_share": {
+    "value": 0.5,
+    "unit": "share of the baseline fleet power",
+    "source": "ASSUMPTION: check C7 of spec 2.9 compares the 2022 air supply (vent.supply_2022) with the demand at half the baseline fleet power, taking the 2022 fleet as half of the fleet at the epoch"
   }
 }
