@@ -10,7 +10,10 @@
 // Budget (spec 4.5): no lights, textures, shadows or post-processing; static
 // geometry merged into three objects; moving things are instances of four small
 // meshes; antialias off, pixel ratio 1, canvas at most 1280 x 720; a frame is
-// drawn only while something moves and at most 12 times a second.
+// drawn only while something moves and at most 12 times a second. The one
+// exception is a frame that must not wait: after mount, the first state, a
+// canvas resize (which clears the buffer) or the scene being shown again, the
+// frame is drawn at once (see drawNow).
 // `?debug=1` in the page address shows triangle and draw-call counts.
 
 import * as THREE from 'three';
@@ -207,6 +210,7 @@ export async function mount(container, geometry) {
   let presetId = 'mine';
   let dirty = true;
   let disposed = false;
+  let stateDrawn = false;
 
   const F = (id) => (things[id] && things[id].f) || {};
   const live = {
@@ -290,16 +294,25 @@ export async function mount(container, geometry) {
   function resize() {
     const width = container.clientWidth;
     const height = container.clientHeight;
+    const wasHidden = !size.width || !size.height;
     size.width = width;
     size.height = height;
     if (!width || !height) return;
     const k = Math.min(1, MAX_CANVAS[0] / width, MAX_CANVAS[1] / height);
-    renderer.setSize(Math.max(1, Math.round(width * k)), Math.max(1, Math.round(height * k)), false);
+    const pixelWidth = Math.max(1, Math.round(width * k));
+    const pixelHeight = Math.max(1, Math.round(height * k));
+    // Setting the canvas size clears the drawing buffer, even to the same value.
+    const cleared = canvas.width !== pixelWidth || canvas.height !== pixelHeight;
+    if (cleared) renderer.setSize(pixelWidth, pixelHeight, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     labels.setSize(width, height);
     dirty = true;
     labelsDueAt = 0;
+    // A cleared buffer is refilled in this same frame: if the redraw waited for
+    // the next animation frame, the page could be painted (or captured) with an
+    // empty, black canvas in between.
+    drawNow(cleared || wasHidden);
   }
   const worldPerPixel = (position) => (2 * Math.tan((FOV * DEG) / 2) * camera.position.distanceTo(position))
     / Math.max(1, size.height);
@@ -970,6 +983,24 @@ export async function mount(container, geometry) {
   let contextLost = false;
   const isShown = () => !document.hidden && inView && size.width > 0 && size.height > 0 && !contextLost;
 
+  /**
+   * Draw at once rather than in the next animation frame. Used on mount, on a
+   * resize, on a new state and when the page or the scene comes into view: a
+   * browser may grant animation frames rarely (a headless capture in virtual
+   * time gives about one a second), and the first frames must not wait for
+   * them. `force` (the buffer was cleared or the scene was just shown) skips the
+   * 12 fps cap and the in-view test; otherwise a frame drawn too recently leaves
+   * the work to the frame loop (`dirty` stays set). Nothing is drawn while the
+   * container has no size (hidden by the view switch) or the page is hidden.
+   */
+  function drawNow(force) {
+    if (disposed || !statics || document.hidden || contextLost || !size.width || !size.height) return;
+    const now = performance.now();
+    if (!force && (!inView || now < nextFrameAt)) return;
+    nextFrameAt = now + FRAME_MS - 2;
+    draw(now);
+  }
+
   function frame(now) {
     if (disposed) return;
     raf = requestAnimationFrame(frame);
@@ -986,11 +1017,16 @@ export async function mount(container, geometry) {
   else window.addEventListener('resize', resize);
   const viewObserver = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
     inView = entries[entries.length - 1].isIntersecting;
-    if (inView) dirty = true;
+    if (inView) {
+      dirty = true;
+      drawNow(false);
+    }
   }) : null;
   if (viewObserver) viewObserver.observe(root);
   const onVisibility = () => {
-    if (!document.hidden) dirty = true;
+    if (document.hidden) return;
+    dirty = true;
+    drawNow(true);   // the browser may have dropped the buffer of a hidden page
   };
   document.addEventListener('visibilitychange', onVisibility);
   canvas.addEventListener('webglcontextlost', (event) => {
@@ -1002,13 +1038,14 @@ export async function mount(container, geometry) {
     contextLost = false;
     overlay.note('');
     dirty = true;
+    drawNow(true);
   });
 
   rebuildStatics();
   lastSignature = signature();
   derive(performance.now(), false);
   updateVehicles(performance.now());
-  resize();
+  resize();   // sizes the canvas and draws the first frame now
   raf = requestAnimationFrame(frame);
 
   if (debugOn) {
@@ -1065,6 +1102,10 @@ export async function mount(container, geometry) {
       if (fresh) updateVehicles(now);
       labelsDueAt = Math.min(labelsDueAt, now + 150);
       dirty = true;
+      // The first state is drawn at once; later ones too unless a frame was
+      // drawn less than 1/12 s ago (then the frame loop picks it up).
+      drawNow(!stateDrawn);
+      stateDrawn = true;
     },
 
     focus(thingId) {

@@ -123,6 +123,19 @@ class SceneModule(unittest.TestCase):
         # At most five translucent materials (spec 4.5).
         self.assertLessEqual(len(re.findall(r"transparent: true", text)), 5)
 
+    def test_resize_never_leaves_the_canvas_cleared(self):
+        # Setting the canvas size clears the WebGL buffer. A headless capture
+        # (--screenshot with --virtual-time-budget) resizes the page just before
+        # the capture and grants animation frames rarely, so the scene must be
+        # redrawn inside the resize callback, not in a later animation frame.
+        text = read(os.path.join(SCENE_DIR, "index.js")).decode("utf-8")
+        resize = re.search(r"\n  function resize\(\) \{\n(.*?)\n  \}\n", text, re.S)
+        self.assertIsNotNone(resize)
+        body = resize.group(1)
+        self.assertIn("if (cleared) renderer.setSize(", body)
+        self.assertIn("drawNow(cleared || wasHidden);", body)
+        self.assertIn("function drawNow(force)", text)
+
     def test_every_geometry_kind_is_drawn(self):
         with open(GEOMETRY_FILE, encoding="utf-8") as handle:
             geometry = json.load(handle)
