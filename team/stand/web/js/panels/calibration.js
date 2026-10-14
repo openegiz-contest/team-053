@@ -58,8 +58,10 @@ export function createCalibration() {
     const kindOf = (c) => c.kind || 'analytic';
     const count = (kind) => {
       const rows = checks.filter((c) => kindOf(c) === kind);
-      return [rows.filter((c) => c.passed === true).length, rows.length];
+      const judged = rows.filter((c) => c.reference !== true);   // reference rows are neither pass nor fail
+      return [judged.filter((c) => c.passed === true).length, judged.length];
     };
+    const references = checks.filter((c) => c.reference === true).length;
     const [aPass, aAll] = count('analytic');
     const [sPass, sAll] = count('simulator');
     const [oPass, oAll] = count('out_of_sample');
@@ -67,6 +69,7 @@ export function createCalibration() {
     setText(meta, [`расчётных в допуске: ${fmt(aPass)} из ${fmt(aAll)}`,
       sAll ? `симулятор: ${fmt(sPass)} из ${fmt(sAll)}` : '',
       oAll ? `вне подгонки: ${fmt(oPass)} из ${fmt(oAll)}` : '',
+      references ? `справочно: ${fmt(references)}` : '',
       `строк с подгонкой: ${fmt(fitted)} из ${fmt(checks.length)}`].filter(Boolean).join(' · '));
 
     const rows = [];
@@ -77,9 +80,11 @@ export function createCalibration() {
         style: 'padding-top: 10px; font-weight: 650; color: var(--text-2); background: var(--surface-2)', text: title })));
       let previous = null;
       for (const check of group) {
-        const result = check.passed === true ? 'pass' : check.passed === false ? 'fail' : 'none';
+        const result = check.reference === true ? 'reference'
+          : check.passed === true ? 'pass' : check.passed === false ? 'fail' : 'none';
         const text = result === 'pass' ? 'в допуске' : result === 'fail' ? 'вне допуска'
-          : kind === 'simulator' ? 'нет значения прогона' : 'нет значения';
+          : result === 'reference' ? 'справочно'
+            : kind === 'simulator' ? 'нет значения прогона' : 'нет значения';
         const deviation = isNum(check.deviation)
           ? withUnit(fmt(check.deviation, 2, { sign: true }), check.deviation_unit || '%') : DASH;
         const first = check.id !== previous;

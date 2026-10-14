@@ -22,11 +22,11 @@ const pick = (object, ...keys) => {
 
 // Tokens of the twin feature next_measure for the removal of a disturbance (sekis.advisor).
 const REPAIRS = {
-  restore_pumps: { link: 'dewatering', text: 'восстановить насосы главного водоотлива гор. +150 м' },
-  restart_line: { link: 'plant', text: 'запустить технологическую линию после ремонта' },
-  open_tu1: { link: 'haulage', text: 'открыть уклон ТУ-1' },
-  open_tu2: { link: 'haulage', text: 'открыть уклон ТУ-2' },
-  restore_fan_vs2: { link: 'ventilation', text: 'восстановить вентилятор ВС-2' },
+  restore_pumps: { link: 'dewatering', knob: 'pumps_failed_p150', text: 'восстановить насосы главного водоотлива гор. +150 м' },
+  restart_line: { link: 'plant', knob: 'line_down', text: 'запустить технологическую линию после ремонта' },
+  open_tu1: { link: 'haulage', knob: 'tu1_closed', text: 'открыть уклон ТУ-1' },
+  open_tu2: { link: 'haulage', knob: 'tu2_closed', text: 'открыть уклон ТУ-2' },
+  restore_fan_vs2: { link: 'ventilation', knob: 'fan_vs2_off', text: 'восстановить вентилятор ВС-2' },
 };
 
 function normalizeStep(step) {
@@ -39,12 +39,14 @@ function normalizeStep(step) {
       kind: repair ? 'disturbance' : 'measure',
       link: measure ? measure.link : repair ? repair.link : null,
       text: measure ? 'следующая ступень' : repair ? repair.text : step,
+      knob: measure ? measure.knob : repair ? repair.knob : null,
       capBefore: null, capAfter: null,
     };
   }
   return {
     kind: step.kind || 'measure',
     link: pick(step, 'link', 'binding_link'),
+    knob: typeof step.knob === 'string' ? step.knob : null,
     text: pick(step, 'text', 'measure', 'name') || '',
     capBefore: num(pick(step, 'cap_before_ktpa', 'cap_before', 'capacity_before')),
     capAfter: num(pick(step, 'cap_after_ktpa', 'cap_after', 'capacity_after')),
@@ -171,7 +173,8 @@ function stockpileTile(kpi) {
   const flows = isNum(kpi.stockpileMine) && isNum(kpi.stockpilePlant)
     ? `рудник ${fmt(kpi.stockpileMine)} т/сут, фабрика ${fmt(kpi.stockpilePlant)} т/сут, ${STEADY}` : STEADY;
   if (isNum(days)) {
-    return { value: fmt(days), unit: 'сут', detail: isNum(net) ? `расход ${fmt(-net)} т/сут` : 'до исчерпания',
+    return { value: fmt(days), unit: 'сут',
+      detail: (isNum(net) ? `расход ${fmt(-net)} т/сут` : 'до исчерпания') + ' при расчётной мощности',
       title: `Запас рудного склада кончится через ${fmt(days)} сут: ${flows}`, tone: days < 30 ? 'warn' : null };
   }
   if (kpi.stockpileTrend === 'grows' || (isNum(net) && net > 0)) {
@@ -307,7 +310,7 @@ export function createAdvisor() {
       kpiTile('Золото', fmt(kpi.gold, 1), 'тыс. унц./год',
         isNum(kpi.goldGain) ? `${fmt(kpi.goldGain, 1, { sign: true })}${base}` : ''),
       kpiTile('Воздух', `${fmt(kpi.airDemand, 0)} / ${fmt(kpi.airSupply, 0)}`, 'м³/с',
-        'спрос / подача', airShort ? 'warn' : null),
+        'потребность всего парка / подача', airShort ? 'warn' : null),
       kpiTile('Хвосты', fmt(kpi.tailingsYears, 1), 'лет', 'до заполнения',
         isNum(kpi.tailingsYears) && kpi.tailingsYears < 3 ? 'warn' : null),
       kpiTile('Дефицит воды*', fmt(kpi.deficit, 1), 'м³/ч',

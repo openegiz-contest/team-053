@@ -33,7 +33,7 @@ export function createCard(root) {
     const units = (thing.attrs && thing.attrs.units) || {};
     const keys = [...(KEY_FEATURES[thing.kind] || []), ...(MORE[thing.kind] || [])]
       .filter((key, index, all) => key in thing.f && all.indexOf(key) === index);
-    const rows = keys.map((key) => [featureLabel(key),
+    const rows = keys.map((key) => [featureLabel(key, thing.kind),
       featureText(key, thing.f[key], { kind: thing.kind, unit: units[key], things })]);
     const next = JSON.stringify([thing.name, state, rows]);
     if (next === signature) return;

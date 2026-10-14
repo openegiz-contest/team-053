@@ -249,7 +249,7 @@ export const PARAM_RU = {
   'econ.aisc_usd_oz': 'AISC, первое полугодие 2026 г. (пересчитанная база)',
   'econ.capex_expansion_usd_m': 'Капзатраты на расширение до 2–2,5 млн т/год (расчёт компании)',
   'econ.capex_expansion_targets_ktpa': 'Цели, к которым относятся эти капзатраты',
-  'ladder.m_haul.trucks': 'Откатка: самосвалов в работе',
+  'ladder.m_haul.trucks': 'Откатка: парк самосвалов',
   'ladder.m_stopes.producing': 'Очистные блоки: блоков в работе',
   'ladder.m_stopes.lhds': 'Очистные блоки: ПДМ в работе',
   'ladder.m_stopes.rigs': 'Очистные блоки: буровых установок',

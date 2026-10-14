@@ -93,7 +93,7 @@ export function createTwins({ onSelect }) {
       for (const key of KEY_FEATURES[thing.kind] || []) {
         if (!row.valueNodes[key]) {
           const value = el('span', { class: 'v num' });
-          row.values.append(el('span', { class: 'kv' }, el('span', { class: 'k', text: featureLabel(key) }), value));
+          row.values.append(el('span', { class: 'kv' }, el('span', { class: 'k', text: featureLabel(key, thing.kind) }), value));
           row.valueNodes[key] = value;
         }
         setText(row.valueNodes[key], featureText(key, thing.f ? thing.f[key] : undefined,
@@ -182,7 +182,7 @@ export function createTwins({ onSelect }) {
     const featureRows = Object.keys(thing.f || {}).map((key) => {
       const value = el('td', { class: 'num' });
       featureCells[key] = value;
-      return el('tr', {}, el('td', {}, featureLabel(key), el('span', { class: 'mono', text: key })), value);
+      return el('tr', {}, el('td', {}, featureLabel(key, thing.kind), el('span', { class: 'mono', text: key })), value);
     });
     const plain = Object.keys(attrs).filter((key) => !HIDDEN_ATTRS.has(key) && !key.startsWith('link_') && key !== 'type' && key !== '_isType');
     const links = Object.keys(attrs).filter((key) => key.startsWith('link_'));

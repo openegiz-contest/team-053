@@ -226,7 +226,8 @@ class TestOutOfSample(ModelCase):
         self.assertEqual((row.reported, row.reported_max), (52000, 55000))
         self.assertAlmostEqual(row.model, cap.gold_oz(self.model, 1_000_000, 1.76))
         self.assertAlmostEqual(row.deviation, (row.model / 52000 - 1) * 100)   # from the nearer end
-        self.assertFalse(row.ok)                                                 # 47.8 koz: below the range
+        self.assertIsNone(row.ok)                      # a reference row: 47.8 koz, neither pass nor fail
+        self.assertEqual(row.tolerance, cap.REFERENCE_TOLERANCE)
 
     def test_c15_two_lines_in_2024(self):
         row = self.rows["C15"]

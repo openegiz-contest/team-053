@@ -805,7 +805,7 @@ def build_state(model, base, knobs, revision=0, label="Базовый режим
     pumped_now = p150["pumped_m3h"]
     f("mine").update(
         state="blast_window" if not working else "restricted_air" if held else "production",
-        ore_hoisted_tph=round(hoisted_tph, 1), ore_hoisted_today_t=round(mined_tpd * worked_h / 22.0),
+        ore_hoisted_tph=round(mined_tpd / 24.0, 1), ore_hoisted_today_t=round(mined_tpd * worked_h / 22.0),
         ore_hoisted_total_t=round(mined_tpd * sim_day),
         trucks_active=float(len([t for t in running if t not in held])),
         diesel_kw_active=float(kw_running),

@@ -86,9 +86,9 @@ export function keyValue(thing, { gradeMode = false } = {}) {
       if (f.payload > 0) return unit(f.payload, 0, 'т');
       return f.state === 'surface_haul' || f.state === 'tram_level' || f.state === 'queue_load' ? 'порожний' : '';
     case 'lhd':
-      return isNum(f.tonnes_today) ? unit(f.tonnes_today, 0, 'т за сутки') : '';
+      return isNum(f.tonnes_today) ? unit(f.tonnes_today, 0, 'т с 08:00') : '';
     case 'drill_rig':
-      return isNum(f.metres_today) ? unit(f.metres_today, 0, 'м за сутки') : '';
+      return isNum(f.metres_today) ? unit(f.metres_today, 0, 'м с 08:00') : '';
     case 'decline': {
       if (!isNum(f.trucks_on_ramp)) return '';
       const waiting = isNum(f.trucks_waiting_in_bays) && f.trucks_waiting_in_bays > 0

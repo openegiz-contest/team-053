@@ -69,7 +69,8 @@ KPI_KEYS = {
 STOCKPILE_T, STOCKPILE_DAYS = 94264, 564
 CALIBRATION_ROW_KEYS = {
     "id", "case", "title", "kind", "kind_name", "basis", "basis_name", "basis_note", "unit", "reported",
-    "reported_max", "model", "deviation", "deviation_unit", "tolerance", "passed", "source", "source_urls",
+    "reported_max", "model", "deviation", "deviation_unit", "tolerance", "passed", "reference", "source",
+    "source_urls",
 }
 CYRILLIC = re.compile("[а-яё]")
 LATIN = re.compile("[A-Za-z]")
@@ -557,7 +558,7 @@ class TestEffects(AdvisorCase):
         self.assertEqual(items["binding_link"]["text"], "Узкое место сместилось: откатка → вентиляция.")
         self.assertEqual(items["cap_ventilation_ktpa"]["text"],
                          "Мощность звена «вентиляция» снизилась: 958 → 926 тыс. т/год.")
-        self.assertEqual(items["air_demand_m3s"]["text"], "Потребность в воздухе выросла: 317,2 → 369,9 м³/с.")
+        self.assertEqual(items["air_demand_m3s"]["text"], "Потребность всего парка в воздухе выросла: 317,2 → 369,9 м³/с.")
         self.assertEqual(items["air_demand_m3s"]["trend"], "worse")
         held = items["units_held_vent"]
         self.assertEqual(held["text"], "Воздуха не хватает на весь парк, в ожидании воздуха: самосвалы №\u00a06–7.")
@@ -997,15 +998,24 @@ class TestCalibrationHonesty(AdvisorCase):
         self.assertEqual((c13["reported"], c13["kind"]), (916402, "out_of_sample"))
         self.assertAlmostEqual(c13["deviation"], 1.06, delta=0.01)
         self.assertTrue(c13["passed"])
-        # the guidance is a range: 52-55 koz against 47.8 koz at 1.76 g/t, outside it
+        # the guidance is a range: 52-55 koz against 47.8 koz at 1.76 g/t; a reference row, not a failure
         self.assertEqual((c14["reported"], c14["reported_max"]), (52000, 55000))
         self.assertAlmostEqual(c14["model"], 47813, delta=1)
         self.assertAlmostEqual(c14["deviation"], -8.05, delta=0.01)
-        self.assertFalse(c14["passed"])
-        self.assertIn("1,91–2,01 г/т", c14["basis_note"])
+        self.assertIsNone(c14["passed"])
+        self.assertIs(c14["reference"], True)
+        self.assertEqual(c14["tolerance"], "справочно, без допуска")
+        self.assertEqual(c14["basis_note"],
+                         "прогноз компании соответствует содержанию 1,91–2,01 г/т при 1 млн т; модель при "
+                         "содержании первого полугодия 2026 г. (1,76 г/т) даёт 47,8 тыс. унц.")
         # two lines in 2024: 666.7 kt/yr in the model against 593.6 kt milled, outside 5 %
         self.assertAlmostEqual(c15["model"], 666666.67, delta=0.01)
         self.assertFalse(c15["passed"])
+        self.assertIs(c15["reference"], False)
+        self.assertEqual(c15["basis_note"],
+                         "в 2024 г. фабрика работала ниже паспортной мощности двух линий (89 %); модель принимает "
+                         "паспортную мощность — это допущение завышает переработку на 3–11 % (2025 г.: 96,7 %)")
+        self.assertEqual([row["reference"] for row in self.rows if row["id"] not in ("C14",)].count(True), 0)
         self.assertAlmostEqual(c16["deviation"], 0.33, delta=0.01)
         self.assertTrue(c16["passed"])
 

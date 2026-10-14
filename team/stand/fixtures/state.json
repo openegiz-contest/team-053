@@ -71,7 +71,7 @@
    },
    "f": {
     "state": "production",
-    "ore_hoisted_tph": 151.3,
+    "ore_hoisted_tph": 107.2,
     "ore_hoisted_today_t": 281.0,
     "ore_hoisted_total_t": 30963.0,
     "trucks_active": 5.0,

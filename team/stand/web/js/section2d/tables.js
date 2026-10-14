@@ -286,7 +286,7 @@ export function buildTables(ctx) {
       set(g, { 'data-tone': stateTone(f.state, 'mine') });
       const state = stateLabel(f.state, 'mine');
       const air = `воздух ${fmt(f.air_demand_m3s, 0)} из ${withUnit(fmt(f.air_supply_m3s, 0), 'м³/с')}`;
-      const held = f.units_held_vent > 0 ? `простаивает машин: ${fmt(f.units_held_vent)}` : null;
+      const held = f.units_held_vent > 0 ? `ждут воздуха: ${fmt(f.units_held_vent)}` : null;
       const flood = f.flood_volume_m3 > 0 ? `затоплено ${withUnit(fmt(f.flood_volume_m3), 'м³')}` : null;
       const inflow = `приток ${withUnit(fmt(f.inflow_m3h), 'м³/ч')}`;
       const pumped = `откачка ${withUnit(fmt(f.pumped_m3h), 'м³/ч')}`;

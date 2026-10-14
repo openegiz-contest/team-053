@@ -164,13 +164,28 @@ export function createScenarios({ onChanged }) {
       button.setAttribute('aria-pressed', String(Boolean(pressed)));
     }
 
-    for (const button of root.querySelectorAll('.toggle')) {
-      const on = known && same(knobs[button.dataset.knob], Number(button.dataset.on));
+    // The next step is either a measure (its row is marked) or the removal of a disturbance
+    // (report schema 2: the matching disturbance button is marked, no measure row).
+    const nextStep = advisor && advisor.next ? advisor.next : null;
+    const repair = Boolean(nextStep) && nextStep.kind === 'disturbance';
+    const toggles = [...root.querySelectorAll('.toggle')];
+    const pressedOf = new Map(toggles.map((button) => [button,
+      known && same(knobs[button.dataset.knob], Number(button.dataset.on))]));
+    // Buttons of the disturbance the advisor removes next: those that are on, else every button of the knob.
+    const ofKnob = repair && nextStep.knob ? toggles.filter((button) => button.dataset.knob === nextStep.knob) : [];
+    const marked = new Set(ofKnob.some((button) => pressedOf.get(button))
+      ? ofKnob.filter((button) => pressedOf.get(button)) : ofKnob);
+    for (const button of toggles) {
+      const on = pressedOf.get(button);
       button.setAttribute('aria-pressed', String(on));
       setText(button, keepTogether(on ? button.dataset.labelOn : button.dataset.labelOff));
+      button.classList.toggle('is-next', marked.has(button));
+      button.style.boxShadow = marked.has(button) ? 'inset 3px 0 0 var(--accent)' : '';
+      if (marked.has(button)) button.title = 'Следующий шаг советника: устранить нарушение';
+      else button.removeAttribute('title');
     }
 
-    const nextLink = advisor && advisor.next ? advisor.next.link : null;
+    const nextLink = nextStep && !repair ? nextStep.link : null;
     const stages = {};
     for (const measure of MEASURES) {
       stages[measure.knob] = isNum(knobs[measure.knob]) ? Math.round(knobs[measure.knob]) : null;

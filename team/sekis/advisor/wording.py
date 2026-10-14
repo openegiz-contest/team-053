@@ -124,7 +124,7 @@ def link_detail(model: cap.Model, names: Mapping[str, str], link: str, res: cap.
     if link == "haulage":
         by_decline = ", ".join(f"{_decline_label(names, key)}: {count}"
                                for key, count in res.haulage.trucks_by_decline.items())
-        return f"самосвалов в работе: {len(res.haulage.cycles)} ({by_decline})"
+        return f"парк самосвалов: {len(res.haulage.cycles)} ({by_decline})"
     if link == "ventilation":
         air = res.air
         text = (f"подача воздуха {num(air.supply_m3s)} {U_M3S}, "
@@ -509,7 +509,7 @@ def effect_items(names: Mapping[str, str], before: Mapping[str, Any], after: Map
                                kb["gold_koz_year"], ka["gold_koz_year"]))
     items.append(changed_value("air_supply_m3s", "Подача воздуха", ROSE_F, U_M3S, 0,
                                kb["air_supply_m3s"], ka["air_supply_m3s"]))
-    items.append(changed_value("air_demand_m3s", "Потребность в воздухе", ROSE_F, U_M3S, 1,
+    items.append(changed_value("air_demand_m3s", "Потребность всего парка в воздухе", ROSE_F, U_M3S, 1,
                                kb["air_demand_m3s"], ka["air_demand_m3s"], higher_is_better=False))
     items.append(held_item(before, after))
     items.append(changed_value("water_deficit_m3h", "Дефицит технической воды", ROSE_M, U_M3H, 1,
@@ -589,6 +589,7 @@ def tolerance_ru(tolerance: str) -> str:
     text = text.replace(" points", " п.п.").replace("% of reported", "% от отчётного")
     text = re.sub(r"(?<=\d)-(?=\d)", DASH, text)
     text = text.replace("inside the reported range", "в пределах прогноза")
+    text = text.replace(cap.REFERENCE_TOLERANCE, "справочно, без допуска")
     return text.replace("above reported", "выше отчётного")
 
 
@@ -680,12 +681,16 @@ def basis_note(model: cap.Model, check_id: str) -> str:
     if check_id == "C14":
         milled = p("plant.nameplate_ktpa") * cap.KILO
         low, high = (_grade_for_gold(model, milled, koz * cap.KILO) for koz in p("calib.c14.guidance_koz"))
-        return (f"прогноз компании, а не результат; при {num(p('plant.nameplate_ktpa'))} {U_KTPA} он отвечает "
-                f"среднегодовому содержанию {num(low, 2)}{DASH}{num(high, 2)} {U_GPT}, выше "
-                f"{num(p('plant.grade_h1_2026'), 2)} {U_GPT} первого полугодия")
+        grade = p("plant.grade_h1_2026")
+        return (f"прогноз компании соответствует содержанию {num(low, 2)}{DASH}{num(high, 2)} {U_GPT} "
+                f"при {num(milled / 1e6)} млн т; модель при содержании первого полугодия 2026 г. "
+                f"({num(grade, 2)} {U_GPT}) даёт {num(cap.gold_oz(model, milled, grade) / cap.KILO, 1)} тыс. унц.")
     if check_id == "C15":
-        return (f"добыто {num(p('calib.c15.mined_t'))} т при переработке {num(p('calib.c15.milled_t'))} т "
-                f"{EM_DASH} руды хватало, а фабрика работала ниже мощности двух линий в модели")
+        lines = p("calib.c15.lines_running")
+        two_lines_t = sum(cap._line_capacities(model, 0)[:lines]) * cap.KILO
+        return (f"в 2024 г. фабрика работала ниже паспортной мощности двух линий "
+                f"({num(p('calib.c15.milled_t') / two_lines_t * cap.PERCENT)} %); модель принимает паспортную "
+                f"мощность {EM_DASH} это допущение завышает переработку на 3{DASH}11 % (2025 г.: 96,7 %)")
     if check_id == "C16":
         return "мощность фабрики задана паспортом; переработка первого полугодия 2026 г. в подгонке не участвовала"
     return ""
@@ -751,7 +756,8 @@ def calibration_row(model: cap.Model, sources: Mapping[str, str], check: Optiona
         "deviation": round(check.deviation, 2) if check else None,
         "deviation_unit": _UNIT_RU.get(check.deviation_unit, check.deviation_unit) if check else "%",
         "tolerance": tolerance_ru(check.tolerance) if check else "",
-        "passed": bool(check.ok) if check else None,
+        "passed": None if check is None or check.ok is None else bool(check.ok),
+        "reference": bool(check is not None and check.ok is None),
         "source": source["text"],
         "source_urls": source["urls"],
     }

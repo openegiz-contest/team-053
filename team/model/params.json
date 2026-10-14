@@ -648,7 +648,7 @@
   "calib.c14.tol_pct": {
     "value": 0,
     "unit": "%",
-    "source": "ASSUMPTION: out-of-sample check C14 passes only when the model gold lies inside the guidance range"
+    "source": "ASSUMPTION: no tolerance; C14 is a reference row because the guidance implies a grade the model takes as an input"
   },
   "calib.c15.mined_t": {
     "value": 750045,

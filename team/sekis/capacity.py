@@ -1326,12 +1326,18 @@ CALIBRATION_BASIS: Dict[str, Tuple[str, Tuple[str, ...]]] = {
 }
 
 
+#: ``tolerance`` of a reference row (``CalibrationCheck.ok`` is ``None``).
+REFERENCE_TOLERANCE = "reference only"
+
+
 @dataclass(frozen=True)
 class CalibrationCheck:
     """One row of the calibration table (spec 2.9).
 
     ``deviation`` is in ``deviation_unit``: ``"%"`` of the reported value or ``"points"``.
     ``tolerance`` is the accepted range in words; ``ok`` tells whether the model is inside it.
+    ``ok`` is ``None`` for a reference row (``REFERENCE_TOLERANCE``): a figure shown beside the
+    model that the model cannot predict, so it is neither a pass nor a failure.
     ``basis`` is ``FIT``, ``INDEPENDENT`` or ``IDENTITY``; ``params`` names the parameters that
     hold the reported figure. ``reported_max`` is the upper end when the reported figure is a
     range (``reported`` is then its lower end).
@@ -1345,7 +1351,7 @@ class CalibrationCheck:
     deviation: float
     deviation_unit: str
     tolerance: str
-    ok: bool
+    ok: Optional[bool]
     basis: str = ""
     params: Tuple[str, ...] = ()
     reported_max: Optional[float] = None
@@ -1423,7 +1429,8 @@ def out_of_sample_checks(model: Model) -> Tuple[CalibrationCheck, ...]:
 
     C13  H1 2026 ore mined, annualised, against the sustainable rate of the baseline
     C14  FY2026 gold guidance (a range) against the gold of the nameplate throughput at the
-         H1 2026 grade; the deviation is measured from the nearer end of the range
+         H1 2026 grade; the deviation is measured from the nearer end of the range. A reference
+         row (``ok`` is ``None``): the guidance implies an annual grade the model cannot predict
     C15  FY2024 ore milled by two lines (ore mined in that year exceeded it, so the plant was not
          short of ore) against the capacity of two lines
     C16  H1 2026 ore processed, annualised, against the plant capacity of the baseline
@@ -1438,10 +1445,10 @@ def out_of_sample_checks(model: Model) -> Tuple[CalibrationCheck, ...]:
     low, high = (koz * KILO for koz in p("calib.c14.guidance_koz"))
     gold = gold_oz(model, p("plant.nameplate_ktpa") * KILO, p("plant.grade_h1_2026"))
     edge = low if gold < low else high if gold > high else gold
-    tol = p("calib.c14.tol_pct")
-    inside = low * (1 - tol / PERCENT) <= gold <= high * (1 + tol / PERCENT)
+    # A reference row: the guidance implies an annual grade the model cannot predict (grade is an
+    # input), so the row has no pass or fail state.
     rows.append(CalibrationCheck("C14", "FY2026 guidance at the H1 2026 grade", "gold per year", "oz", low, gold,
-                                 (gold / edge - 1) * PERCENT, "%", "inside the reported range", inside,
+                                 (gold / edge - 1) * PERCENT, "%", REFERENCE_TOLERANCE, None,
                                  reported_max=high))
 
     lines = p("calib.c15.lines_running")

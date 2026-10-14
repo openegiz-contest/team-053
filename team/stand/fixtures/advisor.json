@@ -36,7 +36,7 @@
    "knob": "m_haul",
    "stage": 0,
    "stage_max": 3,
-   "detail": "самосвалов в работе: 5 (ТУ-1: 1, ТУ-2: 4)"
+   "detail": "парк самосвалов: 5 (ТУ-1: 1, ТУ-2: 4)"
   },
   {
    "id": "ventilation",
@@ -1280,6 +1280,7 @@
    "deviation_unit": "%",
    "tolerance": "±1,5 %",
    "passed": true,
+   "reference": false,
    "source": "факты B: «Gold poured», «Ore milled (processed)», «Milled gold grade»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"
@@ -1302,6 +1303,7 @@
    "deviation_unit": "%",
    "tolerance": "±1,5 %",
    "passed": true,
+   "reference": false,
    "source": "факты B: «Gold poured», «Ore milled (processed)», «Milled gold grade»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"
@@ -1324,6 +1326,7 @@
    "deviation_unit": "%",
    "tolerance": "±3 %",
    "passed": true,
+   "reference": false,
    "source": "факты B: «Ore mined»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"
@@ -1347,6 +1350,7 @@
    "deviation_unit": "%",
    "tolerance": "±1,5 %",
    "passed": true,
+   "reference": false,
    "source": "факты D1: «Gold poured»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
@@ -1369,6 +1373,7 @@
    "deviation_unit": "%",
    "tolerance": "±1,5 %",
    "passed": true,
+   "reference": false,
    "source": "факты D1: «Gold poured»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
@@ -1391,6 +1396,7 @@
    "deviation_unit": "п.п.",
    "tolerance": "±0,25 п.п.",
    "passed": true,
+   "reference": false,
    "source": "факты B: «Gold recovery», «Milled gold grade»; D1: «Gold recovery», «Gold grade, processed»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769",
@@ -1414,6 +1420,7 @@
    "deviation_unit": "п.п.",
    "tolerance": "±0,25 п.п.",
    "passed": true,
+   "reference": false,
    "source": "факты B: «Gold recovery», «Milled gold grade»; D1: «Gold recovery», «Gold grade, processed»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769",
@@ -1437,6 +1444,7 @@
    "deviation_unit": "п.п.",
    "tolerance": "±0,25 п.п.",
    "passed": true,
+   "reference": false,
    "source": "факты B: «Gold recovery», «Milled gold grade»; D1: «Gold recovery», «Gold grade, processed»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769",
@@ -1460,6 +1468,7 @@
    "deviation_unit": "п.п.",
    "tolerance": "±0,25 п.п.",
    "passed": true,
+   "reference": false,
    "source": "факты B: «Gold recovery», «Milled gold grade»; D1: «Gold recovery», «Gold grade, processed»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769",
@@ -1483,6 +1492,7 @@
    "deviation_unit": "%",
    "tolerance": "95–100 % от отчётного",
    "passed": true,
+   "reference": false,
    "source": "факты A5: «Fresh air, planned»",
    "source_urls": [
     "https://ecoportal.kz/Rubric/RubService/LoadFile/23916"
@@ -1505,6 +1515,7 @@
    "deviation_unit": "%",
    "tolerance": "±3 %",
    "passed": true,
+   "reference": false,
    "source": "факты A5: «Fresh air, current»",
    "source_urls": [
     "https://ecoportal.kz/Rubric/RubService/LoadFile/23916"
@@ -1527,6 +1538,7 @@
    "deviation_unit": "%",
    "tolerance": "±3 %",
    "passed": true,
+   "reference": false,
    "source": "факты B2: «increasing processing capacity by 50% to 1Mtpa»; D1: «Plant operating level»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/8845806",
@@ -1551,6 +1563,7 @@
    "deviation_unit": "%",
    "tolerance": "±2 %",
    "passed": true,
+   "reference": false,
    "source": "факты A6: «Sludge (settling pond) yield»",
    "source_urls": [
     "https://ecoportal.kz/Rubric/RubService/LoadFile/23917"
@@ -1573,6 +1586,7 @@
    "deviation_unit": "%",
    "tolerance": "±0,5 %",
    "passed": true,
+   "reference": false,
    "source": "факты A6: «Water balance 2023-2030: total use»",
    "source_urls": [
     "https://ecoportal.kz/Rubric/RubService/LoadFile/23917"
@@ -1595,6 +1609,7 @@
    "deviation_unit": "%",
    "tolerance": "±0,1 %",
    "passed": true,
+   "reference": false,
    "source": "тождество баланса массы",
    "source_urls": [],
    "run": "прогон симулятора 60 сут базового режима (зерно 53), выполнен советником при запуске"
@@ -1616,6 +1631,7 @@
    "deviation_unit": "%",
    "tolerance": "±0,1 %",
    "passed": true,
+   "reference": false,
    "source": "тождество баланса массы",
    "source_urls": [],
    "run": "прогон симулятора 60 сут базового режима (зерно 53), выполнен советником при запуске"
@@ -1637,6 +1653,7 @@
    "deviation_unit": "%",
    "tolerance": "выше отчётного",
    "passed": true,
+   "reference": false,
    "source": "факты B2: «potentially boosting annual production to over 100,000 ounces», «evaluating plans to increase processing capacity to 2-2.5Mtpa»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"
@@ -1659,6 +1676,7 @@
    "deviation_unit": "%",
    "tolerance": "±3 %",
    "passed": true,
+   "reference": false,
    "source": "факты D1: «Ore mined»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
@@ -1672,15 +1690,16 @@
    "kind_name": "вне подгонки",
    "basis": "independent",
    "basis_name": "независимая",
-   "basis_note": "прогноз компании, а не результат; при 1 000 тыс. т/год он отвечает среднегодовому содержанию 1,91–2,01 г/т, выше 1,76 г/т первого полугодия",
+   "basis_note": "прогноз компании соответствует содержанию 1,91–2,01 г/т при 1 млн т; модель при содержании первого полугодия 2026 г. (1,76 г/т) даёт 47,8 тыс. унц.",
    "unit": "унц.",
    "reported": 52000.0,
    "reported_max": 55000.0,
    "model": 47812.92,
    "deviation": -8.05,
    "deviation_unit": "%",
-   "tolerance": "в пределах прогноза",
-   "passed": false,
+   "tolerance": "справочно, без допуска",
+   "passed": null,
+   "reference": true,
    "source": "факты D1: «Full-year gold production guidance»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
@@ -1694,7 +1713,7 @@
    "kind_name": "вне подгонки",
    "basis": "independent",
    "basis_name": "независимая",
-   "basis_note": "добыто 750 045 т при переработке 593 612 т — руды хватало, а фабрика работала ниже мощности двух линий в модели",
+   "basis_note": "в 2024 г. фабрика работала ниже паспортной мощности двух линий (89 %); модель принимает паспортную мощность — это допущение завышает переработку на 3–11 % (2025 г.: 96,7 %)",
    "unit": "т/год",
    "reported": 593612,
    "reported_max": null,
@@ -1703,6 +1722,7 @@
    "deviation_unit": "%",
    "tolerance": "±5 %",
    "passed": false,
+   "reference": false,
    "source": "факты B: «Ore milled (processed)», «Ore mined»; B2: «increasing processing capacity by 50% to 1Mtpa»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769",
@@ -1726,6 +1746,7 @@
    "deviation_unit": "%",
    "tolerance": "±3 %",
    "passed": true,
+   "reference": false,
    "source": "факты D1: «Ore processed»",
    "source_urls": [
     "https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
