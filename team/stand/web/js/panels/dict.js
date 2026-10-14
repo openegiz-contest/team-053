@@ -163,13 +163,13 @@ export function linkLabel(link) {
 
 // Measure knobs: name and what each stage means.
 export const MEASURES = [
-  { knob: 'm_plant', link: 'plant', name: 'Фабрика',
+  { knob: 'm_plant', link: 'plant', name: 'Фабрика', design: [1000, 1200, 2000, 2500], unit: 'тыс. т/год',
     stages: ['1 000 тыс. т/год', '1 200 тыс. т/год', '2 000 тыс. т/год, линии № 4–5', '2 500 тыс. т/год, линия № 6'] },
   { knob: 'm_haul', link: 'haulage', name: 'Откатка',
     stages: ['5 самосвалов', '7 самосвалов', '10 самосвалов', '12 самосвалов'] },
   { knob: 'm_stopes', link: 'stopes', name: 'Очистные блоки',
     stages: ['4 блока, 4 ПДМ, 2 буровые', '5 блоков, 5 ПДМ, 3 буровые', '8 блоков, 8 ПДМ, 4 буровые', '10 блоков, 10 ПДМ, 5 буровых'] },
-  { knob: 'm_vent', link: 'ventilation', name: 'Вентиляция',
+  { knob: 'm_vent', link: 'ventilation', name: 'Вентиляция', design: [322, 427, 667], unit: 'м³/с',
     stages: ['322 м³/с', '427 м³/с, вентилятор ВПВ', '667 м³/с, ствол ВС-3'] },
   { knob: 'm_dev', link: 'development', name: 'Проходка',
     stages: ['34 м глубины в год', '50 м глубины в год'] },
@@ -203,29 +203,29 @@ export function shiftLabel(token) {
 
 export const FEATURE_RU = {
   state: 'Состояние', sim_time: 'Время симуляции', sim_day: 'Сутки симуляции', shift: 'Смена',
-  ore_mined_tpd: 'Добыча руды', ore_milled_tpd: 'Переработка руды',
+  ore_mined_tpd: 'Выдача руды за 24 ч', ore_milled_tpd: 'Переработка руды за 24 ч',
   gold_poured_oz_day: 'Выплавка золота', gold_poured_total_oz: 'Золото с начала симуляции',
   annual_rate_ktpa: 'Годовой темп добычи', binding_link: 'Узкое место',
-  ore_hoisted_tph: 'Выдача руды на поверхность', ore_hoisted_today_t: 'Выдано руды за сутки',
-  ore_hoisted_total_t: 'Выдано руды всего', trucks_active: 'Самосвалов в работе',
+  ore_hoisted_tph: 'Выдача руды, среднее за 24 ч', ore_hoisted_today_t: 'Выдано руды с 08:00',
+  ore_hoisted_total_t: 'Выдано руды всего', trucks_active: 'Самосвалов в рейсе',
   diesel_kw_active: 'Дизельная мощность в работе', air_supply_m3s: 'Подача воздуха',
   air_demand_m3s: 'Потребность в воздухе', air_margin_pct: 'Запас по воздуху',
-  units_held_vent: 'Машин в простое по воздуху', inflow_m3h: 'Приток воды',
+  units_held_vent: 'Машин ждут воздуха', inflow_m3h: 'Приток воды',
   pumped_m3h: 'Откачка', flood_volume_m3: 'Объём затопления', air_flow_m3s: 'Расход воздуха',
   air_required_m3s: 'Требуемый расход воздуха', diesel_kw: 'Дизельная мощность на горизонте',
-  water_inflow_m3h: 'Приток воды', active_stopes: 'Блоков в работе', ore_today_t: 'Руды за сутки',
+  water_inflow_m3h: 'Приток воды', active_stopes: 'Блоков в работе', ore_today_t: 'Руды с 08:00',
   ore_remaining_t: 'Остаток руды в блоке', broken_ore_t: 'Отбитая руда', drilled_pct: 'Обурено',
-  backfill_pct: 'Закладка', grade: 'Содержание золота', mucked_today_t: 'Отгружено за сутки',
+  backfill_pct: 'Закладка', grade: 'Содержание золота', mucked_today_t: 'Отгружено с 08:00',
   block_no: 'Номер блока', bottom_elevation: 'Отметка забоя',
   trucks_on_ramp: 'Самосвалов на уклоне', trucks_waiting_in_bays: 'Ждут в разминовках',
-  loaded_trips_today: 'Гружёных рейсов за сутки', avg_cycle_min: 'Средний цикл рейса',
+  loaded_trips_today: 'Гружёных рейсов с 08:00', avg_cycle_min: 'Средний цикл рейса',
   air_velocity_ms: 'Скорость воздуха', pressure: 'Давление', power_kw: 'Потребляемая мощность',
   sump_level_pct: 'Уровень в водосборнике', pumps_running: 'Насосов в работе',
   pumps_available: 'Насосов исправно', hours_to_overflow: 'До переполнения', payload: 'Груз',
   speed: 'Скорость', decline: 'Уклон', chainage_m: 'Расстояние от портала', elevation: 'Отметка',
   pos_x: 'Координата X', pos_y: 'Координата Y', pos_z: 'Координата Z',
-  trips_today: 'Рейсов за сутки', tonnes_today: 'Тонн за сутки', stope: 'Очистной блок',
-  metres_today: 'Пробурено за сутки', mine_water_m3h: 'Шахтная вода',
+  trips_today: 'Рейсов с 08:00', tonnes_today: 'Тонн с 08:00', stope: 'Очистной блок',
+  metres_today: 'Пробурено с 08:00', mine_water_m3h: 'Шахтная вода',
   site_use_m3h: 'Расход на площадке', plant_supply_m3h: 'Подача на фабрику',
   reclaim_m3h: 'Оборотная вода', extra_intake_m3h: 'Дополнительный водозабор',
   deficit_m3h: 'Дефицит воды', discharge_m3h: 'Сброс', retention_h: 'Время отстаивания',
@@ -236,9 +236,9 @@ export const FEATURE_RU = {
   lines_running: 'Линий в работе', water_demand_m3h: 'Потребность в воде',
   tailings_tph: 'Выход хвостов', tonnes: 'Запас руды', inflow_tph: 'Поступление руды',
   outflow_tph: 'Выдача на фабрику', days_of_feed: 'Запас в сутках питания',
-  utilisation_pct: 'Загрузка', milled_today_t: 'Переработано за сутки',
+  utilisation_pct: 'Загрузка', milled_today_t: 'Переработано с 08:00',
   stored_t: 'Накоплено хвостов', free_capacity_t: 'Свободная ёмкость',
-  inflow_tpd: 'Поступление хвостов', years_left: 'Лет до заполнения', fill_pct: 'Заполнение',
+  inflow_tpd: 'Поступление хвостов за 24 ч', years_left: 'Лет до заполнения', fill_pct: 'Заполнение',
   target_ktpa: 'Цель переработки', m_plant: 'Мера: фабрика', m_haul: 'Мера: откатка',
   m_stopes: 'Мера: очистные блоки', m_vent: 'Мера: вентиляция', m_dev: 'Мера: проходка',
   m_water: 'Мера: водоснабжение', m_tailings: 'Мера: хвостохранилище',
@@ -291,8 +291,19 @@ export const LINK_ATTR_RU = {
   link_ponds: 'Илоотстойники', link_points: 'Посты мониторинга',
 };
 
-export function featureLabel(id) {
-  return FEATURE_RU[id] || id;
+// Features whose meaning differs between kinds of twin (the same id, another basis).
+const FEATURE_RU_BY_KIND = {
+  mine: { air_demand_m3s: 'Потребность работающих машин в воздухе' },
+  advisor: { air_demand_m3s: 'Потребность всего парка в воздухе' },
+  enterprise: { gold_poured_oz_day: 'Выплавка золота за 24 ч' },
+  plant: { gold_poured_oz_day: 'Выплавка золота, темп последних 2 ч', feed_tph: 'Питание сейчас' },
+  plant_line: { feed_tph: 'Питание сейчас' },
+};
+
+/** Russian name of a feature; `kind` picks the wording where the basis differs by kind. */
+export function featureLabel(id, kind) {
+  const byKind = kind && FEATURE_RU_BY_KIND[kind];
+  return (byKind && byKind[id]) || FEATURE_RU[id] || id;
 }
 
 export function attrLabel(id) {
@@ -441,4 +452,98 @@ export function thingState(thing) {
     return { label: 'ревизия ' + fmt(thing.f.revision), tone: 'info' };
   }
   return { label: DASH, tone: 'idle' };
+}
+
+// ------------------------------------------------------------ counts of units
+
+/** Russian plural form: plural(2, ['машина', 'машины', 'машин']) -> 'машины'. */
+export function plural(n, [one, few, many]) {
+  const k = Math.abs(Math.round(n)) % 100;
+  if (k % 10 === 1 && k !== 11) return one;
+  if (k % 10 >= 2 && k % 10 <= 4 && (k < 12 || k > 14)) return few;
+  return many;
+}
+
+/** '2 машины', '1 самосвал', '5 ПДМ'. */
+export function countText(n, forms) {
+  return `${fmt(n)} ${plural(n, forms)}`;
+}
+
+export const FORMS = {
+  unit: ['машина', 'машины', 'машин'],
+  truck: ['самосвал', 'самосвала', 'самосвалов'],
+  lhd: ['ПДМ', 'ПДМ', 'ПДМ'],
+};
+
+const OFF_FLEET = new Set(['parked', 'planned']);
+const HELD = new Set(['held_vent', 'standby_vent']);
+
+/**
+ * The one definition of the truck and LHD counts shown on the page, read from
+ * the states of the unit twins:
+ *   fleet       trucks of the present stage of m_haul (not parked, not planned);
+ *   inService   «самосвалов в работе»: the fleet less the trucks in maintenance;
+ *   held        trucks in service that wait for air (held_vent);
+ *   onTrip      «в рейсе»: in service and not waiting for air (= mine.trucks_active);
+ *   maintenance trucks under repair; lhdHeld: LHDs waiting for air (standby_vent);
+ *   heldUnits   trucks and LHDs waiting for air (= mine.units_held_vent).
+ */
+export function unitCounts(things) {
+  const c = { fleet: 0, inService: 0, held: 0, onTrip: 0, maintenance: 0, lhdHeld: 0, heldUnits: 0, heldTrucks: [], heldLhds: [] };
+  let seen = false;
+  for (const [id, thing] of Object.entries(things || {})) {
+    const state = thing && thing.f && thing.f.state;
+    if (typeof state !== 'string') continue;
+    const number = id.replace(/^.*-0*/, '');
+    if (thing.kind === 'haul_truck') {
+      seen = true;
+      if (OFF_FLEET.has(state)) continue;
+      c.fleet += 1;
+      if (state === 'maintenance') c.maintenance += 1;
+      else if (HELD.has(state)) { c.held += 1; c.heldTrucks.push(number); }
+    } else if (thing.kind === 'lhd' && HELD.has(state)) {
+      c.lhdHeld += 1;
+      c.heldLhds.push(number);
+    }
+  }
+  c.inService = c.fleet - c.maintenance;
+  c.onTrip = c.inService - c.held;
+  c.heldUnits = c.held + c.lhdHeld;
+  if (!seen) {   // no unit twins yet: fall back to the mine twin
+    const mine = (things && things[NS + 'mine'] && things[NS + 'mine'].f) || {};
+    c.onTrip = isNum(mine.trucks_active) ? mine.trucks_active : null;
+    c.heldUnits = isNum(mine.units_held_vent) ? mine.units_held_vent : 0;
+    c.fleet = c.inService = null;
+  }
+  return c;
+}
+
+/** «самосвалы № 6, 7 и ПДМ № 4»: which units wait for air. */
+export function heldUnitsText(counts) {
+  const parts = [];
+  if (counts.heldTrucks.length) parts.push(`${counts.heldTrucks.length > 1 ? 'самосвалы' : 'самосвал'} № ${counts.heldTrucks.join(', ')}`);
+  if (counts.heldLhds.length) parts.push(`ПДМ № ${counts.heldLhds.join(', ')}`);
+  return parts.join(' и ');
+}
+
+/**
+ * Air of the mine as the page states it. Two demands are named apart:
+ * «потребность работающих машин» (mine.air_demand_m3s, the units not held) and
+ * «потребность всего парка» (the advisor's demand of every unit in service).
+ * `short` is true while any unit waits for air or the mine is restricted_air.
+ */
+export function airStatus(things, advisor) {
+  const mine = (things && things[NS + 'mine'] && things[NS + 'mine'].f) || {};
+  const counts = unitCounts(things);
+  const held = counts.heldUnits || (isNum(mine.units_held_vent) ? mine.units_held_vent : 0);
+  const fleetDemand = advisor && advisor.kpi && isNum(advisor.kpi.airDemand) ? advisor.kpi.airDemand : null;
+  return {
+    short: held > 0 || mine.state === 'restricted_air',
+    held,
+    counts,
+    supply: isNum(mine.air_supply_m3s) ? mine.air_supply_m3s : null,
+    workingDemand: isNum(mine.air_demand_m3s) ? mine.air_demand_m3s : null,
+    fleetDemand,
+    margin: isNum(mine.air_margin_pct) ? mine.air_margin_pct : null,
+  };
 }

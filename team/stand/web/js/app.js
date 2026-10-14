@@ -15,7 +15,7 @@ import { createAdvisor, createPlan, normalize } from './panels/advisor.js';
 import { createAssumptions } from './panels/assumptions.js';
 import { createCalibration } from './panels/calibration.js';
 import { createChanges } from './panels/changes.js';
-import { NS } from './panels/dict.js';
+import { NS, airStatus } from './panels/dict.js';
 import { el, fmt, isNum, setText } from './panels/format.js';
 import { createHeader } from './panels/header.js';
 import { createScenarios } from './panels/scenarios.js';
@@ -181,15 +181,33 @@ function advisorDue(state) {
   return age >= 3 * POLL_MS;   // a report without a revision is simply re-read
 }
 
-function vizSummary(state) {
+// Counts follow the one definition of dict.js (unitCounts): «в работе» is every
+// truck of the fleet that is not under repair, «в рейсе» those of them that are
+// not waiting for air. Two air demands are named apart (airStatus).
+function vizSummary(state, advisor) {
   const f = (name) => (state.things[NS + name] && state.things[NS + name].f) || {};
   const mine = f('mine');
+  const air = airStatus(state.things, advisor);
+  const c = air.counts;
   const onRamp = [f('decline-tu1').trucks_on_ramp, f('decline-tu2').trucks_on_ramp].filter(isNum);
+  let trucks;
+  if (isNum(c.inService)) {
+    trucks = `самосвалов в работе: ${fmt(c.inService)}`;
+    if (c.maintenance > 0) trucks += ` из ${fmt(c.fleet)}, в ремонте: ${fmt(c.maintenance)}`;
+    if (c.held > 0) trucks += ` (в рейсе ${fmt(c.onTrip)}, ждут воздуха ${fmt(c.held)})`;
+  } else {
+    trucks = `самосвалов в рейсе: ${fmt(c.onTrip)}`;
+  }
+  const supply = fmt(air.supply, 0);
+  // While nothing waits for air the two demands are the same figure.
+  const airText = air.short
+    ? `воздух: потребность всего парка ${fmt(air.fleetDemand, 0)}, работающих машин ${fmt(air.workingDemand, 0)}, подача ${supply} м³/с`
+    : `воздух: нужно ${fmt(air.workingDemand, 0)} из ${supply} м³/с`;
   const parts = [
-    `самосвалов в работе: ${fmt(mine.trucks_active)}`,
+    trucks,
+    c.lhdHeld > 0 ? `ПДМ ждут воздуха: ${fmt(c.lhdHeld)}` : null,
     onRamp.length ? `на уклонах: ${fmt(onRamp.reduce((a, b) => a + b, 0))}` : null,
-    isNum(mine.units_held_vent) && mine.units_held_vent > 0 ? `в простое по воздуху: ${fmt(mine.units_held_vent)}` : null,
-    `воздух: ${fmt(mine.air_demand_m3s)} из ${fmt(mine.air_supply_m3s)} м³/с`,
+    airText,
     `приток воды: ${fmt(mine.inflow_m3h)} м³/ч`,
     isNum(mine.flood_volume_m3) && mine.flood_volume_m3 > 0 ? `затоплено: ${fmt(mine.flood_volume_m3)} м³` : null,
   ];
@@ -205,7 +223,9 @@ function render(state) {
   changesPanel.update(state, advisorModel);
   calibrationPanel.update(advisorModel.calibration);
   twinsPanel.update(state);
-  setText(document.getElementById('viz-meta'), vizSummary(state));
+  const meta = document.getElementById('viz-meta');
+  setText(meta, vizSummary(state, advisorModel));
+  meta.title = meta.textContent;
   updateViews();
   if (pendingTwin && state.things[pendingTwin]) {
     focusThing(pendingTwin);

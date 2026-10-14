@@ -3,10 +3,89 @@
 // POST /api/scenario and keeps them in step with the scenario twin.
 
 import { postScenario } from './api.js';
-import { MEASURES, NS, linkLabel } from './dict.js';
+import { FORMS, MEASURES, NS, countText, linkLabel, unitCounts } from './dict.js';
 import { el, fmt, isNum, setText } from './format.js';
 
 const same = (a, b) => isNum(a) && isNum(b) && Math.abs(a - b) < 1e-9;
+
+/** No line break inside «№ 2», «1,76 г/т», «430 м³/ч». */
+const NBSP = '\u00a0';
+const keepTogether = (text) => (text || '').replace(/№ /g, '№' + NBSP).replace(/(\d) (?=[гмт])/g, '$1' + NBSP);
+
+/**
+ * What a disturbance or the live fleet does to a measure stage, as one line per
+ * knob: { m_vent: { text, tone, design } }. `design` marks that the stage value is
+ * the design one and the line gives the actual value.
+ */
+function stageNotes(things, knobs, advisor, stages) {
+  const f = (name) => (things[NS + name] && things[NS + name].f) || {};
+  const capOf = (id) => {
+    const link = advisor && advisor.links ? advisor.links.find((row) => row.id === id) : null;
+    return link && isNum(link.cap) ? link.cap : null;
+  };
+  const notes = {};
+
+  // Ventilation: the supply of the stage against the supply now.
+  const vent = MEASURES.find((m) => m.knob === 'm_vent');
+  const supply = f('mine').air_supply_m3s;
+  const ventDesign = isNum(stages.m_vent) ? vent.design[stages.m_vent] : null;
+  if (isNum(supply) && isNum(ventDesign) && Math.abs(supply - ventDesign) >= 0.5) {
+    const failed = Object.entries(things)
+      .filter(([, t]) => t.kind === 'main_fan' && t.f && t.f.state === 'failed')
+      .map(([id, t]) => {
+        const name = t.name || id.replace(NS, '');
+        const code = name.match(/\(([^)]+)\)\s*$/);   // «Вентилятор … (ВС-2)» -> ВС-2
+        return code ? code[1] : name;
+      });
+    const why = failed.length ? `отказ вентилятора ${failed.join(', ')}`
+      : knobs.fan_vs2_off ? 'отказ вентилятора ВС-2' : '';
+    notes.m_vent = { design: true, tone: 'warn',
+      text: `сейчас ${fmt(supply, 0)} ${vent.unit}${why ? ' — ' + why : ''}` };
+  }
+
+  // Plant: the capacity of the stage against the lines running now.
+  const plantMeasure = MEASURES.find((m) => m.knob === 'm_plant');
+  const plantCap = isNum(f('plant').capacity_ktpa) ? f('plant').capacity_ktpa : capOf('plant');
+  const plantDesign = isNum(stages.m_plant) ? plantMeasure.design[stages.m_plant] : null;
+  if (isNum(plantCap) && isNum(plantDesign) && plantCap < plantDesign - 0.5) {
+    const stopped = Object.entries(things)
+      .filter(([, t]) => t.kind === 'plant_line' && t.f && ['off', 'maintenance', 'failed'].includes(t.f.state))
+      .map(([id]) => id.replace(/^.*-/, ''));
+    const why = knobs.line_down ? `остановлена линия № ${fmt(knobs.line_down)}`
+      : stopped.length ? `${stopped.length > 1 ? 'остановлены линии' : 'остановлена линия'} № ${stopped.join(', ')}` : '';
+    notes.m_plant = { design: true, tone: 'warn',
+      text: `сейчас ${fmt(plantCap, 0)} ${plantMeasure.unit}${why ? ' — ' + why : ''}` };
+  }
+
+  // Haulage: a closed decline, and the trucks of the stage that do not haul now.
+  const counts = unitCounts(things);
+  const haul = [];
+  let haulTone = '';
+  const closed = [knobs.tu1_closed ? 'ТУ-1' : null, knobs.tu2_closed ? 'ТУ-2' : null].filter(Boolean);
+  if (closed.length) {
+    const cap = capOf('haulage');
+    haul.push(`${isNum(cap) ? `откатка ${fmt(cap, 0)} тыс. т/год — ` : ''}закрыт уклон ${closed.join(', ')}`);
+    haulTone = 'warn';
+  }
+  if (isNum(counts.inService) && (counts.maintenance > 0 || counts.held > 0)) {
+    const parts = [`самосвалов в работе ${fmt(counts.inService)}`];
+    if (counts.maintenance > 0) parts.push(`в ремонте ${fmt(counts.maintenance)}`);
+    if (counts.held > 0) {
+      parts.push(`ждут воздуха ${fmt(counts.held)}`);
+      haulTone = 'warn';
+    }
+    haul.push(parts.join(', '));
+  }
+  if (haul.length) notes.m_haul = { tone: haulTone, text: 'сейчас ' + haul.join('; ') };
+
+  // Stopes: LHDs waiting for air, flooded stopes.
+  const flooded = Object.values(things).filter((t) => t.kind === 'stope' && t.f && t.f.state === 'flooded').length;
+  const stopes = [];
+  if (counts.lhdHeld > 0) stopes.push(`ждут воздуха ${countText(counts.lhdHeld, FORMS.lhd)}`);
+  if (flooded > 0) stopes.push(`затоплено ${countText(flooded, ['блок', 'блока', 'блоков'])}`);
+  if (stopes.length) notes.m_stopes = { tone: 'warn', text: 'сейчас ' + stopes.join('; ') };
+  return notes;
+}
 
 export function createScenarios({ onChanged }) {
   const root = document.getElementById('scenarios');
@@ -28,10 +107,11 @@ export function createScenarios({ onChanged }) {
     const pips = el('span', { class: 'pips', 'aria-hidden': 'true' },
       measure.stages.slice(1).map(() => el('i', {})));
     const stage = el('span', { class: 'knob-stage' });
+    const note = el('span', { class: 'knob-note', hidden: true });
     const row = el('div', { class: 'knob', dataset: { knob: measure.knob } },
       el('span', { class: 'knob-name', text: measure.name }),
-      el('span', { class: 'knob-ctl' }, minus, pips, plus), stage);
-    knobRows[measure.knob] = { row, minus, plus, pips, stage, measure };
+      el('span', { class: 'knob-ctl' }, minus, pips, plus), stage, note);
+    knobRows[measure.knob] = { row, minus, plus, pips, stage, note, measure };
     measures.append(row);
   }
 
@@ -87,17 +167,27 @@ export function createScenarios({ onChanged }) {
     for (const button of root.querySelectorAll('.toggle')) {
       const on = known && same(knobs[button.dataset.knob], Number(button.dataset.on));
       button.setAttribute('aria-pressed', String(on));
-      setText(button, on ? button.dataset.labelOn : button.dataset.labelOff);
+      setText(button, keepTogether(on ? button.dataset.labelOn : button.dataset.labelOff));
     }
 
     const nextLink = advisor && advisor.next ? advisor.next.link : null;
-    for (const { row, minus, plus, pips, stage, measure } of Object.values(knobRows)) {
-      const value = isNum(knobs[measure.knob]) ? Math.round(knobs[measure.knob]) : null;
+    const stages = {};
+    for (const measure of MEASURES) {
+      stages[measure.knob] = isNum(knobs[measure.knob]) ? Math.round(knobs[measure.knob]) : null;
+    }
+    const notes = known ? stageNotes(things, knobs, advisor, stages) : {};
+    for (const { row, minus, plus, pips, stage, note, measure } of Object.values(knobRows)) {
+      const value = stages[measure.knob];
       const max = measure.stages.length - 1;
+      const extra = notes[measure.knob];
       minus.disabled = value === null || value <= 0;
       plus.disabled = value === null || value >= max;
       [...pips.children].forEach((pip, index) => pip.classList.toggle('on', value !== null && index < value));
-      setText(stage, value === null ? '—' : `ступень ${value} из ${max}: ${measure.stages[value] || ''}`);
+      setText(stage, value === null ? '—'
+        : `ступень ${value} из ${max}: ${measure.stages[value] || ''}${extra && extra.design ? ' по проекту' : ''}`);
+      note.hidden = !extra;
+      note.dataset.tone = extra ? extra.tone : '';
+      setText(note, extra ? extra.text : '');
       row.title = measure.stages.map((text, index) => `${index}: ${text}`).join('\n');
       row.classList.toggle('is-next', Boolean(nextLink) && measure.link === nextLink);
     }
