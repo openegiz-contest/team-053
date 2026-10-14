@@ -333,7 +333,7 @@ class TestSnapshot(SimCase):
         self.assertEqual(snap["mine"]["air_demand_m3s"], 317.2)
         self.assertEqual(snap["mine"]["trucks_active"], 5.0)
         self.assertEqual(snap["mine"]["inflow_m3h"], 197.0)
-        self.assertEqual(snap["rom-stockpile"]["tonnes"], 36000.0)
+        self.assertEqual(snap["rom-stockpile"]["tonnes"], float(MODEL.p("stockpile.start_t")))
         self.assertEqual(snap["rom-stockpile"]["grade"], 2.05)
         self.assertEqual(snap["plant"]["capacity_ktpa"], 1000.0)
         self.assertEqual(snap["tailings"]["stored_t"], 2863755.0)
@@ -1212,7 +1212,7 @@ class TestMeasures(SimCase):
         self.assertEqual(snap["plant-line-4"]["state"], "planned")
         self.assertEqual(snap["enterprise"]["binding_link"], "haulage")
         days_before = snap["rom-stockpile"]["days_of_feed"]
-        self.assertLess(days_before, 36000 / (1000000 / 365))        # stockpile days fall
+        self.assertLess(days_before, MODEL.p("stockpile.start_t") / (1000000 / 365))   # stockpile days fall
         # without a water measure the ponds run down and the last line goes short of water
         sim.run_days(12)
         milled = sim.plant.milled_t
@@ -1263,8 +1263,9 @@ class TestMeasures(SimCase):
         self.assertAlmostEqual(snap["plant-line-6"]["feed_tph"], 62.04, delta=0.01)
         self.assertEqual(snap["plant-line-6"]["utilisation_pct"], 100.0)
         # six lines with water for them mill far more than the mine hoists: the stockpile is used
-        # up and the last lines starve
-        sim.run_days(12)
+        # up and the last lines starve (2 500 kt/yr milled over 365 days against 926 kt/yr hoisted
+        # over 360 days: the opening stockpile lasts about 22 days)
+        sim.run_days(math.ceil(MODEL.p("stockpile.start_t") / (2500000 / 365 - 926422 / 360)) + 3)
         states = set()
         for _ in range(48):
             sim.advance(30)

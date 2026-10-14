@@ -292,12 +292,12 @@
   "vent.q_base": {
     "value": 180,
     "unit": "m3/s",
-    "source": "ASSUMPTION: base air demand; the pair q_base/q_diesel reproduces 252 m3/s at half the fleet and 322 m3/s at the full fleet (checks C6, C7)"
+    "source": "ASSUMPTION: base air demand (people, blasting fumes, leakage), fitted: with vent.q_diesel it reproduces 252 m3/s at half the fleet power and 322 m3/s at the full fleet (checks C6, C7)"
   },
   "vent.q_diesel": {
     "value": 0.06,
     "unit": "m3/s per kW",
-    "source": "ASSUMPTION: 0.06 m3/s per diesel kW is common design practice"
+    "source": "ASSUMPTION: 0.06 m3/s per kW of diesel engine power is the norm of Ontario Reg. 854 s.183.1(1) (equipment without a certified airflow rate; research/norms-and-equipment.md Q1, https://www.ontario.ca/page/ventilation-requirements-diesel-powered-equipment-underground-mines); applied to Sekisovskoye because the Kazakh rule (Order No. 352, point 1063, https://zakon.uchet.kz/rus/docs/V1400010247) defers the coefficient to its Appendix 25-1, which is not in the public copies read"
   },
   "vent.velocity_limit_ms": {"value": 15, "unit": "m/s", "source": "ASSUMPTION: air velocity limit used to size new airways"},
   "vent.measure_V1.raise_section_m2": {
@@ -505,11 +505,11 @@
   "plant.recovery.min_pct": {"value": 80, "unit": "%", "source": "ASSUMPTION: lower clamp of the recovery model"},
   "plant.recovery.max_pct": {"value": 88, "unit": "%", "source": "ASSUMPTION: upper clamp of the recovery model"},
   "plant.grade_base": {"value": 2.05, "unit": "g/t", "source": "FACT B 'Milled gold grade': 2.05 g/t (FY2025)"},
-  "plant.grade_h1_2026": {"value": 1.76, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 1.76 g/t (H1 2026)"},
+  "plant.grade_h1_2026": {"value": 1.76, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 1.76 g/t (H1 2026); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"},
   "stockpile.start_t": {
-    "value": 36000,
+    "value": 94264,
     "unit": "t",
-    "source": "ASSUMPTION: from FACT B and D1 stockpile draws: +156 433 t in 2024, -40 170 t in 2025, -40 130 t in H1 2026 ('Ore processed minus ore mined'), -40 000 t assumed for H2 2026"
+    "source": "ASSUMPTION: cumulative ore mined minus ore milled from 1 Jan 2020 (opening stock taken as zero) to the epoch, from the pairs of research/norms-and-equipment.md Tables 2B and 2C: 2020 +85,794 t (506,050 - 420,256) and 2021 +29,459 t (571,035 - 541,576), FY2021 results table, https://www.investegate.co.uk/announcement/bzw/altyngold--altn/final-results/7071334 (verified); 2022 -56,992 t (527,231 - 584,223, secondary summary of the FY2022 report; the sign is verified by H1 2022: 277,398 mined - 306,599 milled = -29,201 t, https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-report/7120671); 2023 taken as 0 (2023 ore milled is not published in any report read; the gap is filled with no net flow); 2024 +156,433 t (750,045 - 593,612, facts B 'Ore mined' and 'Ore milled (processed)'); 2025 -40,170 t (926,422 - 966,592, facts B); H1 2026 -40,130 t (facts D1 'Ore processed minus ore mined (stockpile draw)'); H2 2026 -40,130 t assumed at the H1 2026 rate. Sum: 134,394 t at 30 Jun 2026 and 94,264 t at 1 Jan 2027. Cross-check with facts D1 'Ore stockpile, carrying value' US$24.48m at 30 Jun 2026: on 134,394 t that is US$182/t, while the H1 2026 fall of the carrying value (US$27.319m - US$24.480m = US$2.839m for 40,130 t drawn) gives US$71/t and the H1 2026 cost of sales per tonne processed (US$55.3m / 498,331 t) US$111/t; at US$71-111/t the carrying value means 220-346 kt. The flow sum is therefore a lower bound: stock from before 2020 and any 2023 surplus (up to +168 kt on the secondary 2023 mined figure) are not counted"
   },
   "tsf.dam4_capacity_t": {
     "value": 3181950,
@@ -564,71 +564,141 @@
     "unit": "simulated days",
     "source": "ASSUMPTION: length of the simulator calibration runs C3, C8, C11 (spec 2.9)"
   },
-  "calib.c1.milled_t": {"value": 966592, "unit": "t", "source": "FACT B 'Ore milled (processed)': 966,592 t (FY2025)"},
-  "calib.c1.grade_gpt": {"value": 2.05, "unit": "g/t", "source": "FACT B 'Milled gold grade': 2.05 g/t (FY2025)"},
-  "calib.c1.reported_oz": {"value": 53852, "unit": "oz", "source": "FACT B 'Gold poured': 53,852 oz (FY2025)"},
+  "calib.c1.milled_t": {"value": 966592, "unit": "t", "source": "FACT B 'Ore milled (processed)': 966,592 t (FY2025); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"},
+  "calib.c1.grade_gpt": {"value": 2.05, "unit": "g/t", "source": "FACT B 'Milled gold grade': 2.05 g/t (FY2025); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"},
+  "calib.c1.reported_oz": {"value": 53852, "unit": "oz", "source": "FACT B 'Gold poured': 53,852 oz (FY2025); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"},
   "calib.c1.tol_pct": {"value": 1.5, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
-  "calib.c2.milled_t": {"value": 593612, "unit": "t", "source": "FACT B 'Ore milled (processed)': 593,612 t (FY2024)"},
-  "calib.c2.grade_gpt": {"value": 2.29, "unit": "g/t", "source": "FACT B 'Milled gold grade': 2.29 g/t (FY2024)"},
-  "calib.c2.reported_oz": {"value": 37279, "unit": "oz", "source": "FACT B 'Gold poured': 37,279 oz (FY2024)"},
+  "calib.c2.milled_t": {"value": 593612, "unit": "t", "source": "FACT B 'Ore milled (processed)': 593,612 t (FY2024); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"},
+  "calib.c2.grade_gpt": {"value": 2.29, "unit": "g/t", "source": "FACT B 'Milled gold grade': 2.29 g/t (FY2024); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"},
+  "calib.c2.reported_oz": {"value": 37279, "unit": "oz", "source": "FACT B 'Gold poured': 37,279 oz (FY2024); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"},
   "calib.c2.tol_pct": {"value": 1.5, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
-  "calib.c3.reported_t": {"value": 926422, "unit": "t/yr", "source": "FACT B 'Ore mined': 926,422 t (FY2025)"},
+  "calib.c3.reported_t": {"value": 926422, "unit": "t/yr", "source": "FACT B 'Ore mined': 926,422 t (FY2025); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"},
   "calib.c3.tol_pct": {"value": 3, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
-  "calib.c4.h1_2026.milled_t": {"value": 498331, "unit": "t", "source": "FACT D1 'Ore processed': 498,331 t (H1 2026)"},
-  "calib.c4.h1_2026.grade_gpt": {"value": 1.76, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 1.76 g/t (H1 2026)"},
-  "calib.c4.h1_2026.reported_oz": {"value": 23906, "unit": "oz", "source": "FACT D1 'Gold poured': 23,906 oz (H1 2026)"},
-  "calib.c4.h1_2025.milled_t": {"value": 452593, "unit": "t", "source": "FACT D1 'Ore processed': 452,593 t (H1 2025)"},
-  "calib.c4.h1_2025.grade_gpt": {"value": 2.04, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 2.04 g/t (H1 2025)"},
-  "calib.c4.h1_2025.reported_oz": {"value": 25081, "unit": "oz", "source": "FACT D1 'Gold poured': 25,081 oz (H1 2025)"},
+  "calib.c4.h1_2026.milled_t": {"value": 498331, "unit": "t", "source": "FACT D1 'Ore processed': 498,331 t (H1 2026); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"},
+  "calib.c4.h1_2026.grade_gpt": {"value": 1.76, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 1.76 g/t (H1 2026); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"},
+  "calib.c4.h1_2026.reported_oz": {"value": 23906, "unit": "oz", "source": "FACT D1 'Gold poured': 23,906 oz (H1 2026); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"},
+  "calib.c4.h1_2025.milled_t": {"value": 452593, "unit": "t", "source": "FACT D1 'Ore processed': 452,593 t (H1 2025); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"},
+  "calib.c4.h1_2025.grade_gpt": {"value": 2.04, "unit": "g/t", "source": "FACT D1 'Gold grade, processed': 2.04 g/t (H1 2025); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"},
+  "calib.c4.h1_2025.reported_oz": {"value": 25081, "unit": "oz", "source": "FACT D1 'Gold poured': 25,081 oz (H1 2025); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"},
   "calib.c4.tol_pct": {"value": 1.5, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
   "calib.c5.grades_gpt": {
     "value": [2.29, 2.05, 2.04, 1.76],
     "unit": "g/t",
-    "source": "FACT B 'Milled gold grade' (FY2024 2.29, FY2025 2.05) and D1 'Gold grade, processed' (H1 2025 2.04, H1 2026 1.76)"
+    "source": "FACT B 'Milled gold grade' (FY2024 2.29, FY2025 2.05) and D1 'Gold grade, processed' (H1 2025 2.04, H1 2026 1.76); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769 and https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
   },
   "calib.c5.reported_pct": {
     "value": [85.42, 85.07, 84.75, 84.55],
     "unit": "%",
-    "source": "FACT B 'Gold recovery' (FY2024 85.42, FY2025 85.07) and D1 'Gold recovery' (H1 2025 84.75, H1 2026 84.55)"
+    "source": "FACT B 'Gold recovery' (FY2024 85.42, FY2025 85.07) and D1 'Gold recovery' (H1 2025 84.75, H1 2026 84.55); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769 and https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
   },
   "calib.c5.tol_points": {"value": 0.25, "unit": "percentage points", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
-  "calib.c6.reported_m3s": {"value": 322, "unit": "m3/s", "source": "FACT A5 'Fresh air, planned': 322 m3/s"},
+  "calib.c6.reported_m3s": {"value": 322, "unit": "m3/s", "source": "FACT A5 'Fresh air, planned': 322 m3/s; https://ecoportal.kz/Rubric/RubService/LoadFile/23916 (p.2)"},
   "calib.c6.band_pct": {"value": [95, 100], "unit": "% of reported", "source": "ASSUMPTION: accepted band fixed in spec 2.9"},
-  "calib.c7.reported_m3s": {"value": 252, "unit": "m3/s", "source": "FACT A5 'Fresh air, current': 252 m3/s"},
+  "calib.c7.reported_m3s": {"value": 252, "unit": "m3/s", "source": "FACT A5 'Fresh air, current': 252 m3/s; https://ecoportal.kz/Rubric/RubService/LoadFile/23916 (p.2)"},
   "calib.c7.tol_pct": {"value": 3, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
   "calib.c8.reported_t": {
     "value": 1000000,
     "unit": "t/yr",
-    "source": "FACT B2 'increasing processing capacity by 50% to 1Mtpa': plant nameplate 1 Mtpa (D1 'Plant operating level': operated at its 1Mtpa nameplate capacity)"
+    "source": "FACT B2 'increasing processing capacity by 50% to 1Mtpa': plant nameplate 1 Mtpa (D1 'Plant operating level': operated at its 1Mtpa nameplate capacity); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/8845806 and https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
   },
   "calib.c8.tol_pct": {"value": 3, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
   "calib.c9.reported_t_yr": {
     "value": 64.3,
     "unit": "t/yr",
-    "source": "FACT A6 'Sludge (settling pond) yield': 64.3 t/yr maximum (2023 OVOS)"
+    "source": "FACT A6 'Sludge (settling pond) yield': 64.3 t/yr maximum (2023 OVOS); https://ecoportal.kz/Rubric/RubService/LoadFile/23917 (p.140, Table 9.2)"
   },
   "calib.c9.tol_pct": {"value": 2, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
   "calib.c10.reported_kth_m3yr": {
     "value": 1725.72,
     "unit": "thousand m3/yr",
-    "source": "FACT A6 'Water balance 2023-2030: total use': mine water 1,725.72 thousand m3/yr"
+    "source": "FACT A6 'Water balance 2023-2030: total use': mine water 1,725.72 thousand m3/yr; https://ecoportal.kz/Rubric/RubService/LoadFile/23917 (p.36-37, Table 1.9)"
   },
   "calib.c10.tol_pct": {"value": 0.5, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
   "calib.c11.tol_pct": {"value": 0.1, "unit": "%", "source": "ASSUMPTION: tolerance fixed in spec 2.9"},
   "calib.c12.min_oz": {
     "value": 100000,
     "unit": "oz/yr",
-    "source": "FACT B2 'potentially boosting annual production to over 100,000 ounces': CEO statement for 2-2.5 Mtpa"
+    "source": "FACT B2 'potentially boosting annual production to over 100,000 ounces': CEO statement for 2-2.5 Mtpa; https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"
   },
   "calib.c12.target_ktpa": {
     "value": 2000,
     "unit": "kt/yr",
-    "source": "FACT B2 'evaluating plans to increase processing capacity to 2-2.5Mtpa'"
+    "source": "FACT B2 'evaluating plans to increase processing capacity to 2-2.5Mtpa'; https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"
+  },
+  "calib.c13.mined_t": {
+    "value": 458201,
+    "unit": "t",
+    "source": "FACT D1 'Ore mined': 458,201 t (H1 2026), not used to set any parameter; https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
+  },
+  "calib.c13.annualise_factor": {
+    "value": 2,
+    "unit": "half years per year",
+    "source": "ASSUMPTION: a half-year figure is annualised x 2 (about 180 of the 360 working days of the mine and 181 of the 365 days of the plant)"
+  },
+  "calib.c13.tol_pct": {
+    "value": 3,
+    "unit": "%",
+    "source": "ASSUMPTION: out-of-sample check C13 uses the tolerance of C3, the check the haulage constant was fitted to"
+  },
+  "calib.c14.guidance_koz": {
+    "value": [52, 55],
+    "unit": "koz",
+    "source": "FACT D1 'Full-year gold production guidance': 52-55 koz for FY2026 (company guidance, not a result); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
+  },
+  "calib.c14.tol_pct": {
+    "value": 0,
+    "unit": "%",
+    "source": "ASSUMPTION: out-of-sample check C14 passes only when the model gold lies inside the guidance range"
+  },
+  "calib.c15.mined_t": {
+    "value": 750045,
+    "unit": "t",
+    "source": "FACT B 'Ore mined': 750,045 t (FY2024); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"
+  },
+  "calib.c15.milled_t": {
+    "value": 593612,
+    "unit": "t",
+    "source": "FACT B 'Ore milled (processed)': 593,612 t (FY2024); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/9542769"
+  },
+  "calib.c15.lines_running": {
+    "value": 2,
+    "unit": "plant lines",
+    "source": "FACT B2 'increasing processing capacity by 50% to 1Mtpa': the third line was commissioned in December 2024, so two lines ran through 2024; https://www.investegate.co.uk/announcement/bzw/altyngold--altn/annual-financial-report/8845806"
+  },
+  "calib.c15.tol_pct": {
+    "value": 5,
+    "unit": "%",
+    "source": "ASSUMPTION: tolerance of the out-of-sample check C15 (a year of plant operation against the capacity of two lines)"
+  },
+  "calib.c16.tol_pct": {
+    "value": 3,
+    "unit": "%",
+    "source": "ASSUMPTION: out-of-sample check C16 (H1 2026 ore processed, annualised, against the plant capacity) uses the tolerance of C8"
   },
   "calib.sim_consistency_tol_pct": {
     "value": 7,
     "unit": "%",
     "source": "ASSUMPTION: simulated throughput with the full 2.0 Mtpa measure set stays within 7 % of the analytic minimum of haulage and stopes (spec 2.9)"
+  },
+  "econ.gold_price_usd_oz": {
+    "value": 4615,
+    "unit": "US$/oz",
+    "source": "FACT D1 'Average realised gold price (excl. silver)': US$4,615/oz in H1 2026; https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
+  },
+  "econ.aisc_usd_oz": {
+    "value": 1995,
+    "unit": "US$/oz",
+    "source": "FACT D1 'AISC, restated basis': US$1,995/oz in H1 2026 on the restated basis (silver by-product revenue deducted, exceptional items and irrecoverable VAT excluded; includes sustaining capex of US$6.0m); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024"
+  },
+  "econ.capex_expansion_usd_m": {
+    "value": 125,
+    "unit": "US$m",
+    "source": "FACT D1 'Estimated cost of expansion to 2–2.5 Mtpa': approximately US$125m for the increase to 2-2.5 Mtpa within 24 months (Q3 2025 results; not repeated or updated in the H1 2026 report); https://www.investegate.co.uk/announcement/bzw/altyngold--altn/3rd-quarter-results/9194910"
+  },
+  "econ.capex_expansion_targets_ktpa": {
+    "value": [2000, 2500],
+    "unit": "kt/yr",
+    "source": "ASSUMPTION: the company estimate econ.capex_expansion_usd_m is stated for the expansion to 2-2.5 Mtpa as a whole and is applied to both targets; no split between 2.0 and 2.5 Mtpa and no cost of the +200 kt step (crushing and milling equipment ordered in H1 2026, amount not disclosed) is published, so the 1000 and 1200 targets carry no capex figure"
   },
   "ladder.m_haul.trucks": {
     "value": [5, 7, 10, 12],

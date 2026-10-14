@@ -437,7 +437,7 @@ class TestCountsPerKind(RegistryCase):
         for d in dams.values():
             a = d["attributes"]
             self.assertAlmostEqual(a["capacity_t"] / a["bulk_density"], a["capacity_m3"], delta=1.0)
-        self.assertEqual(value_of(self.by_id[f"{NS}:rom-stockpile"], "tonnes"), 36000.0)
+        self.assertEqual(value_of(self.by_id[f"{NS}:rom-stockpile"], "tonnes"), 94264.0)  # stockpile.start_t, derivation in params.json
 
     def test_scenario_defaults(self):
         s = self.by_id[f"{NS}:scenario"]
@@ -596,7 +596,7 @@ class TestParams(ParamsCase):
         self.assertEqual((v["plant.recovery.intercept_pct"], v["plant.recovery.slope_pct_per_gpt"],
                           v["plant.recovery.min_pct"], v["plant.recovery.max_pct"]), (81.616, 1.637, 80, 88))
         self.assertEqual((v["plant.grade_base"], v["plant.grade_h1_2026"]), (2.05, 1.76))
-        self.assertEqual(v["stockpile.start_t"], 36000)
+        self.assertEqual(v["stockpile.start_t"], 94264)
         self.assertEqual((v["tsf.dam4_capacity_t"], v["tsf.dam4_capacity_m3"], v["tsf.bulk_density"]),
                          (3181950, 2357000, 1.35))
         self.assertEqual(v["tsf.dam4_fill_start"], 0.90)

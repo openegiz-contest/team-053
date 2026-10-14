@@ -232,7 +232,15 @@ class FixtureStandTest(unittest.TestCase):
         self.assertEqual(len(report["projection"]["rows"]), 10)
         self.assertEqual([row["year"] for row in report["projection"]["rows"]], list(range(2027, 2037)))
         self.assertEqual({check["id"] for check in report["calibration"]},
-                         {f"C{n}" for n in range(1, 13)})
+                         {f"C{n}" for n in range(1, 17)})       # C13-C16: out-of-sample checks
+        for check in report["calibration"]:
+            self.assertIn(check["basis_name"], ("подгонка", "независимая", "тождество"))
+            self.assertTrue(check["source"])
+        simulator = [check for check in report["calibration"] if check["kind"] == "simulator"]
+        self.assertTrue(simulator and all(isinstance(check["model"], (int, float)) for check in simulator))
+        for row in report["ladder"]:                              # one economics block per target
+            self.assertEqual(row["economics"]["gold_price_usd_oz"], 4615)
+        self.assertEqual([row["economics"]["capex_usd_m"] for row in report["ladder"]], [None, None, 125, 125])
 
     def test_fixture_files(self):
         state = load_json(os.path.join(FIXTURE_DIR, "state.json"))
@@ -398,6 +406,31 @@ class FixtureStandTest(unittest.TestCase):
         _, undone = self.client.post({"action": "undo"})
         self.assertEqual(undone["knobs"]["m_haul"], 0.0)
         self.assertEqual(undone["knobs"]["target_ktpa"], 1200.0)
+
+    def test_line2_down_is_repaired_before_any_expansion(self):
+        """Fix round 2, item 1: the advisor restarts the line through the same knob."""
+        self.client.post({"preset": "line2_down"})
+        report = self.client.json("/api/advisor")[1]
+        step = report["next_measure"]
+        self.assertEqual((step["kind"], step["measure"], step["set"]), ("disturbance", "restart_line",
+                                                                      {"line_down": 0.0}))
+        self.assertTrue(step["text"].startswith("запустить технологическую линию"), step["text"])
+        self.assertEqual(self.client.features()["advisor"]["next_measure"], "restart_line")
+        status, answer = self.client.post({"action": "advisor_next"})
+        self.assertEqual(status, 200, answer)
+        self.assertEqual(answer["changed"], {"line_down": [2.0, 0.0]})
+        self.assertNotEqual(self.client.features()["plant-line-2"]["state"], "off")
+        _, answer = self.client.post({"action": "undo"})
+        self.assertEqual(answer["knobs"]["line_down"], 2.0)
+        self.client.post({"action": "reset"})
+
+    def test_economics_follow_a_new_target(self):
+        self.client.post({"preset": "step2000"})
+        items = self.client.json("/api/advisor")[1]["effects"]["items"]
+        economics = [item for item in items if item["id"] == "economics"]
+        self.assertEqual(len(economics), 1)
+        self.assertIn("простая окупаемость", economics[0]["text"])
+        self.client.post({"action": "reset"})
 
     def test_knob_minus_plus(self):
         _, answer = self.client.post({"step": {"m_vent": 1}})

@@ -3150,7 +3150,7 @@
       },
       "features": {
         "state": {"properties": {"value": "normal"}},
-        "tonnes": {"properties": {"value": 36000.0}},
+        "tonnes": {"properties": {"value": 94264.0}},
         "grade": {"properties": {"value": 2.05}},
         "inflow_tph": {"properties": {"value": 0.0}},
         "outflow_tph": {"properties": {"value": 0.0}},

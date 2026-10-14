@@ -9,7 +9,9 @@ changes something visible on the page without the stack.
 The eight link capacities, the binding link and the units held for air are not
 re-implemented here: they come from sekis.capacity.evaluate, the library the
 simulator and the advisor use, so the fixture cannot drift from them. The
-constraint loop of spec 3.4 and the layout of the state are this module's own.
+advisor report and the knob changes of "advisor_next" / "advisor_all" are those
+of sekis.advisor (the advisor service runs the same code). The layout of the
+state and its time-dependent values are this module's own.
 
 Regenerate the two committed files from the registry and the parameter file:
 
@@ -17,6 +19,7 @@ Regenerate the two committed files from the registry and the parameter file:
 """
 
 import copy
+import dataclasses
 import datetime
 import json
 import math
@@ -33,9 +36,10 @@ if TEAM_DIR not in sys.path:    # the server loads this file by path, from any d
     sys.path.insert(0, TEAM_DIR)
 
 from sekis import capacity  # noqa: E402
-from sekis.advisor import wording  # noqa: E402
+from sekis.advisor import Advisor, wording  # noqa: E402
 
 NS = "kz.sekis:"
+_ADVISOR = None   # the Expansion Advisor, built on first use
 
 # Simulated seconds after the epoch at which the fixture clock starts
 # (12 days and 54 minutes after the 09:30 epoch: day 12, 10:24 in shift A, so
@@ -52,37 +56,6 @@ DEFAULT_KNOBS = {
 
 LINKS = ["haulage", "ventilation", "stopes", "development", "dewatering",
          "plant", "water", "tailings"]
-LINK_RU = {
-    "haulage": "Откатка", "ventilation": "Вентиляция", "stopes": "Очистные блоки",
-    "development": "Проходка", "dewatering": "Водоотлив", "plant": "Фабрика",
-    "water": "Водоснабжение", "tailings": "Хвостохранилище",
-}
-LINK_KNOB = {"haulage": "m_haul", "ventilation": "m_vent", "stopes": "m_stopes",
-             "development": "m_dev", "plant": "m_plant", "water": "m_water",
-             "tailings": "m_tailings"}
-KNOB_MAX = {"m_plant": 3, "m_haul": 3, "m_stopes": 3, "m_vent": 2, "m_dev": 1,
-            "m_water": 2, "m_tailings": 1}
-STAGE_RU = {
-    "m_haul": ["самосвалы № 1–5", "ввести самосвалы № 6 и № 7",
-               "ввести самосвалы № 8–10", "ввести самосвалы № 11 и № 12"],
-    "m_plant": ["три линии, 1 000 тыс. т/год",
-                "ступень +200 тыс. т/год: линии № 1–3 на 49,63 т/ч",
-                "пустить линии № 4 и № 5 (2 000 тыс. т/год)",
-                "пустить линию № 6 (2 500 тыс. т/год)"],
-    "m_stopes": ["четыре очистных блока",
-                 "пятый очистной блок, ПДМ № 5, буровая установка № 3",
-                 "восемь блоков, ПДМ № 6–8, буровая установка № 4",
-                 "десять блоков, ПДМ № 9 и № 10, буровая установка № 5"],
-    "m_vent": ["подача 322 м³/с", "вентилятор на восстающем ВПВ, +105 м³/с",
-               "ствол ВС-3 с вентилятором, +240 м³/с"],
-    "m_dev": ["проходка 34 м глубины в год",
-              "вторая проходческая бригада, 50 м глубины в год"],
-    "m_water": ["без оборотной воды", "оборот воды из хвостохранилища, 0,6 м³/т",
-                "дополнительный водозабор до 150 м³/ч"],
-    "m_tailings": ["действующие дамбы", "новая карта хвостохранилища, 6,0 млн т"],
-}
-RESTORE_PUMPS_RU = "восстановить насосы станции гор. +150 м"
-
 # Trucks, LHDs, rigs and producing stopes by measure stage (spec 3.1).
 TRUCKS_BY_STAGE = [5, 7, 10, 12]
 LHDS_BY_STAGE = [4, 5, 8, 10]
@@ -101,15 +74,6 @@ DECLINE_Z = {"tu1": 120.0, "tu2": 150.0}
 ROM_PAD = (-305.0, 430.0, -215.0)
 STOPE_X = {"1": -200.0, "2": 0.0, "3": 200.0}
 DRIVE_Z, DRAW_Z = 40.0, 10.0
-
-
-def ru_num(value, digits=0):
-    """Russian number: no-break space between thousands, comma as decimal mark."""
-    if value is None:
-        return "—"
-    rounded = round(float(value), digits)
-    text = f"{abs(rounded):,.{digits}f}".replace(",", " ").replace(".", ",")
-    return ("−" if rounded < 0 else "") + text
 
 
 def load_json(path):
@@ -201,10 +165,6 @@ def recovery_pct(model, grade):
     return max(p("plant.recovery.min_pct"), min(p("plant.recovery.max_pct"), value))
 
 
-def gold_koz(model, ktpa, grade):
-    return ktpa * 1000.0 * grade * recovery_pct(model, grade) / 100.0 / model.p("gold.g_per_oz") / 1000.0
-
-
 def capacity_state(model, knobs, centroid=None, free_kt=None):
     """State of sekis.capacity for a knob set. `free_kt` (the storage still free,
     for the projection) is passed as the tailings placed since the epoch."""
@@ -271,361 +231,40 @@ def plant_running(model, knobs, cap):
     return plant_cap * factor, balance, factor
 
 
-def kpis(model, knobs, cap=None):
-    """KPIs of a knob set.
-
-    Gold is counted at the sustainable rate (what the mine can deliver); water
-    and tailings at the rate the plant runs while the stockpile lasts.
-    """
-    p = model.p
-    cap = cap or capacities(model, knobs)
-    rate = cap["achievable"]
-    plant_rate = min(cap["caps"]["plant"], rate)
-    grade = knobs["grade_gpt"]
-    base = capacities(model, DEFAULT_KNOBS)["achievable"]
-    plant_now, balance, _ = plant_running(model, knobs, cap)
-    mined_tpd = rate * 1000.0 / p("regime.working_days")
-    milled_tpd = plant_now * 1000.0 / p("regime.plant_days")
-    draw = milled_tpd - mined_tpd
-    return {
-        "gold_koz_year": round(gold_koz(model, plant_rate, grade), 1),
-        "gold_gain_koz_year": round(gold_koz(model, plant_rate, grade)
-                                    - gold_koz(model, base, p("plant.grade_base")), 1),
-        "grade_gpt": grade, "recovery_pct": round(recovery_pct(model, grade), 2),
-        "air_demand_m3s": cap["air_demand"], "air_supply_m3s": cap["air_supply"],
-        "water_deficit_m3h": round(balance["deficit"], 1),
-        "discharge_m3h": round(balance["discharge"], 1),
-        "permit_m3h": p("water.permit_m3h"),
-        "tailings_years_left": round(cap["free_kt"] / plant_now, 1) if plant_now else None,
-        # None: the plant mills less than the mine delivers, the stockpile grows.
-        "stockpile_days_left": round(p("stockpile.start_t") / draw, 0) if draw > 1 else None,
-        "dewatering_margin": cap["dewatering_margin"],
-    }
+def advisor():
+    """The Expansion Advisor of sekis.advisor, built once per process."""
+    global _ADVISOR
+    if _ADVISOR is None:
+        _ADVISOR = Advisor()
+    return _ADVISOR
 
 
-# ------------------------------------------------------------ advisor logic
-
-def plan(model, knobs, target):
-    """Constraint loop of spec 3.4: (steps, final knobs, final capacities)."""
-    knobs = dict(knobs)
-    steps = []
-    for _ in range(40):
-        cap = capacities(model, knobs)
-        link = cap["binding"]
-        if cap["achievable"] >= target:
-            break
-        if link == "dewatering":
-            change, text = {"pumps_failed_p150": 0.0}, RESTORE_PUMPS_RU
-        else:
-            knob = LINK_KNOB[link]
-            nxt = stage(knobs, knob) + 1
-            if nxt > KNOB_MAX[knob]:
-                break
-            change, text = {knob: float(nxt)}, STAGE_RU[knob][nxt]
-        before = cap["caps"][link]
-        knobs.update(change)
-        after = capacities(model, knobs)
-        # Which units the measure returns to work, or leaves waiting for air.
-        text += wording.held_note(link, cap["air"], after["air"])
-        steps.append({"link": link, "link_name": LINK_RU[link], "set": change, "text": text,
-                      "cap_before_ktpa": before, "cap_after_ktpa": after["caps"][link]})
-    return steps, knobs, capacities(model, knobs)
-
-
-def apply_changes(model, knobs, mode):
-    """Knob changes the advisor proposes: one step ('next') or the whole sequence."""
-    steps, _, _ = plan(model, knobs, knobs["target_ktpa"])
-    if mode == "next":
-        steps = steps[:1]
-    changes = {}
-    for step in steps:
-        changes.update(step["set"])
-    return {"mode": mode, "changes": changes, "steps": steps}
-
-
-def ladder(model, knobs):
-    rows = []
-    for target in (1000.0, 1200.0, 2000.0, 2500.0):
-        start = dict(knobs)
-        for knob in KNOB_MAX:
-            start[knob] = 0.0
-        start["target_ktpa"] = target
-        steps, final, cap = plan(model, start, target)
-        row = {"target_ktpa": target, "steps": steps, "achievable_ktpa": cap["achievable"],
-               "binding_link": cap["binding"], "binding_link_name": LINK_RU[cap["binding"]],
-               "reached": cap["achievable"] >= target}
-        row.update(kpis(model, final, cap))
-        rows.append(row)
-    return rows
-
-
-def projection(model, knobs, first_year=2027, years=10):
-    p = model.p
-    centroid = p("stope.centroid_baseline_m")
-    free = tailings_free_kt(model, knobs)
-    capacity_total = free + p("tsf.dam4_capacity_t") * p("tsf.dam4_fill_start") / 1000.0
-    rows, runs_out, missed, gold_total = [], None, None, 0.0
-    for year in range(first_year, first_year + years):
-        cap = capacities(model, knobs, centroid=centroid, free_kt=free)
-        others = {l: v for l, v in cap["caps"].items()
-                  if l != "tailings" and (l != "dewatering" or cap["dewatering_limiting"])}
-        link = min(others, key=lambda l: (others[l], LINKS.index(l)))
-        rate = others[link]
-        if free < rate:  # storage is the limit: only the free volume can be milled
-            rate, link = max(0.0, free), "tailings"
-            runs_out = runs_out or year
-        plant_rate = min(rate, cap["caps"]["plant"])
-        gold = gold_koz(model, plant_rate, knobs["grade_gpt"])
-        gold_total += gold
-        balance = water_balance(model, knobs, rate, plant_rate)
-        free = max(0.0, free - plant_rate)
-        if missed is None and rate < knobs["target_ktpa"]:
-            missed = year
-        rows.append({
-            "year": year, "achievable_ktpa": float(round(rate)), "binding_link": link,
-            "binding_link_name": LINK_RU[link], "centroid_m": round(centroid, 0),
-            "gold_koz": round(gold, 1), "gold_total_koz": round(gold_total, 1),
-            "tailings_stored_kt": float(round(capacity_total - free)),
-            "tailings_free_kt": float(round(free)),
-            "water_deficit_m3h": round(balance["deficit"], 1),
-        })
-        centroid -= rate * 1000.0 / p("dev.t_per_vm")
-    return {"rows": rows, "storage_runs_out_year": runs_out, "target_missed_year": missed}
-
-
-def links_table(model, knobs, cap):
-    rows = []
-    for link in LINKS:
-        knob = LINK_KNOB.get(link)
-        limiting = link != "dewatering" or cap["dewatering_limiting"]
-        row = {"id": link, "name": LINK_RU[link], "cap_ktpa": cap["caps"][link],
-               "limiting": limiting, "binding": link == cap["binding"], "knob": knob}
-        if knob:
-            row.update(stage=stage(knobs, knob), stage_max=KNOB_MAX[knob],
-                       detail=STAGE_RU[knob][stage(knobs, knob)])
-            if link == "ventilation":   # supply, demand and the units that wait for air
-                row["detail"] = cap["vent_detail"]
-        else:
-            row["detail"] = f"запас насосов ×{ru_num(cap['dewatering_margin'], 2)}"
-        rows.append(row)
-    return rows
-
-
-EFFECT_KPIS = [
-    ("grade_gpt", "Содержание золота в руде", "г/т", 2),
-    ("recovery_pct", "Извлечение", "%", 2),
-    ("gold_koz_year", "Золото", "тыс. унц./год", 1),
-    ("air_supply_m3s", "Подача воздуха", "м³/с", 0),
-    ("air_demand_m3s", "Потребность в воздухе", "м³/с", 1),
-    ("water_deficit_m3h", "Дефицит воды", "м³/ч", 1),
-    ("discharge_m3h", "Сброс в ручей Волчевка", "м³/ч", 1),
-    ("tailings_years_left", "Запас хвостохранилищ", "лет", 1),
-    ("stockpile_days_left", "Запас рудного склада", "сут", 0),
-]
-
-
-def effects(model, before_knobs, after_knobs, label, revision):
-    """Before -> after of every capacity and KPI that the last change moved."""
-    if before_knobs is None:
-        return {"label": label, "revision": revision, "items": []}
-    before, after = capacities(model, before_knobs), capacities(model, after_knobs)
-    kb, ka = kpis(model, before_knobs, before), kpis(model, after_knobs, after)
-    items = []
-
-    def add(key, name, unit, digits, old, new, better_up=True):
-        if old is None or new is None:
-            if key == "stockpile_days_left" and old != new:
-                grows = new is None
-                items.append({
-                    "id": key, "name": name, "unit": unit, "before": old, "after": new,
-                    "trend": "better" if grows else "worse",
-                    "text": ("Рудный склад пополняется: фабрика перерабатывает меньше, чем выдаёт рудник"
-                             if grows else
-                             f"Рудный склад расходуется: запаса хватит на {ru_num(new)} сут"),
-                })
-            return
-        if round(old, digits) == round(new, digits):
-            return
-        delta = new - old
-        sign = "+" if delta > 0 else "−"
-        items.append({
-            "id": key, "name": name, "unit": unit, "before": old, "after": new,
-            "trend": "better" if (delta > 0) == better_up else "worse",
-            "text": f"{name}: {ru_num(old, digits)} → {ru_num(new, digits)} {unit} "
-                    f"({sign}{ru_num(abs(delta), digits)})",
-        })
-
-    if before["binding"] != after["binding"]:
-        items.append({
-            "id": "binding_link", "name": "Узкое место", "unit": "", "trend": "neutral",
-            "before": before["binding"], "after": after["binding"],
-            "text": f"Узкое место: {LINK_RU[before['binding']].lower()} → "
-                    f"{LINK_RU[after['binding']].lower()}",
-        })
-    add("achievable_ktpa", "Достижимая производительность", "тыс. т/год", 0,
-        before["achievable"], after["achievable"])
-    for link in LINKS:
-        if link == "dewatering" and not (before["dewatering_limiting"] or after["dewatering_limiting"]):
-            continue
-        if link == "dewatering" and before["dewatering_limiting"] != after["dewatering_limiting"]:
-            flooded = after["dewatering_limiting"]
-            items.append({
-                "id": "cap_dewatering_ktpa", "name": LINK_RU[link], "unit": "тыс. т/год",
-                "before": before["caps"][link], "after": after["caps"][link],
-                "trend": "worse" if flooded else "better",
-                "text": (f"Водоотлив: затоплены нижние горизонты, очистные блоки дают "
-                         f"{ru_num(after['caps'][link])} тыс. т/год" if flooded
-                         else "Водоотлив: затопление снято, звено не ограничивает"),
-            })
-            continue
-        add(f"cap_{link}_ktpa", LINK_RU[link], "тыс. т/год", 0,
-            before["caps"][link], after["caps"][link])
-    failed_before = stage(before_knobs, "pumps_failed_p150")
-    failed_after = stage(after_knobs, "pumps_failed_p150")
-    if failed_before != failed_after and 3 not in (failed_before, failed_after):
-        items.append({
-            "id": "pumps_available", "name": "Насосы станции гор. +150 м", "unit": "шт.",
-            "before": 3 - failed_before, "after": 3 - failed_after,
-            "trend": "worse" if failed_after > failed_before else "better",
-            "text": (f"Насосы станции гор. +150 м: исправных {3 - failed_before} → "
-                     f"{3 - failed_after}; производительность водоотлива сохранена за счёт резерва"),
-        })
-    lower_is_better = {"air_demand_m3s", "water_deficit_m3h", "discharge_m3h"}
-    for key, name, unit, digits in EFFECT_KPIS:
-        add(key, name, unit, digits, kb[key], ka[key], better_up=key not in lower_is_better)
-        if key == "air_demand_m3s":     # then the units that wait for air, as the advisor words it
-            held = wording.held_item(before, after)
-            if held:
-                items.append(dict(held, text=held["text"].rstrip(".")))   # no full stop in this list
-    if kb["dewatering_margin"] != ka["dewatering_margin"]:
-        add("dewatering_margin", "Запас производительности насосов", "крат", 2,
-            kb["dewatering_margin"], ka["dewatering_margin"])
-    return {"label": label, "revision": revision, "items": items}
-
-
-def calibration(model):
-    """Analytic checks of spec 2.9; simulator checks are listed without a value."""
-    p = model.p
-    rows = []
-
-    def row(cid, title, unit, reported, value, tolerance, passed, deviation=None,
-            deviation_unit="%", kind="analytic", source=""):
-        if deviation is None and value is not None and reported:
-            deviation = (value - reported) / reported * 100.0
-        rows.append({"id": cid, "title": title, "kind": kind, "unit": unit,
-                     "reported": reported, "model": value,
-                     "deviation": None if deviation is None else round(deviation, 2),
-                     "deviation_unit": deviation_unit, "tolerance": tolerance,
-                     "passed": passed, "source": source})
-
-    def gold(milled, grade):
-        return milled * grade * recovery_pct(model, grade) / 100.0 / p("gold.g_per_oz")
-
-    def within(value, reported, tol_pct):
-        return abs(value - reported) / reported * 100.0 <= tol_pct
-
-    for cid, title, key, source in (
-            ("C1", "Золото за 2025 финансовый год", "calib.c1", "факт B"),
-            ("C2", "Золото за 2024 финансовый год", "calib.c2", "факт B")):
-        value = gold(p(f"{key}.milled_t"), p(f"{key}.grade_gpt"))
-        tol = p(f"{key}.tol_pct")
-        row(cid, title, "унц.", p(f"{key}.reported_oz"), round(value),
-            f"±{ru_num(tol, 1)} %", within(value, p(f"{key}.reported_oz"), tol), source=source)
-    row("C3", "Руда, выданная на поверхность: симулятор, 60 суток, в пересчёте на год", "т/год",
-        p("calib.c3.reported_t"), None, f"±{ru_num(p('calib.c3.tol_pct'))} %", None,
-        kind="simulator", source="факт B")
-    for half, title in (("h1_2026", "Золото за I полугодие 2026 г."),
-                        ("h1_2025", "Золото за I полугодие 2025 г.")):
-        key = f"calib.c4.{half}"
-        value = gold(p(f"{key}.milled_t"), p(f"{key}.grade_gpt"))
-        tol = p("calib.c4.tol_pct")
-        row("C4", title, "унц.", p(f"{key}.reported_oz"), round(value), f"±{ru_num(tol, 1)} %",
-            within(value, p(f"{key}.reported_oz"), tol), source="факт D1")
-    for grade, reported in zip(p("calib.c5.grades_gpt"), p("calib.c5.reported_pct")):
-        value = recovery_pct(model, grade)
-        tol = p("calib.c5.tol_points")
-        row("C5", f"Извлечение при содержании {ru_num(grade, 2)} г/т", "%", reported,
-            round(value, 2), f"±{ru_num(tol, 2)} п.п.", abs(value - reported) <= tol,
-            deviation=value - reported, deviation_unit="п.п.", source="факт B, D1")
-    demand = p("vent.q_base") + p("vent.q_diesel") * fleet_kw(model, DEFAULT_KNOBS)
-    low, high = p("calib.c6.band_pct")
-    reported = p("calib.c6.reported_m3s")
-    row("C6", "Потребность в воздухе базового парка (пик)", "м³/с", reported, round(demand, 1),
-        f"{low}–{high} % от отчёта", low <= demand / reported * 100.0 <= high, source="факт A5")
-    half_demand = p("vent.q_base") + p("vent.q_diesel") * fleet_kw(model, DEFAULT_KNOBS) / 2.0
-    row("C7", "Потребность в воздухе при половине мощности парка", "м³/с",
-        p("calib.c7.reported_m3s"), round(half_demand, 1), f"±{ru_num(p('calib.c7.tol_pct'))} %",
-        within(half_demand, p("calib.c7.reported_m3s"), p("calib.c7.tol_pct")), source="факт A5")
-    row("C8", "Переработка руды: симулятор, 60 суток, в пересчёте на год", "т/год",
-        p("calib.c8.reported_t"), None, f"±{ru_num(p('calib.c8.tol_pct'))} %", None,
-        kind="simulator", source="факт B2")
-    sludge = p("water.inflow_m3h") * 8760 * p("pond.tss_in_mgl") * p("pond.efficiency") / 1e6
-    row("C9", "Осадок илоотстойников при притоке 197 м³/ч", "т/год", p("calib.c9.reported_t_yr"),
-        round(sludge, 1), f"±{ru_num(p('calib.c9.tol_pct'))} %",
-        within(sludge, p("calib.c9.reported_t_yr"), p("calib.c9.tol_pct")), source="факт A6")
-    demand_water = (p("water.site_m3_per_t") + p("water.plant_m3_per_t")) * p("plant.nameplate_ktpa")
-    row("C10", "Водный баланс при 1 000 тыс. т/год: площадка и фабрика", "тыс. м³/год",
-        p("calib.c10.reported_kth_m3yr"), round(demand_water, 2),
-        f"±{ru_num(p('calib.c10.tol_pct'), 1)} %",
-        within(demand_water, p("calib.c10.reported_kth_m3yr"), p("calib.c10.tol_pct")),
-        source="факт A6")
-    row("C11", "Баланс массы за 60 суток: выдано = склад + переработано; переработано = хвосты",
-        "%", None, None, f"±{ru_num(p('calib.c11.tol_pct'), 1)} %", None, kind="simulator",
-        source="тождество")
-    gold_2000 = gold(p("calib.c12.target_ktpa") * 1000.0, p("plant.grade_base"))
-    row("C12", "Золото при 2,0 млн т/год и содержании 2,05 г/т", "унц./год",
-        p("calib.c12.min_oz"), round(gold_2000), "не менее отчётного",
-        gold_2000 > p("calib.c12.min_oz"), source="факт B2")
-    return rows
+def advisor_inputs(knobs, revision=0, label="", sim_time=None):
+    """Inputs of the advisor for a knob set: the epoch tonnages and the levels the fixture
+    shows flooded."""
+    adv = advisor()
+    inputs = adv.default_inputs().with_knobs({k: v for k, v in knobs.items() if k in DEFAULT_KNOBS})
+    return dataclasses.replace(inputs, revision=int(revision), label=label, sim_time=sim_time,
+                               flooded_levels=tuple(flooded_levels(knobs)))
 
 
 def build_report(model, knobs, before_knobs=None, revision=0, label="Базовый режим",
                  sim_time=None):
-    """Advisor report in the shape served by GET /api/advisor."""
-    cap = capacities(model, knobs)
-    steps, _, _ = plan(model, knobs, knobs["target_ktpa"])
-    report = {
-        "report_revision": revision, "label": label, "sim_time": sim_time,
-        "target_ktpa": knobs["target_ktpa"], "achievable_ktpa": cap["achievable"],
-        "binding_link": cap["binding"], "binding_link_name": LINK_RU[cap["binding"]],
-        "target_reached": cap["achievable"] >= knobs["target_ktpa"],
-        "links": links_table(model, knobs, cap),
-        "next_measure": steps[0] if steps else None,
-        "measures_needed": len(steps), "sequence": steps,
-        "kpi": kpis(model, knobs, cap),
-        "sustainable_baseline": {
-            "ktpa": capacities(model, DEFAULT_KNOBS)["achievable"],
-            "gold_koz_year": round(gold_koz(model, capacities(model, DEFAULT_KNOBS)["achievable"],
-                                            model.p("plant.grade_base")), 1)},
-        "ladder": ladder(model, knobs),
-        "projection": projection(model, knobs),
-        "effects": effects(model, before_knobs, knobs, label, revision),
-        "calibration": calibration(model),
-    }
-    return report
+    """Advisor report in the shape served by GET /api/advisor: the report of sekis.advisor
+    for this knob set (the same code the advisor service runs)."""
+    after = advisor_inputs(knobs, revision, label, sim_time)
+    before = None if before_knobs is None else advisor_inputs(before_knobs, max(0, int(revision) - 1))
+    return advisor().report(after, before)
+
+
+def apply_changes(model, knobs, mode):
+    """Knob changes the advisor proposes: one step ('next') or the whole sequence."""
+    return advisor().apply(advisor_inputs(knobs), mode)
 
 
 def advisor_features(report):
     """Features of kz.sekis:advisor (spec 3.4) taken from a report."""
-    caps = {row["id"]: row for row in report["links"]}
-    nxt = report["next_measure"]
-    kpi = report["kpi"]
-    features = {
-        "binding_link": report["binding_link"],
-        "next_measure": ("none" if not nxt else
-                         "restore_pumps" if nxt["link"] == "dewatering" else next(iter(nxt["set"]))),
-        "measures_needed": float(report["measures_needed"]),
-        "target_ktpa": report["target_ktpa"], "achievable_ktpa": report["achievable_ktpa"],
-        "dewatering_margin": kpi["dewatering_margin"],
-        "report_revision": float(report["report_revision"]),
-    }
-    for link in LINKS:
-        row = caps[link]
-        features[f"cap_{link}_ktpa"] = row["cap_ktpa"] if row["limiting"] else 0.0
-    for key in ("gold_koz_year", "gold_gain_koz_year", "air_demand_m3s", "water_deficit_m3h",
-                "discharge_m3h", "tailings_years_left", "stockpile_days_left"):
-        features[key] = float(kpi[key] or 0.0)
-    return features
+    return advisor().features(report)
 
 
 # ----------------------------------------------------------------- the state
@@ -960,8 +599,13 @@ def build_state(model, base, knobs, revision=0, label="Базовый режим
                  avg_cycle_min=round(sum(data["cycles"]) / len(data["cycles"]), 1) if data["cycles"] else 0.0)
 
     # ---- throughput
-    rate = cap["achievable"]                      # mine, kt/yr
-    mined_tpd = rate * 1000.0 / p("regime.working_days")
+    rate = cap["achievable"]                      # the chain, kt/yr
+    # The mine hoists what its own links allow, whatever the plant takes (the simulator does the
+    # same); the stockpile takes up the difference.
+    mine_links = ["haulage", "ventilation", "stopes", "development"] + (
+        ["dewatering"] if cap["dewatering_limiting"] else [])
+    mine_rate = min(cap["caps"][link] for link in mine_links)
+    mined_tpd = mine_rate * 1000.0 / p("regime.working_days")
     productive_h = p("regime.shifts") * p("regime.productive_h")
     hoisted_tph = mined_tpd / productive_h if working else 0.0
 

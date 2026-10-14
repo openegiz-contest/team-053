@@ -130,7 +130,7 @@ Parent is given as the name without the namespace. "Baseline" is the state at si
 | `mon-volchevka` | monitoring_point | water | Выпуск № 1 в ручей Волчевка | permit 218.8 m³/h |
 | `mon-sekisovka` | monitoring_point | water | Пост на реке Секисовка | water body «р. Секисовка»; shows `intake_m3h` |
 | `plant` | plant | enterprise | Обогатительная фабрика | nameplate 1000 kt/yr |
-| `rom-stockpile` | rom_stockpile | plant | Рудный склад | 36 000 t at start |
+| `rom-stockpile` | rom_stockpile | plant | Рудный склад | 94 264 t at start (`stockpile.start_t`, 2.8) |
 | `plant-line-1..3` | plant_line | plant | Технологическая линия № 1 … № 3 | 41.36 t/h each; line 3 commissioned December 2024 |
 | `plant-line-4..6` | plant_line | plant | Технологическая линия № 4 … № 6 (проект) | `planned` |
 | `tailings` | tailings_facility | enterprise | Хвостовое хозяйство | 50°20'24" N, 82°36'30" E; 1.53 km² |
@@ -169,13 +169,18 @@ Dynamic assignments (which LHD or rig works which stope, which decline a truck i
 
 ### 2.1 Time base
 
-- Compression 60: one real second is one simulated minute (`SIM_SPEEDUP=60`). A shift lasts 11 real minutes, a truck cycle about 40 real seconds.
+- Compression 60: one real second is one simulated minute (`SIM_SPEEDUP=60`). A shift lasts 11 real minutes; a truck cycle takes 52–58 real seconds (measured in the simulator at baseline).
 - Internal step 10 simulated seconds; the service loop runs every 0.5 real seconds (3 steps).
 - Simulation epoch: 1 January 2027, 09:30, 45 minutes into the first productive block (first year of the decision); the run opens with trucks spread along their cycles. A year is 360 working days (FACT A10 "Shift regime"); the five non-working days are not simulated. Mine totals are annualised with × 360, plant totals with × 365 (the plant runs every day).
 - Day: shift A 08:00–19:00, blast window 19:00–20:00, shift B 20:00–07:00, blast window 07:00–08:00. ASSUMPTION: the 2 hours left by 2 × 11 h are used for blasting and clearing.
 - Productive time inside a shift: 8.5 h (ASSUMPTION: 0.75 h travel and inspection at each end, 1 h meal).
 - Random numbers come from one generator seeded with `SIM_SEED=53`. The core runs headless (no MQTT) at full speed for tests: 60 simulated days in at most 60 s.
-- Displayed rates: "now" values are rolling 2-simulated-hour means; daily totals reset at 08:00; annual capacity comes from the advisor (analytic, instant).
+- Displayed values (the docstring "What the displayed values mean" in `team/sekis/sim/__init__.py` is authoritative):
+  - Mine rate: `mine.ore_hoisted_tph` is the ore hoisted over the last 24 simulated hours, `enterprise.ore_mined_tpd` the same per day; the Stand header shows this 24-hour mine rate beside the plant feed. `rom-stockpile.inflow_tph` is a rolling 2-hour mean (`sim.rate_window_h`).
+  - Plant: `plant.gold_poured_oz_day` is the gold of the last 2 hours × 12; `enterprise.ore_milled_tpd`, `enterprise.gold_poured_oz_day` and `tailings.inflow_tpd` are 24-hour totals; `plant.feed_tph` and the line feeds are the present minute.
+  - Restart on a knob change: when `apply_scenario` changes a knob (not `revision` or `label` alone), the windows of these six rates start again. The hoisting windows restart from the analytic mine rate of the new state and are replaced by measurement minute by minute; the feed and gold windows are extrapolated from the time since the change.
+  - Water: the flows of `water`, `mine.pumped_m3h`, the ponds, `tailings.reclaim_m3h` and the two monitoring points are rolling 1-hour means (`water.rolling_window_h`), not restarted; mine water is levelled over the pump cycle, the permit state has a deadband (`water.permit_deadband_pct`).
+  - `..._today` values are totals since 08:00 and are not restarted. Annual capacities and the advisor's KPIs are analytic and steady-state (3.4).
 
 ### 2.2 Processes and couplings
 
@@ -278,7 +283,7 @@ Dewatering cascade (FACT A6 "Mine water route"):
 - `hours_to_overflow` = free sump volume / net inflow while the sump is rising.
 - Pump power: `1000 × 9.81 × Q/3600 × head × 1.1 / 0.70 / 1000` kW; head 280 m for `ps-p150` (+150 to +430), 200 m for `ps-m050`.
 
-Ponds and water balance (rolling 24-hour means, to hide pump cycling):
+Ponds and water balance (rolling 1-hour means, `water.rolling_window_h`; the mine water reaching the ponds is levelled over the pump cycle by the water held in the pumping bands of the sumps, so a scenario shows within the hour and the 300 / 600 m³/h pump steps do not reach the permit state):
 
 - `retention_h = 2265 / flow` per pond; `tss_out = 39.563 × (1 − 0.949 × min(1, total retention / 6))` mg/l; `sludge_t_year = flow × 8760 × 39.563 × 0.949 / 10⁶`.
 - Supply = pumped mine water + reclaim (`0.6 × feed_tph` when `m_water ≥ 1`) + extra intake (up to 150 m³/h when `m_water = 2`, shown on `mon-sekisovka`).
@@ -335,7 +340,7 @@ Tailings: the active dam fills; when full the next one becomes active in the ord
 | `vent.supply_base` | 322 m³/s | F A5 "Fresh air, planned"; A: upgrade taken as complete (F B3 reports ventilation improvements completed in FY2025) |
 | `vent.fan_vs2` | 70 m³/s, range 63–88, 3000 Pa | F A5 "Surface fan at VS2"; duty 70 = 322 − 252 is A |
 | `vent.split` | fan-vs1 150, fan-ug-p320 102 | A |
-| `vent.q_base`, `vent.q_diesel` | 180 m³/s; 0.06 m³/s per kW | A: 0.06 is common design practice; the pair reproduces 252 m³/s at half the fleet and 322 m³/s at the full fleet (checks C6, C7) |
+| `vent.q_base`, `vent.q_diesel` | 180 m³/s; 0.06 m³/s per kW | A: 0.06 m³/s per kW is the norm of Ontario Reg. 854 s.183.1(1) (`research/norms-and-equipment.md` Q1); the Kazakh rule (Order 352, point 1063) refers to its Appendix 25-1, which is not in the public copies. 180 is fitted so that the pair reproduces 252 m³/s at half the fleet and 322 m³/s at the full fleet (checks C6, C7) |
 | `vent.measure_V1` | +105 m³/s (fan on raise VPV, 7.0 m² × 15 m/s) | section: F A2 "Ventilation raise VPV"; velocity limit and fan: A |
 | `vent.measure_V2` | +240 m³/s (new shaft VS3, 16 m² × 15 m/s) | A |
 | `vent.fan_efficiency`, `pressure_vs1_pa` | 0.75; 2500 | A |
@@ -359,7 +364,9 @@ Tailings: the active dam fills; when full the next one becomes active in the ord
 | `plant.recovery` | 81.616 + 1.637·g %, 80–88 | A: least-squares fit to F B (FY2024, FY2025) and F D1 (H1 2025, H1 2026) |
 | `plant.grade_base` | 2.05 g/t | F B "Milled gold grade" FY2025 |
 | `plant.grade_h1_2026` | 1.76 g/t | F D1 "Gold grade, processed" |
-| `stockpile.start_t` | 36 000 | A from F B, D1: +156 433 t in 2024, −40 170 t in 2025, −40 130 t in H1 2026, −40 000 t assumed for H2 2026 |
+| `stockpile.start_t` | 94 264 | A: mined minus milled from 1 Jan 2020 (opening 0): 2020 +85 794, 2021 +29 459 (FY2021 results), 2022 −56 992 (secondary; sign confirmed by H1 2022 −29 201), 2023 taken as 0 (milled not published), 2024 +156 433, 2025 −40 170 (F B), H1 2026 −40 130 (F D1), H2 2026 −40 130 assumed at the H1 rate. 134 394 t at 30 June 2026 against a carrying value of US$24.48 m (F D1): US$182/t, while US$71–111/t would mean 220–346 kt, so the value is a lower bound |
+| `econ.gold_price_usd_oz`, `econ.aisc_usd_oz` | 4 615; 1 995 US$/oz | F D1 (H1 2026; AISC on the restated basis) |
+| `econ.capex_expansion_usd_m` | 125 US$m for 2.0 and 2.5 Mtpa | F D1 (Q3 2025 results); the cost of the +200 kt step is not published |
 | `tsf.dam4_capacity_t`, `capacity_m3`, `bulk` | 3 181 950; 2 357 000; 1.35 | F A9 |
 | `tsf.dam4_fill_start` | 0.90 | A: fill state is not published (facts C) |
 | `tsf.dam23_free_t` | 1 426 950 each | A: same as the increment of the dam 4 reconstruction (3 181 950 − 1 755 000, F A9); F D1 reports the expansion of dams 2 and 3 as started |
@@ -369,22 +376,28 @@ Tailings: the active dam fills; when full the next one becomes active in the ord
 
 ### 2.9 Calibration checks (automatic)
 
-Analytic checks run in `team/tests/test_calibration.py`; simulator checks in `team/tests/test_sim.py`. The Stand shows the same table («Проверка калибровки»: показатель, отчёт, модель, отклонение).
+Analytic checks run in `team/tests/test_calibration.py`; simulator checks in `team/tests/test_sim.py`. The Stand shows the same table («Проверка калибровки»: показатель, основа, отчёт, модель, отклонение, допуск, результат, источник). The simulator rows C3, C8, C11 carry the values of a headless 60-day baseline run (seed 53) that the advisor makes once at start. Every row has a basis: «подгонка» (a parameter was set from the figure, or the figure defines one), «независимая» (not used to set any parameter) or «тождество» (holds by construction), and a source (facts-file section and row, and the document URL, from the sources of the parameters in `params.json`).
 
-| Id | Check | Reported value | Tolerance |
-|---|---|---|---|
-| C1 | Gold FY2025: 966 592 t × 2.05 g/t × R | 53 852 oz (F B) | ±1.5 % |
-| C2 | Gold FY2024: 593 612 t × 2.29 g/t × R | 37 279 oz (F B) | ±1.5 % |
-| C3 | Simulator, baseline, 60 days, annualised ore hoisted (× 360/60) | 926 422 t (F B) | ±3 % |
-| C4 | Gold H1 2026: 498 331 t × 1.76 g/t × R; and H1 2025: 452 593 t × 2.04 g/t × R | 23 906 oz; 25 081 oz (F D1) | ±1.5 % |
-| C5 | Recovery model at 2.29, 2.05, 2.04, 1.76 g/t | 85.42, 85.07, 84.75, 84.55 % | ±0.25 points |
-| C6 | Air demand of the baseline fleet (peak) | 322 m³/s (F A5) | 95–100 % of it |
-| C7 | Air demand at half the baseline fleet power | 252 m³/s (F A5) | ±3 % |
-| C8 | Simulator, baseline, 60 days: plant feed annualised (× 365/60) with stockpile available | 1 000 000 t nameplate (F B2; F D1: 498 331 t in H1 2026) | ±3 % |
-| C9 | Sludge from the ponds at 197 m³/h | 64.3 t/yr (F A6) | ±2 % |
-| C10 | Water balance at 1000 kt/yr: site + plant demand | 1725.72 thousand m³/yr (F A6) | ±0.5 % |
-| C11 | Mass balance over a 60-day run: hoisted = stockpile change + milled; milled = tailings added | identity | ±0.1 % |
-| C12 | Gold at 2.0 Mtpa and 2.05 g/t | over 100 000 oz (F B2, CEO statement) | must hold |
+| Id | Check | Reported value | Tolerance | Basis |
+|---|---|---|---|---|
+| C1 | Gold FY2025: 966 592 t × 2.05 g/t × R | 53 852 oz (F B) | ±1.5 % | fit (recovery fit) |
+| C2 | Gold FY2024: 593 612 t × 2.29 g/t × R | 37 279 oz (F B) | ±1.5 % | fit (recovery fit) |
+| C3 | Simulator, baseline, 60 days, annualised ore hoisted (× 360/60) | 926 422 t (F B) | ±3 % | fit (`K_HAUL`, `sim.op_delay_factor`) |
+| C4 | Gold H1 2026: 498 331 t × 1.76 g/t × R; and H1 2025: 452 593 t × 2.04 g/t × R | 23 906 oz; 25 081 oz (F D1) | ±1.5 % | fit (recovery fit) |
+| C5 | Recovery model at 2.29, 2.05, 2.04, 1.76 g/t | 85.42, 85.07, 84.75, 84.55 % | ±0.25 points | fit |
+| C6 | Air demand of the baseline fleet (peak) | 322 m³/s (F A5) | 95–100 % of it | fit (`vent.q_base`) |
+| C7 | Air demand at half the baseline fleet power | 252 m³/s (F A5) | ±3 % | fit (`vent.q_base`) |
+| C8 | Simulator, baseline, 60 days: plant feed annualised (× 365/60) with stockpile available | 1 000 000 t nameplate (F B2; F D1: 498 331 t in H1 2026) | ±3 % | fit (line rates from the nameplate) |
+| C9 | Sludge from the ponds at 197 m³/h | 64.3 t/yr (F A6) | ±2 % | independent |
+| C10 | Water balance at 1000 kt/yr: site + plant demand | 1725.72 thousand m³/yr (F A6) | ±0.5 % | fit (water per tonne from these volumes) |
+| C11 | Mass balance over a 60-day run: hoisted = stockpile change + milled; milled = tailings added | identity | ±0.1 % | identity |
+| C12 | Gold at 2.0 Mtpa and 2.05 g/t | over 100 000 oz (F B2, CEO statement) | must hold | independent |
+| C13 | H1 2026 ore mined × 2 against the sustainable rate (926 kt/yr) | 916 402 t (F D1) | ±3 % | independent |
+| C14 | FY2026 gold guidance against the gold of 1 000 kt at the H1 2026 grade (1.76 g/t): 47.8 koz | 52–55 koz (F D1) | inside the range | independent; fails (−8.1 %): the guidance implies an annual grade of 1.91–2.01 g/t |
+| C15 | FY2024 ore milled with two lines (750 045 t mined) against the two-line capacity, 666.7 kt | 593 612 t (F B) | ±5 % | independent; fails (+12.3 %): the plant ran below the two-line nameplate in 2024 |
+| C16 | H1 2026 ore processed × 2 against the plant capacity | 996 662 t (F D1) | ±3 % | independent |
+
+C13–C16 are out-of-sample rows (`capacity.out_of_sample_checks`, kind `out_of_sample` in the report). They are shown with their result; the Stand's `/api/calibration` summary and the smoke check count the analytic rows only.
 
 Simulator consistency checks: with the full measure set for 2.0 Mtpa, 60-day annualised ore hoisted is within ±7 % of the analytic minimum of haulage and stopes; no two trucks in opposite directions ever share a decline segment; no truck waits longer than 2 simulated hours in a bay over a 30-day run with 12 trucks.
 
@@ -450,9 +463,9 @@ Undo: every toggle is its own undo; «Шаг назад» pops a stack of previo
 | `pump_station_fail` | `ps-p150.state = failed`, `sump_level_pct` rises, `hours_to_overflow` counts down; later `mine.flood_volume_m3`, `lvl-m050` then `lvl-000` `flooded`, their stopes `flooded` | sump bar fills, water plane rises on the lower levels, flooded stopes blue | dewatering row turns binding when a production level floods |
 | `flood` | `mine.inflow_m3h = 430`, pumps run together, `mon-volchevka.discharge_m3h` about 238, state `exceeded` | thicker water flow in the cascade; outfall marker red | water row: discharge above the permit |
 | `grade_drop` | stope `grade`, `rom-stockpile.grade`, `plant.feed_grade`, `recovery_pct`, `gold_poured_oz_day` | stope grade colouring shifts | gold falls from about 56 to 47.8 koz/yr at 1000 kt/yr |
-| `line2_down` | `plant-line-2.state = off`, `plant.feed_tph` falls by a third, stockpile grows | line 2 grey | plant bar 667, binding |
+| `line2_down` | `plant-line-2.state = off`, `plant.feed_tph` falls by a third, stockpile grows | line 2 grey | plant bar 667, binding; next step «запустить технологическую линию № 2 после ремонта» (`line_down` → 0), expansion measures after it |
 
-The advisor recomputes within 3 seconds of a knob change, so bars and the «Что изменилось» list respond at once; the moving objects follow within one truck cycle (about 40 real seconds).
+The advisor recomputes within 3 seconds of a knob change, so bars and the «Что изменилось» list respond at once; the moving objects follow within one truck cycle (52–58 real seconds).
 
 ### 3.4 The module: Expansion Advisor (`sekis-advisor`)
 
@@ -462,10 +475,11 @@ Algorithm (theory of constraints, deterministic):
 
 1. Compute the eight capacities (section 2.3) for the current state. Round each to 1 kt/yr.
 2. The binding link is the smallest; ties are broken in the order haulage, ventilation, stopes, development, dewatering, plant, water, tailings.
-3. If the binding capacity is at or above `target_ktpa`, stop. Otherwise the next measure is one more stage on that link's knob (haulage → `m_haul`, ventilation → `m_vent`, stopes → `m_stopes`, development → `m_dev`, plant → `m_plant`, water → `m_water`, tailings → `m_tailings`; dewatering → restore pumps). Apply it virtually and repeat. If the link has no stage left, stop and report the achievable rate.
-4. Ladder: for each target 1000, 1200, 2000, 2500, starting from the baseline measure set (all `m_*` = 0) with the current disturbances, report: the sequence of (binding link, measure, capacity before), the achievable rate, gold per year at the current grade, gold gained against the sustainable baseline (926 kt/yr), air demand, water deficit and discharge, tailings years left.
-5. Projection 2027–2036 for the current measure set: each year the production centroid drops by `ore / 51 462` m, haul capacity is recomputed for that depth, tailings fill, gold accumulates. Output per year: achievable kt, binding link, gold oz, tailings stored and free, water deficit; plus the year storage runs out and the first year the target is missed.
-6. Effects list: for the last knob change, the difference in each link capacity and KPI (before → after), in Russian sentences for «Что изменилось».
+3. If the binding capacity is at or above `target_ktpa`, stop. Otherwise, if a disturbance that an operational action removes is active (`line_down`, `tu1_closed`, `tu2_closed`, `fan_vs2_off`, `pumps_failed_p150`), the next step removes the one whose removal raises the achievable rate most (ties in that order), through its own knob: «запустить линию № 2 после ремонта», «открыть уклон ТУ-2», «восстановить вентилятор ВС-2», «восстановить насосы … и откачать воду». Otherwise the next measure is one more stage on that link's knob (haulage → `m_haul`, ventilation → `m_vent`, stopes → `m_stopes`, development → `m_dev`, plant → `m_plant`, water → `m_water`, tailings → `m_tailings`; dewatering → restore pumps). Apply it virtually and repeat. If the link has no stage left, stop and report the achievable rate. A lower grade (`grade_gpt` below `plant.grade_base`) and a flood inflow (`inflow_factor` > 1) are not removed by any action: the report states them under `conditions` and the gold and water figures use them.
+4. Ladder: for each target 1000, 1200, 2000, 2500, starting from the baseline measure set (all `m_*` = 0) with the current disturbances, report: the sequence of (binding link, step, capacity before), the achievable rate, gold per year at the current grade, gold gained against the sustainable baseline (926 kt/yr), air demand, water deficit and discharge, tailings years left, and `economics` (decision 11.1): extra gold against the sustainable baseline, its value at the realised price, the operating margin of that gold (price less AISC, taken as unchanged), the published capex (US$125 m for 2.0 and 2.5 Mtpa; «не раскрыто» for 1.0 and 1.2 Mtpa) and the simple payback (capex / extra margin per year) where capex is known.
+5. Projection 2027–2036 for the current measure set: each year the production centroid drops by `ore / 51 462` m, haul capacity is recomputed for that depth, tailings fill, gold accumulates. Output per year: achievable kt, binding link, gold oz, tailings stored and free, water deficit, and a `note` for the year storage runs out («хвостохранилище заполнено в этом году: …») and every year after it («фабрика стоит: нет ёмкости хвостохранилища»); plus the year storage runs out, the first year the target is missed, `storage_measure` (the next stage of `m_tailings` and the year storage runs out with it) and `storage_note` (the sentence the Stand shows above the table).
+6. Effects list: for the last knob change, the difference in each link capacity and KPI (before → after), in Russian sentences for «Что изменилось»; a change of the target adds the economics of the new target.
+7. KPIs are steady-state values of the selected regime (water deficit, discharge, permit share, stockpile flow); the Stand labels them «в установившемся режиме». The ROM stockpile flow is the mine rate (smallest mine link over 360 days) against the plant feed (plant capacity, or less when the water sources at that hoisting rate carry less: `WaterBalance.feed_limit_tph`, the simulator's throttle; zero with no tailings storage) over 365 days; `stockpile_days_left` is the stock over the net draw, `None` when the stockpile does not fall.
 
 Expected sequences with the parameters of 2.8 (unit-tested):
 
@@ -478,12 +492,14 @@ Expected sequences with the parameters of 2.8 (unit-tested):
 
 Two steps of these sequences do not raise the achievable rate by themselves, and the advisor says so in the measure text. The first step (trucks 06 and 07) leaves it at 926 kt/yr: the trucks wait for air until the second step starts `fan-vpv`. The eighth step of the 2000 and 2500 ladders (stopes 5 → 8, three more LHDs) needs 433.0 m³/s against 427, holds truck 07 and lowers the chain from 1279 (stopes) to 1161 kt/yr (ventilation) until the ninth step starts `fan-vs3`.
 
-Sustainable baseline: 926 kt/yr, 51.9 koz (the plant mills 1000 kt/yr only while the 36 000 t stockpile lasts, about 216 days).
+Sustainable baseline: 926 kt/yr, 51.9 koz (the plant mills 1000 kt/yr only while the 94 264 t stockpile lasts: 167 t/day net draw, about 564 days). With disturbances the sequences start with the repairs, e.g. `fan_vs2_fail` for 1000: restore fan VS2, haulage, ventilation; `line2_down`: restart line 2, then the sequence of the target.
+
+Economics with the parameters of 2.8 (unit-tested): 1000: +4.1 koz, US$19.1 m/yr, margin US$10.8 m/yr, capex not disclosed; 1200: +15.3 koz, US$70.8 m, US$40.2 m, not disclosed; 2000: +60.1 koz, US$277.6 m, US$157.6 m, US$125 m, payback 0.8 yr; 2500: +88.1 koz, US$406.8 m, US$230.9 m, US$125 m, 0.5 yr.
 
 Outputs:
 
-- Features of `kz.sekis:advisor` (published to MQTT on change and every 30 s): `binding_link`, `next_measure`, `measures_needed`, `target_ktpa`, `achievable_ktpa`, `cap_haulage_ktpa`, `cap_ventilation_ktpa`, `cap_stopes_ktpa`, `cap_development_ktpa`, `cap_dewatering_ktpa` (0 when not limiting), `dewatering_margin`, `cap_plant_ktpa`, `cap_water_ktpa`, `cap_tailings_ktpa`, `gold_koz_year`, `gold_gain_koz_year`, `air_demand_m3s`, `water_deficit_m3h`, `discharge_m3h`, `tailings_years_left`, `stockpile_days_left`, `report_revision`.
-- Full report as JSON at `http://sekis-advisor:8089/report` (ladder for the four targets, projection, effects, calibration table), proxied by the Stand as `/api/advisor`.
+- Features of `kz.sekis:advisor` (published to MQTT on change and every 30 s): `binding_link`, `next_measure` (a knob name, or `restart_line`, `open_tu1`, `open_tu2`, `restore_fan_vs2`, `restore_pumps` for a repair, or `none`), `measures_needed`, `target_ktpa`, `achievable_ktpa`, `cap_haulage_ktpa`, `cap_ventilation_ktpa`, `cap_stopes_ktpa`, `cap_development_ktpa`, `cap_dewatering_ktpa` (0 when not limiting), `dewatering_margin`, `cap_plant_ktpa`, `cap_water_ktpa`, `cap_tailings_ktpa`, `gold_koz_year`, `gold_gain_koz_year`, `air_demand_m3s`, `water_deficit_m3h`, `discharge_m3h`, `tailings_years_left`, `stockpile_days_left`, `report_revision`.
+- Full report as JSON at `http://sekis-advisor:8089/report` (ladder for the four targets, projection, effects, calibration table), proxied by the Stand as `/api/advisor`. Schema `sekis.advisor.report/2`: steps carry `kind` (`measure` | `disturbance`); new keys `conditions`; KPIs `stockpile_mine_tpd`, `stockpile_plant_tpd`, `stockpile_net_tpd`, `stockpile_trend`; `sustainable_baseline.plant_ktpa`, `stockpile_net_tpd`, `text`; ladder rows `economics`; projection rows `note`, projection `storage_measure`, `storage_note`; calibration rows `kind_name`, `basis`, `basis_name`, `basis_note`, `reported_max`, `source`, `source_urls`, `run` (simulator rows). In fixture mode the Stand builds the same report with `sekis.advisor`.
 - Action: `POST /apply` with `{"mode": "next" | "all"}` returns the knob changes; the Stand writes them to the scenario thing. This is how the module changes the operation of the mine.
 
 ## 4. Mine visualization
@@ -766,3 +782,9 @@ These settle ambiguities package B1 found. They override sections 2 and 3 where 
 
 1. **Economics in the advisor.** Each target of the ladder also reports the gold gained per year in US dollars at the realised gold price and the published expansion capex estimate, with a simple payback, every number sourced in `params.json` (gold price US$4,615/oz, H1 2026; capex about US$125m for 2.0–2.5 Mtpa, Q3 2025 results; AISC from the reports).
 2. **This file is cleaned before the Freeze**: sections 0.2, 7 and 8, the work-package and schedule material and every sentence about how the work is assessed are removed; the design of the model stays.
+3. **Fix round 2 (14 October), from the review of the live Stand.**
+   1. Disturbances first (3.4 step 3): a repair of an active disturbance precedes every expansion measure, the largest gain first; `POST /apply` performs it through the same knob. Grade and flood inflow are conditions.
+   2. Projection notes: each year without tailings storage says so; the year storage runs out and the measure that prevents it head the table.
+   3. Stockpile direction: the plant side of the stockpile flow is the feed the water sustains at the actual hoisting rate, not `C_water`; with `step1200` the days fall (564 → 368), with the full 2.5 Mtpa set the stockpile grows by 137 t/day, as the simulator does over 20 days.
+   4. Starting stockpile: 94 264 t from the published mined/milled pairs since 2020 (2.8), a lower bound against the carrying value. `registry.json` (`rom-stockpile.tonnes`) and `geometry.json` (`reference_t`) follow the parameter.
+   5. Calibration honesty: basis and source on every row; simulator rows from a run; out-of-sample rows C13–C16, two of which fail and are shown failing; `vent.q_diesel` sourced to Ontario Reg. 854 s.183.1(1).

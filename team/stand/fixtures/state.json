@@ -3077,11 +3077,11 @@
    },
    "f": {
     "state": "normal",
-    "tonnes": 33984.0,
+    "tonnes": 92248.0,
     "grade": 2.05,
     "inflow_tph": 151.3,
     "outflow_tph": 124.1,
-    "days_of_feed": 202.9
+    "days_of_feed": 550.7
    }
   },
   "kz.sekis:plant-line-1": {
@@ -3487,13 +3487,13 @@
     "cap_plant_ktpa": 1000.0,
     "cap_water_ktpa": 1000.0,
     "cap_tailings_ktpa": 1057.0,
-    "gold_koz_year": 51.9,
+    "gold_koz_year": 51.87,
     "gold_gain_koz_year": 0.0,
     "air_demand_m3s": 317.2,
     "water_deficit_m3h": 0.0,
-    "discharge_m3h": 5.1,
-    "tailings_years_left": 3.2,
-    "stockpile_days_left": 215.0,
+    "discharge_m3h": 14.5,
+    "tailings_years_left": 3.4,
+    "stockpile_days_left": 564.0,
     "report_revision": 0.0
    }
   }

@@ -254,6 +254,67 @@ def _stage_text(model: cap.Model, names: Mapping[str, str], link: str,
     raise KeyError(link)
 
 
+def _last_word(names: Mapping[str, str], thing: str, fallback: str) -> str:
+    """Short label of a thing from its registry name: «ВС-2» from «Вентиляционный ствол ВС-2»."""
+    name = names.get(thing)
+    return name.split()[-1] if name else fallback
+
+
+def disturbance_text(model: cap.Model, names: Mapping[str, str], knob: str,
+                     before: cap.Result, after: cap.Result) -> str:
+    """The operational action that removes a disturbance, as an imperative phrase."""
+    old = before.state
+    if knob == "line_down":
+        return (f"запустить технологическую линию №{NBSP}{old.line_down} после ремонта (мощность фабрики "
+                f"{num(before.plant.capacity_ktpa)} {ARROW} {num(after.plant.capacity_ktpa)} {U_KTPA})")
+    if knob in ("tu1_closed", "tu2_closed"):
+        key = knob.split("_", 1)[0]
+        label = _decline_label(names, key)
+        home = [c.truck for c in after.haulage.cycles
+                if any(t.name == c.truck and t.home_decline == key for t in model.trucks)]
+        back = ""
+        if home:
+            noun = "самосвал" if len(home) == 1 else "самосвалы"
+            verb = "возвращается" if len(home) == 1 else "возвращаются"
+            back = f"{noun} {numbers(_unit_numbers(home))} {verb} на свой уклон; "
+        return (f"открыть уклон {label} ({back}откатка {num(before.capacity_rounded['haulage'])} {ARROW} "
+                f"{num(after.capacity_rounded['haulage'])} {U_KTPA})")
+    if knob == "fan_vs2_off":
+        label = _last_word(names, "shaft-vs2", "ВС-2")
+        return (f"восстановить вентилятор {label} (подача воздуха {num(before.air.supply_m3s)} {ARROW} "
+                f"{num(after.air.supply_m3s)} {U_M3S})" + held_note("ventilation", before.air, after.air))
+    if knob == "pumps_failed_p150":
+        total = model.p("water.ps_p150.pumps")
+        failed = old.pumps_failed_p150
+        noun = "отказавший насос" if failed == 1 else "отказавшие насосы"
+        text = (f"восстановить {noun} главной водоотливной станции гор. +150{NBSP}м "
+                f"(исправных {total - failed} {ARROW} {total} из {total})")
+        if before.dewatering.flooded_levels:
+            text += f" и откачать воду ({flooded_phrase(names, before.dewatering.flooded_levels)})"
+        return text
+    raise KeyError(knob)
+
+
+def grade_condition(grade: float, base: float, res: cap.Result) -> str:
+    """A lower ore grade: a property of the ore, not something a measure removes."""
+    return (f"Содержание золота в руде {num(grade, 2)} {U_GPT} вместо {num(base, 2)} {U_GPT} {EM_DASH} "
+            f"свойство руды, мерами не снимается; золото считается при этом содержании "
+            f"({num(res.gold.oz_per_year / cap.KILO, 1)} {U_KOZ}).")
+
+
+def inflow_condition(model: cap.Model, names: Mapping[str, str], res: cap.Result) -> str:
+    """A flood inflow: an external condition; what it does to the pumps and to the outfall."""
+    dewatering, water = res.dewatering, res.water
+    pumps = (f"насосы главного водоотлива справляются (запас ×{num(dewatering.margin, 2)})"
+             if dewatering.margin >= 1 else
+             f"насосов главного водоотлива не хватает (запас ×{num(dewatering.margin, 2)})")
+    water_body = names.get("water_body", "водный объект")
+    return (f"Приток воды в рудник {num(dewatering.inflow_m3h)} {U_M3H} вместо "
+            f"{num(model.p('water.inflow_m3h'))} {U_M3H} (паводок) {EM_DASH} мерами не снимается; {pumps}; "
+            f"сброс в {water_body} в установившемся режиме {num(water.discharge_m3h, 1)} {U_M3H} "
+            f"при разрешённых {num(model.p('water.permit_m3h'), 1)} {U_M3H}.")
+
+
 def apply_message(reason: str, binding: str, steps: Sequence[Any]) -> str:
     """One sentence on what ``POST /apply`` returned. ``steps`` are the steps behind the changes."""
     if reason == "target_reached":
@@ -263,8 +324,107 @@ def apply_message(reason: str, binding: str, steps: Sequence[Any]) -> str:
     if reason == "pumping_out":
         return f"Узкое место {EM_DASH} водоотлив: насосы исправны, идёт откачка затопленных горизонтов."
     if len(steps) == 1:
+        if getattr(steps[0], "kind", "") == "disturbance":
+            return f"Сначала устраняется нарушение: {steps[0].text}."
         return f"Узкое место {EM_DASH} {link_lower(steps[0].link)}. Мера: {steps[0].text}."
-    return f"Мер до цели: {len(steps)} ({', '.join(link_lower(step.link) for step in steps)})."
+    parts = [f"{link_lower(step.link)} (нарушение)" if getattr(step, "kind", "") == "disturbance"
+             else link_lower(step.link) for step in steps]
+    return f"Мер до цели: {len(steps)} ({', '.join(parts)})."
+
+
+# --- economics, projection, baseline ---------------------------------------------------------
+
+U_USD_M = "млн долл."
+U_USD_OZ = "долл./унц."
+
+
+def _years(value: float) -> str:
+    """«0,8 года», «1,0 года», «2,5 года» (one decimal takes the genitive singular)."""
+    return f"{num(value, 1)} года"
+
+
+def economics_notes(model: cap.Model, row: Mapping[str, Any]) -> Dict[str, str]:
+    """Russian notes of an economics row: the basis of the price, of the AISC and of the capex."""
+    first_step = model.p("plant.stages_ktpa")[0]
+    if row["capex_disclosed"]:
+        capex = (f"расчётная стоимость по данным компании для расширения до 2{DASH}2,5 млн т/год, 3-й квартал 2025 г.; "
+                 f"разбивки по ступеням и состава затрат нет")
+    elif row["target_ktpa"] == first_step:
+        capex = ("не раскрыто: в отчёте за первое полугодие 2026 г. сказано, что новое дробильное и мельничное "
+                 "оборудование для ступени +200 тыс. т/год заказано, сумма не приводится")
+    else:
+        capex = "не раскрыто: в отчётах компании нет суммы для мер этой ступени"
+    summary = (f"{num(row['gold_gain_koz_year'], 1)} тыс. унц./год к устойчивой базе "
+               f"{num(row['baseline_gold_koz_year'], 1)}")
+    if row["gold_gain_koz_year"] is not None and row["gold_gain_koz_year"] > 0:
+        summary = "+" + summary
+    return {
+        "price_basis": "средняя цена реализации золота за первое полугодие 2026 г. (без серебра)",
+        "aisc_basis": ("AISC за первое полугодие 2026 г. в пересчитанной базе: за вычетом выручки от серебра, "
+                       "без разовых статей и невозмещаемого НДС; принят неизменным при росте выпуска"),
+        "capex_note": capex,
+        "summary": summary,
+    }
+
+
+def economics_item(row: Mapping[str, Any]) -> Dict[str, Any]:
+    """Item of «Что изменилось» for a new target: what its extra gold is worth and the payback."""
+    econ = row["economics"]
+    target = num(row["target_ktpa"])
+    gain = econ["gold_gain_koz_year"]
+    if gain is None or gain <= 0:
+        text = (f"Цель {target} {U_KTPA}: прироста золота к устойчивой базе "
+                f"{num(econ['baseline_gold_koz_year'], 1)} {U_KOZ} нет.")
+    else:
+        if econ["capex_disclosed"]:
+            capex = (f"капитальные затраты ≈{num(econ['capex_usd_m'])} {U_USD_M} (по расчёту компании, "
+                     f"3-й кв. 2025 г.)")
+            if econ["payback_years"] is not None:
+                capex += f", простая окупаемость {_years(econ['payback_years'])}"
+        else:
+            capex = "капитальные затраты не раскрыты"
+        text = (f"Цель {target} {U_KTPA}: золота +{num(gain, 1)} {U_KOZ} к устойчивой базе "
+                f"{num(econ['baseline_gold_koz_year'], 1)}; по цене {num(econ['gold_price_usd_oz'])} {U_USD_OZ} "
+                f"это {num(econ['value_usd_m_year'], 1)} {U_USD_M} в год, при полных затратах "
+                f"{num(econ['aisc_usd_oz'])} {U_USD_OZ} операционная маржа {num(econ['margin_usd_m_year'], 1)} "
+                f"{U_USD_M} в год; {capex}.")
+    return _item("economics", "Экономика цели", f"{U_USD_M} в год", None, econ["value_usd_m_year"],
+                 NEUTRAL, text)
+
+
+def projection_note(link: str, shown: Optional[int], physical: Optional[int]) -> str:
+    """Why a projection year falls short because of the tailings storage; empty otherwise."""
+    if link != "tailings":
+        return ""
+    if not shown:
+        return "фабрика стоит: нет ёмкости хвостохранилища"
+    return f"хвостохранилище заполнено в этом году: переработано {num(shown)} из {num(physical)} тыс. т"
+
+
+def storage_note(last_year: int, runs_out: Optional[int], measure: Optional[Mapping[str, Any]]) -> Optional[str]:
+    """The year storage runs out, and the measure that prevents it, for the head of the projection."""
+    if runs_out is None:
+        return None
+    text = f"Ёмкость хвостохранилища закончится в {runs_out} г.; после этого фабрика стоит."
+    if measure and measure.get("knob"):
+        later = measure.get("storage_runs_out_year")
+        horizon = (f"ёмкости хватит до конца прогноза ({last_year} г.)" if later is None
+                   else f"ёмкость закончится в {later} г.")
+        text += f" Мера: {measure['text']}; с ней {horizon}."
+    else:
+        text += " Все ступени меры по хвостохранилищу уже введены: нужна ёмкость сверх новой карты."
+    return text
+
+
+def baseline_text(row: Mapping[str, Any]) -> str:
+    """The sustainable baseline in one sentence, with the stockpile that keeps the plant at nameplate."""
+    text = (f"Устойчивая база: {num(row['ktpa'])} {U_KTPA} ({link_lower(row['binding_link'])}), "
+            f"{num(row['gold_koz_year'], 1)} {U_KOZ} при {num(row['grade_gpt'], 2)} {U_GPT}.")
+    if row["stockpile_days_left"] is not None:
+        text += (f" Фабрика перерабатывает {num(row['plant_ktpa'])} {U_KTPA}, пока не кончится рудный склад: "
+                 f"{num(row['stockpile_t'] / cap.KILO, 1)} тыс. т на начало, расход "
+                 f"{num(-row['stockpile_net_tpd'])} т/сут, хватит на {num(row['stockpile_days_left'])} {U_DAYS}.")
+    return text
 
 
 # --- effects of the last change --------------------------------------------------------------
@@ -398,12 +558,12 @@ def _stockpile(before: Optional[float], after: Optional[float]) -> Optional[Dict
         return None
     if after is None:
         return _item(item_id, name, U_DAYS, before, after, BETTER,
-                     "Рудный склад перестал расходоваться: фабрика перерабатывает не больше, "
-                     "чем выдаёт рудник.")
+                     "Рудный склад перестал расходоваться: в установившемся режиме фабрика "
+                     "перерабатывает не больше, чем выдаёт рудник.")
     if before is None:
         return _item(item_id, name, U_DAYS, before, after, WORSE,
-                     f"Рудный склад расходуется: фабрика перерабатывает больше, чем выдаёт рудник, "
-                     f"запаса хватит на {num(after)} {U_DAYS}.")
+                     f"Рудный склад расходуется: в установившемся режиме фабрика перерабатывает больше, "
+                     f"чем выдаёт рудник, запаса хватит на {num(after)} {U_DAYS}.")
     return changed_value(item_id, name, ROSE_M, U_DAYS, 0, before, after,
                          subject="Срок расходования рудного склада")
 
@@ -411,7 +571,12 @@ def _stockpile(before: Optional[float], after: Optional[float]) -> Optional[Dict
 # --- calibration table -----------------------------------------------------------------------
 
 _UNIT_RU = {"oz": "унц.", "%": "%", "m3/s": U_M3S, "t/yr": "т/год", "thousand m3/yr": "тыс. м³/год",
-            "points": "п.п."}
+            "points": "п.п.", "t": "т"}
+
+#: Kind of row -> Russian group name on the Stand.
+KIND_RU = {"analytic": "расчётная", "simulator": "симулятор", "out_of_sample": "вне подгонки"}
+#: Basis of a row -> Russian label (decision 11.3).
+BASIS_RU = {cap.FIT: "подгонка", cap.INDEPENDENT: "независимая", cap.IDENTITY: "тождество"}
 
 
 def _decimal_commas(text: str) -> str:
@@ -423,45 +588,173 @@ def tolerance_ru(tolerance: str) -> str:
     text = _decimal_commas(tolerance).replace("+-", "±")
     text = text.replace(" points", " п.п.").replace("% of reported", "% от отчётного")
     text = re.sub(r"(?<=\d)-(?=\d)", DASH, text)
+    text = text.replace("inside the reported range", "в пределах прогноза")
     return text.replace("above reported", "выше отчётного")
 
 
-def calibration_title(model: cap.Model, check: cap.CalibrationCheck) -> str:
+def calibration_title(model: cap.Model, check_id: str, case: str = "", quantity: str = "") -> str:
     """Russian name of a calibration row; the figures in it are parameters of the check."""
-    case_number = _decimal_commas(check.case.split()[0])
-    if check.id in ("C1", "C2"):
-        return f"Золото за {check.case.replace('FY', '')} финансовый год"
-    if check.id == "C4":
-        return f"Золото за первое полугодие {check.case.split()[-1]} г."
-    if check.id == "C5":
+    p = model.p
+    case_number = _decimal_commas(case.split()[0]) if case else ""
+    if check_id in ("C1", "C2"):
+        return f"Золото за {case.replace('FY', '')} финансовый год"
+    if check_id == "C3":
+        return "Добыча руды: прогон симулятора, в пересчёте на год"
+    if check_id == "C4":
+        return f"Золото за первое полугодие {case.split()[-1]} г."
+    if check_id == "C5":
         return f"Извлечение золота при содержании {case_number} {U_GPT}"
-    if check.id == "C6":
+    if check_id == "C6":
         return "Потребность в воздухе базового парка (пик)"
-    if check.id == "C7":
-        share = model.p("calib.c7.fleet_power_share") * cap.PERCENT
+    if check_id == "C7":
+        share = p("calib.c7.fleet_power_share") * cap.PERCENT
         return f"Потребность в воздухе при {num(share)} % мощности базового парка"
-    if check.id == "C9":
-        return f"Осадок прудов-отстойников при притоке {num(model.p('water.inflow_m3h'))} {U_M3H}"
-    if check.id == "C10":
-        return (f"Вода на площадку и фабрику при {num(model.p('plant.nameplate_ktpa'))} {U_KTPA}")
-    if check.id == "C12":
-        return (f"Золото при {num(model.p('calib.c12.target_ktpa'))} {U_KTPA} и содержании "
-                f"{num(model.p('plant.grade_base'), 2)} {U_GPT}")
-    return f"{check.quantity} ({check.case})"
+    if check_id == "C8":
+        return "Переработка руды: прогон симулятора, в пересчёте на год"
+    if check_id == "C9":
+        return f"Осадок прудов-отстойников при притоке {num(p('water.inflow_m3h'))} {U_M3H}"
+    if check_id == "C10":
+        return f"Вода на площадку и фабрику при {num(p('plant.nameplate_ktpa'))} {U_KTPA}"
+    if check_id == "C11":
+        if "tailings" in quantity:
+            return "Баланс массы за прогон: переработано = прирост хвостов"
+        return "Баланс массы за прогон: выдано = прирост склада + переработано"
+    if check_id == "C12":
+        return (f"Золото при {num(p('calib.c12.target_ktpa'))} {U_KTPA} и содержании "
+                f"{num(p('plant.grade_base'), 2)} {U_GPT}")
+    if check_id == "C13":
+        return "Добыча первого полугодия 2026 г. в пересчёте на год против устойчивой мощности модели"
+    if check_id == "C14":
+        return (f"Прогноз компании на 2026 г. против золота модели при {num(p('plant.nameplate_ktpa'))} "
+                f"{U_KTPA} и содержании первого полугодия 2026 г. ({num(p('plant.grade_h1_2026'), 2)} {U_GPT})")
+    if check_id == "C15":
+        lines = num(p("calib.c15.lines_running"))
+        return f"Переработка 2024 г. против мощности {lines} линий в модели (третья пущена в декабре 2024 г.)"
+    if check_id == "C16":
+        return "Переработка первого полугодия 2026 г. в пересчёте на год против мощности фабрики в модели"
+    return f"{quantity} ({case})"
 
 
-def calibration_row(model: cap.Model, check: cap.CalibrationCheck) -> Dict[str, Any]:
-    """One row of «Проверка калибровки»: the library's numbers under Russian headings."""
-    return {
-        "id": check.id,
-        "case": check.case,
-        "title": calibration_title(model, check),
-        "kind": "analytic",
-        "unit": _UNIT_RU.get(check.unit, check.unit),
-        "reported": check.reported,
-        "model": round(check.model, 2),
-        "deviation": round(check.deviation, 2),
-        "deviation_unit": _UNIT_RU.get(check.deviation_unit, check.deviation_unit),
-        "tolerance": tolerance_ru(check.tolerance),
-        "passed": bool(check.ok),
+def _grade_for_gold(model: cap.Model, milled_t: float, gold_oz: float) -> float:
+    """Feed grade at which ``milled_t`` gives ``gold_oz`` (bisection; gold rises with grade)."""
+    low, high = 0.0, 10.0
+    for _ in range(60):
+        mid = (low + high) / 2
+        if cap.gold_oz(model, milled_t, mid) < gold_oz:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2
+
+
+def basis_note(model: cap.Model, check_id: str) -> str:
+    """Why a row is fitted, independent or an identity, with the figures that say so."""
+    p = model.p
+    if check_id in ("C1", "C2", "C4", "C5"):
+        return ("извлечение R(g) подобрано наименьшими квадратами по 2024 и 2025 гг. "
+                "и первым полугодиям 2025 и 2026 гг.")
+    if check_id == "C3":
+        return (f"коэффициент откатки K_HAUL = {num(p('haul.K_HAUL'), 3)} подобран под добычу 2025 г.; "
+                f"коэффициент задержек симулятора {num(p('sim.op_delay_factor'), 3)} настроен по этой проверке")
+    if check_id in ("C6", "C7"):
+        return (f"базовая потребность {num(p('vent.q_base'))} {U_M3S} подобрана под пару "
+                f"{num(p('calib.c7.reported_m3s'))} / {num(p('calib.c6.reported_m3s'))} {U_M3S}; "
+                f"{num(p('vent.q_diesel'), 2)} {U_M3S} на кВт {EM_DASH} норма Онтарио (Reg. 854, s.183.1(1)); "
+                f"в правилах РК (приказ № 352, п. 1063) коэффициент вынесен в приложение 25-1, которого нет "
+                f"в открытых копиях")
+    if check_id == "C8":
+        return (f"производительность линий задана паспортной мощностью фабрики "
+                f"({num(p('plant.nameplate_ktpa'))} {U_KTPA})")
+    if check_id == "C9":
+        return (f"расчёт по исходным данным ОВОС: приток, взвесь {num(p('pond.tss_in_mgl'), 3)} мг/л, "
+                f"осаждение {num(p('pond.efficiency') * cap.PERCENT, 1)} %; ничего не подбиралось")
+    if check_id == "C10":
+        return (f"удельный расход воды на тонну получен делением этих объёмов на "
+                f"{num(p('plant.nameplate_ktpa'))} {U_KTPA}")
+    if check_id == "C11":
+        return "баланс массы симулятора; выполняется по построению модели"
+    if check_id == "C12":
+        return f"заявление компании о расширении до 2{DASH}2,5 млн т/год; в подгонке не участвовало"
+    if check_id == "C13":
+        return "K_HAUL подобран по добыче 2025 г.; добыча первого полугодия 2026 г. в подгонке не участвовала"
+    if check_id == "C14":
+        milled = p("plant.nameplate_ktpa") * cap.KILO
+        low, high = (_grade_for_gold(model, milled, koz * cap.KILO) for koz in p("calib.c14.guidance_koz"))
+        return (f"прогноз компании, а не результат; при {num(p('plant.nameplate_ktpa'))} {U_KTPA} он отвечает "
+                f"среднегодовому содержанию {num(low, 2)}{DASH}{num(high, 2)} {U_GPT}, выше "
+                f"{num(p('plant.grade_h1_2026'), 2)} {U_GPT} первого полугодия")
+    if check_id == "C15":
+        return (f"добыто {num(p('calib.c15.mined_t'))} т при переработке {num(p('calib.c15.milled_t'))} т "
+                f"{EM_DASH} руды хватало, а фабрика работала ниже мощности двух линий в модели")
+    if check_id == "C16":
+        return "мощность фабрики задана паспортом; переработка первого полугодия 2026 г. в подгонке не участвовала"
+    return ""
+
+
+_URL = re.compile(r"https?://[^\s;,]+")
+_FACT_ROW = re.compile(r"\b([A-D]\d?) '([^']+)'")
+
+
+def source_of(sources: Mapping[str, str], params: Sequence[str]) -> Dict[str, Any]:
+    """Facts-file sections, rows and URLs behind the reported figure of a row.
+
+    ``text`` reads «факты B: «Gold poured»; D1: «…»»; ``urls`` lists the documents.
+    """
+    rows: Dict[str, List[str]] = {}
+    urls: List[str] = []
+    for pid in params:
+        source = sources.get(pid, "")
+        for section, row in _FACT_ROW.findall(source):
+            if row not in rows.setdefault(section, []):
+                rows[section].append(row)
+        for url in _URL.findall(source):
+            url = url.rstrip(").")
+            if url not in urls:
+                urls.append(url)
+    if not rows:
+        return {"text": "тождество баланса массы", "urls": urls}
+    parts = [f"{section}: " + ", ".join(f"«{row}»" for row in names) for section, names in rows.items()]
+    return {"text": "факты " + "; ".join(parts), "urls": urls}
+
+
+def simulator_run(days: float, seed: Any) -> str:
+    return f"прогон симулятора {num(days)} сут базового режима (зерно {seed}), выполнен советником при запуске"
+
+
+def simulator_run_failed(exc: BaseException) -> str:
+    return f"прогон симулятора не выполнен ({type(exc).__name__}); значения проверки здесь не показаны"
+
+
+def calibration_row(model: cap.Model, sources: Mapping[str, str], check: Optional[cap.CalibrationCheck],
+                    kind: str, check_id: Optional[str] = None, run: Optional[str] = None) -> Dict[str, Any]:
+    """One row of «Проверка калибровки»: the numbers of a check under Russian headings.
+
+    ``kind`` is ``analytic``, ``simulator`` or ``out_of_sample``. ``check`` may be ``None`` for a
+    simulator row whose run failed; ``check_id`` then names it.
+    """
+    check_id = check.id if check is not None else check_id
+    basis, params = cap.CALIBRATION_BASIS[check_id]
+    source = source_of(sources, params)
+    row = {
+        "id": check_id,
+        "case": check.case if check else "",
+        "title": calibration_title(model, check_id, check.case if check else "", check.quantity if check else ""),
+        "kind": kind,
+        "kind_name": KIND_RU[kind],
+        "basis": basis,
+        "basis_name": BASIS_RU[basis],
+        "basis_note": basis_note(model, check_id),
+        "unit": _UNIT_RU.get(check.unit, check.unit) if check else "",
+        "reported": check.reported if check else None,
+        "reported_max": check.reported_max if check else None,
+        "model": round(check.model, 2) if check else None,
+        "deviation": round(check.deviation, 2) if check else None,
+        "deviation_unit": _UNIT_RU.get(check.deviation_unit, check.deviation_unit) if check else "%",
+        "tolerance": tolerance_ru(check.tolerance) if check else "",
+        "passed": bool(check.ok) if check else None,
+        "source": source["text"],
+        "source_urls": source["urls"],
     }
+    if run is not None:
+        row["run"] = run
+    return row

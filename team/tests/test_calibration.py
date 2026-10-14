@@ -198,6 +198,58 @@ class TestCalibration(ModelCase):
         self.assertGreater(res.gold.oz_per_year, 100_000)
 
 
+class TestOutOfSample(ModelCase):
+    """Decision 11.3: checks against figures no parameter was set from, and the basis of every row."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.rows = {row.id: row for row in cap.out_of_sample_checks(cls.model)}
+
+    def test_ids_and_basis(self):
+        self.assertEqual(list(self.rows), ["C13", "C14", "C15", "C16"])
+        for row in self.rows.values():
+            self.assertEqual(row.basis, cap.INDEPENDENT)
+            self.assertTrue(row.params)
+            for pid in row.params:
+                self.model.p(pid)
+
+    def test_c13_h1_2026_ore_mined(self):
+        row = self.rows["C13"]
+        self.assertEqual(row.reported, 458201 * 2)
+        self.assertAlmostEqual(row.model, self.base.achievable_ktpa * 1000)
+        self.assertWithin(row.model, row.reported, 3.0, "C13:")
+        self.assertTrue(row.ok)
+
+    def test_c14_guidance_is_a_range(self):
+        row = self.rows["C14"]
+        self.assertEqual((row.reported, row.reported_max), (52000, 55000))
+        self.assertAlmostEqual(row.model, cap.gold_oz(self.model, 1_000_000, 1.76))
+        self.assertAlmostEqual(row.deviation, (row.model / 52000 - 1) * 100)   # from the nearer end
+        self.assertFalse(row.ok)                                                 # 47.8 koz: below the range
+
+    def test_c15_two_lines_in_2024(self):
+        row = self.rows["C15"]
+        self.assertEqual(row.reported, 593612)
+        self.assertAlmostEqual(row.model, 2 / 3 * 1_000_000, delta=0.01)
+        self.assertFalse(row.ok)                                                 # +12.3 %: above 5 %
+
+    def test_c16_h1_2026_ore_processed(self):
+        row = self.rows["C16"]
+        self.assertEqual(row.reported, 498331 * 2)
+        self.assertTrue(row.ok)
+
+    def test_basis_of_the_analytic_checks(self):
+        basis = {row.id: row.basis for row in cap.calibration_checks(self.model)}
+        self.assertEqual(basis, {"C1": cap.FIT, "C2": cap.FIT, "C4": cap.FIT, "C5": cap.FIT, "C6": cap.FIT,
+                                 "C7": cap.FIT, "C9": cap.INDEPENDENT, "C10": cap.FIT, "C12": cap.INDEPENDENT})
+        self.assertEqual(set(cap.CALIBRATION_BASIS), {f"C{n}" for n in range(1, 17)})
+        for check_id, (kind, params) in cap.CALIBRATION_BASIS.items():
+            self.assertIn(kind, (cap.FIT, cap.INDEPENDENT, cap.IDENTITY), check_id)
+            for pid in params:
+                self.model.p(pid)
+
+
 class TestBindingRule(ModelCase):
     """Spec 3.4 steps 1-3: rounding, tie-break, next measure."""
 
@@ -300,9 +352,10 @@ class TestBottleneckSequences(ModelCase):
     def test_sustainable_baseline(self):
         self.assertWithin(self.base.achievable_ktpa, 926, 1.0)
         self.assertAlmostEqual(self.base.gold.oz_per_year / 1000, 51.9, delta=0.1)
-        days = cap.stockpile_days_left(self.model, 36000, self.base.achievable_ktpa, 1000)
-        self.assertAlmostEqual(days, 216, delta=3)  # "about 216 days"
-        self.assertTrue(math.isinf(cap.stockpile_days_left(self.model, 36000, 1000, 1000)))
+        stock = self.model.p("stockpile.start_t")
+        days = cap.stockpile_days_left(self.model, stock, self.base.achievable_ktpa, 1000)
+        self.assertAlmostEqual(days, 564, delta=3)  # 94 264 t at 167 t/day: "about 564 days"
+        self.assertTrue(math.isinf(cap.stockpile_days_left(self.model, stock, 1000, 1000)))
 
 
 class TestScenarioEffects(ModelCase):

@@ -115,7 +115,7 @@
   "kz.sekis:mon-volchevka":{"kind":"monitoring_point","primitive":"marker","sourced":false,"planned":false,"anchor":[402.3,430,425]},
   "kz.sekis:mon-sekisovka":{"kind":"monitoring_point","primitive":"marker","sourced":false,"planned":false,"anchor":[-450,430,65.1]},
   "kz.sekis:plant":{"kind":"plant","primitive":"outline","sourced":false,"planned":false,"anchor":[-500,446,-350],"y":430,"footprint":[[-597,-390],[-403,-390],[-403,-310],[-597,-310]]},
-  "kz.sekis:rom-stockpile":{"kind":"rom_stockpile","primitive":"cone","sourced":false,"planned":false,"anchor":[-350,452,-250],"base":[-350,430,-250],"radius":30,"height":22,"reference_t":36000,"pad":[[-400,-290],[-300,-290],[-300,-210],[-400,-210]],"dump":[-305,430,-215]},
+  "kz.sekis:rom-stockpile":{"kind":"rom_stockpile","primitive":"cone","sourced":false,"planned":false,"anchor":[-350,452,-250],"base":[-350,430,-250],"radius":30,"height":22,"reference_t":94264,"pad":[[-400,-290],[-300,-290],[-300,-210],[-400,-210]],"dump":[-305,430,-215]},
   "kz.sekis:plant-line-1":{"kind":"plant_line","primitive":"box","sourced":false,"planned":false,"anchor":[-575,438,-350],"center":[-575,438,-350],"size":[24,16,60]},
   "kz.sekis:plant-line-2":{"kind":"plant_line","primitive":"box","sourced":false,"planned":false,"anchor":[-545,438,-350],"center":[-545,438,-350],"size":[24,16,60]},
   "kz.sekis:plant-line-3":{"kind":"plant_line","primitive":"box","sourced":false,"planned":false,"anchor":[-515,438,-350],"center":[-515,438,-350],"size":[24,16,60]},

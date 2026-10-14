@@ -76,7 +76,8 @@ __all__ = [
     "dewatering", "Dewatering", "pump_power_kw", "pond_treatment", "PondTreatment",
     "plant", "Plant", "PlantLine", "water_capacity_ktpa", "water_balance", "WaterBalance",
     "tailings", "Tailings", "DamFill", "recovery_pct", "gold_oz", "Gold", "stockpile_days_left",
-    "calibration_checks", "CalibrationCheck",
+    "calibration_checks", "CalibrationCheck", "calibration_basis", "out_of_sample_checks", "CALIBRATION_BASIS",
+    "FIT", "INDEPENDENT", "IDENTITY",
 ]
 
 # --- unit conversions (not model parameters) ---------------------------------------------------
@@ -1293,12 +1294,47 @@ def next_measure(model: Model, state: State, link: str) -> Optional[Tuple[str, S
 
 # --- calibration -------------------------------------------------------------------------------
 
+#: How the model relates to the reported figure of a check (spec 2.9, decision 11.3).
+FIT = "fit"                  # a parameter was set from this figure, or the figure defines one
+INDEPENDENT = "independent"  # the figure was not used to set any parameter
+IDENTITY = "identity"        # a balance that holds by construction
+
+#: Check id -> (basis, the parameters that hold the reported figure). The sources of those
+#: parameters in params.json are the references of the row.
+CALIBRATION_BASIS: Dict[str, Tuple[str, Tuple[str, ...]]] = {
+    # recovery R(g) is a least-squares fit to the recoveries of these four periods
+    "C1": (FIT, ("calib.c1.reported_oz", "calib.c1.milled_t", "calib.c1.grade_gpt")),
+    "C2": (FIT, ("calib.c2.reported_oz", "calib.c2.milled_t", "calib.c2.grade_gpt")),
+    # haul.K_HAUL and sim.op_delay_factor are set so that this figure is met
+    "C3": (FIT, ("calib.c3.reported_t",)),
+    "C4": (FIT, ("calib.c4.h1_2026.reported_oz", "calib.c4.h1_2025.reported_oz")),
+    "C5": (FIT, ("calib.c5.reported_pct", "calib.c5.grades_gpt")),
+    # vent.q_base is fitted to the pair 252 / 322 m3/s (vent.q_diesel is a published norm)
+    "C6": (FIT, ("calib.c6.reported_m3s",)),
+    "C7": (FIT, ("calib.c7.reported_m3s",)),
+    # the line rates are derived from the nameplate capacity
+    "C8": (FIT, ("calib.c8.reported_t",)),
+    "C9": (INDEPENDENT, ("calib.c9.reported_t_yr",)),
+    # the water per tonne is these volumes divided by the nameplate output
+    "C10": (FIT, ("calib.c10.reported_kth_m3yr",)),
+    "C11": (IDENTITY, ()),
+    "C12": (INDEPENDENT, ("calib.c12.min_oz", "calib.c12.target_ktpa")),
+    "C13": (INDEPENDENT, ("calib.c13.mined_t",)),
+    "C14": (INDEPENDENT, ("calib.c14.guidance_koz",)),
+    "C15": (INDEPENDENT, ("calib.c15.milled_t", "calib.c15.mined_t", "calib.c15.lines_running")),
+    "C16": (INDEPENDENT, ("calib.c4.h1_2026.milled_t",)),
+}
+
+
 @dataclass(frozen=True)
 class CalibrationCheck:
-    """One row of the calibration table (spec 2.9), analytic checks only.
+    """One row of the calibration table (spec 2.9).
 
     ``deviation`` is in ``deviation_unit``: ``"%"`` of the reported value or ``"points"``.
     ``tolerance`` is the accepted range in words; ``ok`` tells whether the model is inside it.
+    ``basis`` is ``FIT``, ``INDEPENDENT`` or ``IDENTITY``; ``params`` names the parameters that
+    hold the reported figure. ``reported_max`` is the upper end when the reported figure is a
+    range (``reported`` is then its lower end).
     """
     id: str
     case: str
@@ -1310,22 +1346,37 @@ class CalibrationCheck:
     deviation_unit: str
     tolerance: str
     ok: bool
+    basis: str = ""
+    params: Tuple[str, ...] = ()
+    reported_max: Optional[float] = None
+
+
+def calibration_basis(check: CalibrationCheck) -> CalibrationCheck:
+    """The check with ``basis`` and ``params`` of ``CALIBRATION_BASIS`` (for rows built elsewhere,
+    such as the simulator checks C3, C8 and C11)."""
+    basis, params = CALIBRATION_BASIS[check.id]
+    return replace(check, basis=basis, params=params)
+
+
+def _relative_check(rows: list, check_id: str, case: str, quantity: str, unit: str, reported: float,
+                    value: float, tol_pct: float) -> None:
+    deviation = (value / reported - 1) * PERCENT
+    rows.append(CalibrationCheck(check_id, case, quantity, unit, reported, value, deviation, "%",
+                                 f"+-{tol_pct:g} %", abs(deviation) <= tol_pct))
 
 
 def calibration_checks(model: Model) -> Tuple[CalibrationCheck, ...]:
     """The analytic calibration checks C1, C2, C4-C7, C9, C10, C12 of spec 2.9.
 
     Reported values and tolerances are the ``calib.*`` parameters. The simulator checks C3, C8
-    and C11 are not part of this library.
+    and C11 are not part of this library; the out-of-sample checks are ``out_of_sample_checks``.
     """
     p = model.p
-    rows = []
+    rows: list = []
 
     def relative(check_id: str, case: str, quantity: str, unit: str, reported: float, value: float,
                  tol_pct: float) -> None:
-        deviation = (value / reported - 1) * PERCENT
-        rows.append(CalibrationCheck(check_id, case, quantity, unit, reported, value, deviation, "%",
-                                     f"+-{tol_pct:g} %", abs(deviation) <= tol_pct))
+        _relative_check(rows, check_id, case, quantity, unit, reported, value, tol_pct)
 
     for check_id, key, case in (("C1", "calib.c1", "FY2025"), ("C2", "calib.c2", "FY2024"),
                                 ("C4", "calib.c4.h1_2026", "H1 2026"), ("C4", "calib.c4.h1_2025", "H1 2025")):
@@ -1364,4 +1415,41 @@ def calibration_checks(model: Model) -> Tuple[CalibrationCheck, ...]:
     gold = gold_oz(model, p("calib.c12.target_ktpa") * KILO, p("plant.grade_base"))
     rows.append(CalibrationCheck("C12", "expansion target at the base grade", "gold per year", "oz", minimum, gold,
                                  (gold / minimum - 1) * PERCENT, "%", "above reported", gold > minimum))
-    return tuple(rows)
+    return tuple(calibration_basis(row) for row in rows)
+
+
+def out_of_sample_checks(model: Model) -> Tuple[CalibrationCheck, ...]:
+    """Checks against reported figures that no parameter was set from (decision 11.3).
+
+    C13  H1 2026 ore mined, annualised, against the sustainable rate of the baseline
+    C14  FY2026 gold guidance (a range) against the gold of the nameplate throughput at the
+         H1 2026 grade; the deviation is measured from the nearer end of the range
+    C15  FY2024 ore milled by two lines (ore mined in that year exceeded it, so the plant was not
+         short of ore) against the capacity of two lines
+    C16  H1 2026 ore processed, annualised, against the plant capacity of the baseline
+    """
+    p = model.p
+    rows: list = []
+    base = evaluate(model, State())
+    half_years = p("calib.c13.annualise_factor")
+    _relative_check(rows, "C13", "H1 2026", "ore mined, annualised", "t/yr", p("calib.c13.mined_t") * half_years,
+                    base.achievable_ktpa * KILO, p("calib.c13.tol_pct"))
+
+    low, high = (koz * KILO for koz in p("calib.c14.guidance_koz"))
+    gold = gold_oz(model, p("plant.nameplate_ktpa") * KILO, p("plant.grade_h1_2026"))
+    edge = low if gold < low else high if gold > high else gold
+    tol = p("calib.c14.tol_pct")
+    inside = low * (1 - tol / PERCENT) <= gold <= high * (1 + tol / PERCENT)
+    rows.append(CalibrationCheck("C14", "FY2026 guidance at the H1 2026 grade", "gold per year", "oz", low, gold,
+                                 (gold / edge - 1) * PERCENT, "%", "inside the reported range", inside,
+                                 reported_max=high))
+
+    lines = p("calib.c15.lines_running")
+    two_lines_kt = sum(_line_capacities(model, 0)[:lines])
+    _relative_check(rows, "C15", "FY2024", "ore milled by the lines in service", "t/yr", p("calib.c15.milled_t"),
+                    two_lines_kt * KILO, p("calib.c15.tol_pct"))
+
+    _relative_check(rows, "C16", "H1 2026", "ore processed, annualised", "t/yr",
+                    p("calib.c4.h1_2026.milled_t") * half_years, base.capacity_ktpa["plant"] * KILO,
+                    p("calib.c16.tol_pct"))
+    return tuple(calibration_basis(row) for row in rows)

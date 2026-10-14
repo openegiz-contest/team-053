@@ -1,9 +1,13 @@
 """Expansion Advisor: the decision logic of spec 3.4. Pure, no network, standard library only.
 
 The advisor ranks the eight link capacities of ``sekis.capacity``, names the binding link and
-removes it one measure at a time until the processing target is met. Every number in its
-output is a value ``sekis.capacity`` computed for some state, rounded for display; this
-module adds no formula of its own beyond sums, differences and the choice of states.
+removes it one measure at a time until the processing target is met. A disturbance that an
+operational action can remove (a stopped plant line, a closed decline, a failed fan or pumps)
+is removed first, the one whose removal raises the achievable rate most leading; the expansion
+measures follow. Disturbances no action removes (a lower ore grade, a flood inflow) are
+reported as conditions. Every number in the output is a value ``sekis.capacity`` computed for
+some state, or a parameter of ``params.json``, rounded for display; this module adds no
+formula of its own beyond sums, differences, products with prices and the choice of states.
 
 Typical use::
 
@@ -16,6 +20,11 @@ Typical use::
     advisor.envelope(report)                              # Ditto-protocol message for the twin
 
 Report keys are listed in ``Advisor.report``.
+
+Steady state. The KPIs of the report (water deficit and discharge, stockpile flow, gold) are
+long-run values of the selected regime: the rate the chain sustains, with the water the pumps
+deliver on average. The twins show live values (1-hour water means, rates restarted on a knob
+change, see ``sekis.sim``), which approach these values after the transient.
 """
 
 from __future__ import annotations
@@ -30,10 +39,10 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 from .. import capacity as cap
 from . import wording
 
-__all__ = ["Advisor", "Inputs", "Plan", "Step", "MODES", "RESTORE_PUMPS", "NO_MEASURE",
-           "ADVISOR_THING", "SCENARIO_THING", "TELEMETRY_TOPIC"]
+__all__ = ["Advisor", "Inputs", "Plan", "Step", "MODES", "RESTORE_PUMPS", "NO_MEASURE", "DISTURBANCES",
+           "CONDITIONS", "MEASURE", "DISTURBANCE", "ADVISOR_THING", "SCENARIO_THING", "TELEMETRY_TOPIC"]
 
-SCHEMA = "sekis.advisor.report/1"
+SCHEMA = "sekis.advisor.report/2"
 NAMESPACE = "kz.sekis"
 ADVISOR_THING = "advisor"
 SCENARIO_THING = "scenario"
@@ -48,6 +57,23 @@ NO_MEASURE = "none"
 PUMPS_KNOB = "pumps_failed_p150"
 MODES = ("next", "all")
 
+#: Kinds of step: an expansion measure (one more stage of a measure knob) or the removal of a
+#: disturbance (the knob back to its default).
+MEASURE = "measure"
+DISTURBANCE = "disturbance"
+
+#: Disturbance knob that an operational action removes -> (the link the removal relieves, token of
+#: the twin feature ``next_measure``). The order breaks ties between equal gains.
+DISTURBANCES: Dict[str, Tuple[str, str]] = {
+    "line_down": ("plant", "restart_line"),
+    "tu2_closed": ("haulage", "open_tu2"),
+    "tu1_closed": ("haulage", "open_tu1"),
+    "fan_vs2_off": ("ventilation", "restore_fan_vs2"),
+    PUMPS_KNOB: ("dewatering", RESTORE_PUMPS),
+}
+#: Disturbance knobs that no action of the mine removes; reported as conditions.
+CONDITIONS = ("grade_gpt", "inflow_factor")
+
 #: Why the constraint loop stopped.
 TARGET_REACHED = "target_reached"
 NO_STAGE_LEFT = "no_stage_left"
@@ -56,8 +82,16 @@ NO_STAGE_LEFT = "no_stage_left"
 MINE_LINKS = ("haulage", "ventilation", "stopes", "development", "dewatering")
 PROCESS_LINKS = ("plant", "water")
 
+#: Direction of the ROM stockpile in the steady state.
+FALLS, GROWS, STEADY = "falls", "grows", "steady"
+
 PROJECTION_YEARS = 10   # horizon of the projection, counted from the year of the simulation epoch
 FLOODED = "flooded"     # state token of a level (spec 2.5)
+MILLION = 1.0e6         # US$ per US$m, oz per Moz (a unit conversion)
+
+#: Calibration tables already computed, by the content of params.json (the simulator run of
+#: C3, C8 and C11 takes a few seconds and is done once per process).
+_CALIBRATION_CACHE: Dict[str, List[Dict[str, Any]]] = {}
 
 
 def _finite(value: Optional[float], digits: int) -> Optional[float]:
@@ -105,11 +139,14 @@ class Inputs:
 
 @dataclass(frozen=True)
 class Step:
-    """One measure of the sequence: the binding link and the stage that relieves it.
+    """One step of the sequence: the binding link and what relieves it.
 
-    ``measure`` is the knob name, or ``restore_pumps`` for dewatering. ``changes`` maps scenario
-    knobs to their new values; it is empty when the pumps already run and the flooded levels
-    only have to be pumped out.
+    ``kind`` is ``measure`` (one more stage of the measure knob ``knob``) or ``disturbance``
+    (``knob`` back to its default: restart a line, open a decline, restore a fan or pumps).
+    ``measure`` is the token of the twin feature ``next_measure``: the knob name for a measure,
+    ``restart_line``, ``open_tu1``, ``open_tu2``, ``restore_fan_vs2`` or ``restore_pumps`` for a
+    disturbance. ``changes`` maps scenario knobs to their new values; it is empty when the pumps
+    already run and the flooded levels only have to be pumped out.
     """
     link: str
     measure: str
@@ -120,11 +157,12 @@ class Step:
     cap_before_ktpa: Optional[int]
     cap_after_ktpa: Optional[int]
     text: str
+    kind: str = MEASURE
 
     def to_dict(self) -> Dict[str, Any]:
-        return {"link": self.link, "link_name": wording.link_name(self.link), "measure": self.measure,
-                "knob": self.knob, "from_stage": self.from_stage, "to_stage": self.to_stage,
-                "set": dict(self.changes), "text": self.text,
+        return {"kind": self.kind, "link": self.link, "link_name": wording.link_name(self.link),
+                "measure": self.measure, "knob": self.knob, "from_stage": self.from_stage,
+                "to_stage": self.to_stage, "set": dict(self.changes), "text": self.text,
                 "cap_before_ktpa": self.cap_before_ktpa, "cap_after_ktpa": self.cap_after_ktpa}
 
 
@@ -154,12 +192,19 @@ def achievable_rounded(res: cap.Result) -> int:
 class Advisor:
     """The decision module. Holds the model; every method is a pure function of its arguments."""
 
-    def __init__(self, model: Optional[cap.Model] = None, registry: Optional[Mapping[str, Any]] = None):
-        self.model = model or cap.load_model()
+    def __init__(self, model: Optional[cap.Model] = None, registry: Optional[Mapping[str, Any]] = None,
+                 params: Optional[Mapping[str, Any]] = None):
+        model_dir = Path(cap.__file__).resolve().parent.parent / "model"
+        if params is None:
+            with open(model_dir / "params.json", encoding="utf-8") as handle:
+                params = json.load(handle)
         if registry is None:
-            path = Path(cap.__file__).resolve().parent.parent / "model" / "registry.json"
-            with open(path, encoding="utf-8") as handle:
+            with open(model_dir / "registry.json", encoding="utf-8") as handle:
                 registry = json.load(handle)
+        self.model = model or cap.Model(params, registry)
+        #: Parameter id -> its ``source`` in params.json (the references of the calibration rows).
+        self.sources: Dict[str, str] = {pid: str(entry.get("source", "")) for pid, entry in params.items()}
+        self._params_key = json.dumps(params, sort_keys=True)
         things = {t["thingId"].split(":", 1)[-1]: t for t in registry["things"]}
         #: Thing name -> Russian name, plus the receiving water body of the mine-water outfall.
         self.names: Dict[str, str] = {name: t["attributes"]["name"] for name, t in things.items()}
@@ -175,8 +220,6 @@ class Advisor:
         self.targets: Tuple[float, ...] = tuple(float(v) for v in self.model.p("ladder.m_plant.capacity_ktpa"))
         self.first_year: int = datetime.fromisoformat(self.model.p("sim.epoch")).year
         self.baseline: cap.Result = cap.evaluate(self.model, cap.State())
-        self._calibration = [wording.calibration_row(self.model, check)
-                             for check in cap.calibration_checks(self.model)]
 
     # --- inputs ------------------------------------------------------------------------------
 
@@ -227,19 +270,48 @@ class Advisor:
 
     # --- the constraint loop (spec 3.4 steps 1-3) ----------------------------------------------
 
+    def disturbance_step(self, res: cap.Result) -> Optional[Tuple[Step, cap.Result]]:
+        """Removal of the active disturbance that raises the achievable rate most, applied virtually.
+
+        ``None`` when no removable disturbance is active. Ties go to the order of
+        ``DISTURBANCES``. Restored pumps are taken to pump the flooded levels out.
+        """
+        state = res.state
+        best = None
+        for knob, (link, token) in DISTURBANCES.items():
+            value = getattr(state, knob)
+            if not value:
+                continue
+            cleared = state.replace(**{knob: type(value)(0)})
+            if knob == PUMPS_KNOB:
+                cleared = cleared.replace(flooded_levels=())
+            after = cap.evaluate(self.model, cleared)
+            gain = achievable_rounded(after) - achievable_rounded(res)
+            if best is None or gain > best[0]:
+                best = (gain, knob, link, token, int(value), after)
+        if best is None:
+            return None
+        _, knob, link, token, value, after = best
+        step = Step(link=link, measure=token, knob=knob, from_stage=value, to_stage=0,
+                    changes={knob: self.knob_defaults[knob]}, cap_before_ktpa=res.capacity_rounded[link],
+                    cap_after_ktpa=after.capacity_rounded[link],
+                    text=wording.disturbance_text(self.model, self.names, knob, res, after), kind=DISTURBANCE)
+        return step, after
+
     def next_step(self, res: cap.Result) -> Optional[Tuple[Step, cap.Result]]:
         """One more stage on the knob of the binding link, applied virtually.
 
         Returns the step and the evaluated state after it, or ``None`` when the link has no
-        stage left. Dewatering binds only while a level is flooded; its measure restores the
-        pumps of ps-p150, after which the levels are taken as pumped out.
+        stage left. Dewatering binds only while a level is flooded; with the pumps failed its
+        step is the disturbance step (restore the pumps), with the pumps running it is pumping
+        the levels out (no knob changes), after which the levels are taken as pumped out.
         """
         state, link = res.state, res.binding_link
         if link == "dewatering":
-            failed = state.pumps_failed_p150
-            after = cap.evaluate(self.model, state.replace(pumps_failed_p150=0, flooded_levels=()))
-            measure, knob, stages = RESTORE_PUMPS, PUMPS_KNOB, (failed, 0)
-            changes = {PUMPS_KNOB: 0.0} if failed else {}
+            if state.pumps_failed_p150:
+                return self.disturbance_step(res)
+            after = cap.evaluate(self.model, state.replace(flooded_levels=()))
+            measure, knob, stages, changes = RESTORE_PUMPS, PUMPS_KNOB, (0, 0), {}
         else:
             move = cap.next_measure(self.model, state, link)
             if move is None:
@@ -255,30 +327,70 @@ class Advisor:
         return step, after
 
     def plan(self, state: cap.State, target_ktpa: float) -> Plan:
-        """Remove the binding link, one measure at a time, until the target is met.
+        """Remove the binding constraint, one step at a time, until the target is met.
 
-        The loop stops when the binding capacity, rounded to 1 kt/yr, is at or above the
-        target, or when the binding link has no stage left.
+        Active disturbances are removed first (``disturbance_step``), then the binding link gets
+        one more measure stage at a time. The loop stops when the binding capacity, rounded to
+        1 kt/yr, is at or above the target, or when the binding link has no stage left.
         """
         start = res = cap.evaluate(self.model, state)
         steps: List[Step] = []
-        most = sum(cap.knob_max(self.model, knob) for knob in cap.KNOBS) + 1  # every stage, and the pumps
+        most = sum(cap.knob_max(self.model, knob) for knob in cap.KNOBS) + len(DISTURBANCES) + 1
         while True:
             if achievable_rounded(res) >= target_ktpa:
                 return Plan(target_ktpa, tuple(steps), start, res, TARGET_REACHED)
-            move = self.next_step(res) if len(steps) < most else None
+            move = None
+            if len(steps) < most:
+                move = self.disturbance_step(res) or self.next_step(res)
             if move is None:
                 return Plan(target_ktpa, tuple(steps), start, res, NO_STAGE_LEFT)
             step, res = move
             steps.append(step)
 
+    def conditions(self, res: cap.Result) -> List[Dict[str, Any]]:
+        """Disturbances no action of the mine removes (spec 3.1): stated, not proposed as measures."""
+        state, p = res.state, self.model.p
+        rows = []
+        base_grade = p("plant.grade_base")
+        if state.grade_gpt is not None and state.grade_gpt < base_grade:
+            rows.append({"knob": "grade_gpt", "value": state.grade_gpt, "base": base_grade,
+                         "text": wording.grade_condition(state.grade_gpt, base_grade, res)})
+        if state.inflow_factor > 1:
+            rows.append({"knob": "inflow_factor", "value": state.inflow_factor, "base": 1.0,
+                         "text": wording.inflow_condition(self.model, self.names, res)})
+        return rows
+
     # --- figures of one state ----------------------------------------------------------------
+
+    def stockpile_flow(self, res: cap.Result, stockpile_t: float) -> Dict[str, Any]:
+        """ROM stockpile in the steady state of ``res``.
+
+        The mine delivers the smallest of the mine links over its working days. The plant mills
+        its capacity unless the water the sources sustain at that hoisting rate carries less
+        (``WaterBalance.feed_limit_tph``, the throttle of the simulator once the ponds run low),
+        and nothing once the tailings storage is full. Both are per simulated day (the simulator
+        runs working days only), as ``capacity.stockpile_days_left`` counts them.
+        """
+        model, p = self.model, self.model.p
+        mine_ktpa = min(res.capacity_ktpa[link] for link in MINE_LINKS)
+        hoist_tph = mine_ktpa * cap.KILO / (p("regime.working_days") * cap.HOURS_PER_DAY)
+        plant_tph = res.capacity_ktpa["plant"] * cap.KILO / model.hours_per_year
+        water = cap.water_balance(model, hoist_tph, plant_tph, res.dewatering.pumped_m3h, res.state.m_water)
+        feed_tph = min(plant_tph, water.feed_limit_tph)
+        if res.tailings.free_t <= 0:
+            feed_tph = 0.0
+        feed_ktpa = feed_tph * model.hours_per_year / cap.KILO
+        mine_tpd = mine_ktpa * cap.KILO / p("regime.working_days")
+        plant_tpd = feed_ktpa * cap.KILO / p("regime.plant_days")
+        days = cap.stockpile_days_left(model, stockpile_t, mine_ktpa, feed_ktpa)
+        net = mine_tpd - plant_tpd
+        trend = FALLS if math.isfinite(days) else GROWS if net > 0 else STEADY
+        return {"mine_tpd": mine_tpd, "plant_tpd": plant_tpd, "net_tpd": net, "days": days, "trend": trend,
+                "water_limited": feed_tph < plant_tph}
 
     def kpi(self, res: cap.Result, stockpile_t: float) -> Dict[str, Any]:
         """KPI values of an evaluated state, rounded for display; ``None`` marks "no limit"."""
-        mine = min(res.capacity_ktpa[link] for link in MINE_LINKS)
-        process = min(res.capacity_ktpa[link] for link in PROCESS_LINKS)
-        days = cap.stockpile_days_left(self.model, stockpile_t, mine, process)
+        stock = self.stockpile_flow(res, stockpile_t)
         return {
             "gold_koz_year": _finite(res.gold.oz_per_year / cap.KILO, 2),
             "gold_gain_koz_year": _finite((res.gold.oz_per_year - self.baseline.gold.oz_per_year) / cap.KILO, 2),
@@ -297,7 +409,11 @@ class Advisor:
             "tailings_free_kt": _finite(res.tailings.free_t / cap.KILO, 0),
             "tailings_years_left": _finite(res.tailings.years_left, 1),
             "stockpile_t": _finite(stockpile_t, 0),
-            "stockpile_days_left": _finite(days, 0),
+            "stockpile_days_left": _finite(stock["days"], 0),
+            "stockpile_mine_tpd": _finite(stock["mine_tpd"], 0),
+            "stockpile_plant_tpd": _finite(stock["plant_tpd"], 0),
+            "stockpile_net_tpd": _finite(stock["net_tpd"], 0),
+            "stockpile_trend": stock["trend"],
             "dewatering_margin": _finite(res.dewatering.margin, 2),
         }
 
@@ -321,39 +437,71 @@ class Advisor:
                 "binding_link_name": wording.link_name(res.binding_link), "reached": plan.reached,
                 "stop_reason": plan.stop_reason}
 
+    # --- economics (decision 11.1) -------------------------------------------------------------
+
+    def economics(self, gold_oz_year: float, target_ktpa: float) -> Dict[str, Any]:
+        """What the gold a target adds over the sustainable baseline is worth, and the payback.
+
+        Value at the realised gold price; operating margin per ounce = price less the published
+        AISC (H1 2026, restated basis), taken as unchanged by the extra output; capex the company
+        estimate where one is published for the target, otherwise ``None`` (not disclosed);
+        payback = capex / extra margin per year. A description of the mine's economics, not advice.
+        """
+        p = self.model.p
+        price, aisc = p("econ.gold_price_usd_oz"), p("econ.aisc_usd_oz")
+        gain_oz = gold_oz_year - self.baseline.gold.oz_per_year
+        margin_usd_m = gain_oz * (price - aisc) / MILLION
+        capex = p("econ.capex_expansion_usd_m") if target_ktpa in p("econ.capex_expansion_targets_ktpa") else None
+        payback = capex / margin_usd_m if capex is not None and margin_usd_m > 0 else None
+        row = {
+            "target_ktpa": target_ktpa,
+            "baseline_gold_koz_year": _finite(self.baseline.gold.oz_per_year / cap.KILO, 1),
+            "gold_gain_koz_year": _finite(gain_oz / cap.KILO, 1),
+            "gold_price_usd_oz": price,
+            "value_usd_m_year": _finite(gain_oz * price / MILLION, 1),
+            "aisc_usd_oz": aisc,
+            "margin_usd_oz": price - aisc,
+            "margin_usd_m_year": _finite(margin_usd_m, 1),
+            "capex_usd_m": capex,
+            "capex_disclosed": capex is not None,
+            "payback_years": _finite(payback, 1),
+            "sources": {"gold_price_usd_oz": "econ.gold_price_usd_oz", "aisc_usd_oz": "econ.aisc_usd_oz",
+                        "capex_usd_m": "econ.capex_expansion_usd_m"},
+        }
+        row.update(wording.economics_notes(self.model, row))
+        return row
+
     # --- ladder (step 4) ---------------------------------------------------------------------
+
+    def ladder_start(self, inputs: Inputs) -> cap.State:
+        """The baseline measure set under the current disturbances."""
+        return self.state(inputs).replace(**{knob: 0 for knob in cap.KNOBS})
+
+    def ladder_row(self, start: cap.State, target: float, stockpile_t: float) -> Dict[str, Any]:
+        """The sequence for one target from ``start`` and the figures of the state it ends in."""
+        plan = self.plan(start, target)
+        row: Dict[str, Any] = {"target_ktpa": target,
+                               "steps": [step.to_dict() for step in plan.steps],
+                               "sequence": plan.links,
+                               "measures_count": len(plan.steps)}
+        row.update(self._outcome(plan))
+        row["measures"] = {knob: getattr(plan.result.state, knob) for knob in cap.KNOBS}
+        row["capacities"] = dict(plan.result.capacity_rounded)
+        row.update(self.kpi(plan.result, stockpile_t))
+        row["economics"] = self.economics(plan.result.gold.oz_per_year, target)
+        return row
 
     def ladder(self, inputs: Inputs) -> List[Dict[str, Any]]:
         """For each target: the sequence from the baseline measure set under the current
-        disturbances, and the figures of the state it ends in."""
-        start = self.state(inputs).replace(**{knob: 0 for knob in cap.KNOBS})
-        rows = []
-        for target in self.targets:
-            plan = self.plan(start, target)
-            row: Dict[str, Any] = {"target_ktpa": target,
-                                   "steps": [step.to_dict() for step in plan.steps],
-                                   "sequence": plan.links,
-                                   "measures_count": len(plan.steps)}
-            row.update(self._outcome(plan))
-            row["measures"] = {knob: getattr(plan.result.state, knob) for knob in cap.KNOBS}
-            row["capacities"] = dict(plan.result.capacity_rounded)
-            row.update(self.kpi(plan.result, inputs.stockpile_t))
-            rows.append(row)
-        return rows
+        disturbances, the figures of the state it ends in and the economics of the target."""
+        start = self.ladder_start(inputs)
+        return [self.ladder_row(start, target, inputs.stockpile_t) for target in self.targets]
 
     # --- projection (step 5) -----------------------------------------------------------------
 
-    def projection(self, inputs: Inputs) -> Dict[str, Any]:
-        """Ten years of the current measure set and disturbances.
-
-        Each year the seven links other than tailings are evaluated at the depth the production
-        centroid has reached; the year's ore is the smallest of them, or what the tailings
-        storage can still take. The ore then lowers the centroid, fills the dams and pours gold.
-        The storage link itself (the rate that keeps a reserve of years) is a planning rule and
-        does not cap the tonnage of a year; the free volume does.
-        """
+    def _project(self, state: cap.State, target_ktpa: float) -> Dict[str, Any]:
+        """Ten years of one state: rows, the year storage runs out, the first year the target is missed."""
         model = self.model
-        state = self.state(inputs)
         centroid = model.p("stope.centroid_baseline_m") if state.centroid_m is None else state.centroid_m
         placed = state.tailings_placed_t
         grade = model.p("plant.grade_base") if state.grade_gpt is None else state.grade_gpt
@@ -365,7 +513,7 @@ class Advisor:
             res = cap.evaluate(model, state.replace(centroid_m=centroid, tailings_placed_t=placed))
             physical = dict(res.capacity_ktpa, tailings=math.inf)
             link = cap.binding_link(physical)
-            rate_kt = min(physical.values())
+            rate_kt = physical_kt = min(physical.values())
             free_kt = res.tailings.free_t / cap.KILO
             if free_kt <= rate_kt:
                 rate_kt, link = free_kt, "tailings"
@@ -379,7 +527,7 @@ class Advisor:
             placed += ore_t
             storage = cap.tailings(model, state.m_tailings, placed, rate_kt)
             shown = cap.round_kt(rate_kt)
-            met = shown >= inputs.target_ktpa
+            met = shown >= target_ktpa
             if not met and missed is None:
                 missed = year
             rows.append({
@@ -396,12 +544,46 @@ class Advisor:
                 "tailings_free_kt": _finite(storage.free_t / cap.KILO, 0),
                 "tailings_years_left": _finite(storage.years_left, 1),
                 "water_deficit_m3h": _finite(water.deficit_m3h, 1),
+                "note": wording.projection_note(link, shown, cap.round_kt(physical_kt)),
             })
             centroid = cap.centroid_after(model, centroid, ore_t)
-        return {"first_year": self.first_year, "last_year": self.first_year + PROJECTION_YEARS - 1,
-                "target_ktpa": inputs.target_ktpa, "rows": rows,
-                "storage_runs_out_year": runs_out, "target_missed_year": missed,
+        return {"rows": rows, "storage_runs_out_year": runs_out, "target_missed_year": missed,
                 "gold_total_koz": _finite(gold_total / cap.KILO, 2)}
+
+    def projection(self, inputs: Inputs) -> Dict[str, Any]:
+        """Ten years of the current measure set and disturbances.
+
+        Each year the seven links other than tailings are evaluated at the depth the production
+        centroid has reached; the year's ore is the smallest of them, or what the tailings
+        storage can still take. The ore then lowers the centroid, fills the dams and pours gold.
+        The storage link itself (the rate that keeps a reserve of years) is a planning rule and
+        does not cap the tonnage of a year; the free volume does. A year in which storage runs
+        out, and every year after it, carries a ``note``; ``storage_measure`` names the stage of
+        the tailings measure that would prevent it and the year storage then runs out.
+        """
+        state = self.state(inputs)
+        result = self._project(state, inputs.target_ktpa)
+        measure = None
+        if result["storage_runs_out_year"] is not None:
+            measure = self._storage_measure(state, inputs.target_ktpa)
+        result.update({"first_year": self.first_year, "last_year": self.first_year + PROJECTION_YEARS - 1,
+                       "target_ktpa": inputs.target_ktpa, "storage_measure": measure,
+                       "storage_note": wording.storage_note(self.first_year + PROJECTION_YEARS - 1,
+                                                            result["storage_runs_out_year"], measure)})
+        return result
+
+    def _storage_measure(self, state: cap.State, target_ktpa: float) -> Dict[str, Any]:
+        """The next stage of the tailings measure and the year storage runs out with it."""
+        before = cap.evaluate(self.model, state)
+        move = cap.next_measure(self.model, state, "tailings")
+        if move is None:
+            return {"knob": None, "to_stage": None, "text": None, "storage_runs_out_year": None}
+        knob, new_state = move
+        after = cap.evaluate(self.model, new_state)
+        with_measure = self._project(new_state, target_ktpa)
+        return {"knob": knob, "to_stage": getattr(new_state, knob),
+                "text": wording.measure_text(self.model, self.names, "tailings", before, after),
+                "storage_runs_out_year": with_measure["storage_runs_out_year"]}
 
     # --- effects (step 6) --------------------------------------------------------------------
 
@@ -423,7 +605,8 @@ class Advisor:
 
         ``before`` holds the knobs and the flooded levels before the change. Both sides are
         evaluated with the tonnages of ``after`` (stockpile, tailings placed), so that the list
-        shows the change and not the drift of the running mine. With no ``before`` the list is empty.
+        shows the change and not the drift of the running mine. With no ``before`` the list is
+        empty. A change of the target adds the economics of the new target.
         """
         head = {"revision": after.revision, "label": after.label,
                 "before_revision": before.revision if before else None,
@@ -432,7 +615,44 @@ class Advisor:
             return dict(head, items=[])
         same_tonnages = replace(before, tailings_placed_t=after.tailings_placed_t, stockpile_t=after.stockpile_t)
         items = wording.effect_items(self.names, self._snapshot(same_tonnages), self._snapshot(after))
+        if before.target_ktpa != after.target_ktpa:
+            row = self.ladder_row(self.ladder_start(after), after.target_ktpa, after.stockpile_t)
+            items.append(wording.economics_item(row))
         return dict(head, items=items)
+
+    # --- calibration table (spec 2.9, decision 11.3) -------------------------------------------
+
+    def calibration(self) -> List[Dict[str, Any]]:
+        """Rows of «Проверка калибровки»: analytic checks, the simulator checks C3, C8, C11 of a
+        headless baseline run of ``calib.run_days`` days (seed ``sim.seed``), and the
+        out-of-sample checks C13-C16, in the order of their ids. Computed once per process."""
+        cached = _CALIBRATION_CACHE.get(self._params_key)
+        if cached is None:
+            rows = [wording.calibration_row(self.model, self.sources, check, "analytic")
+                    for check in cap.calibration_checks(self.model)]
+            rows += self._simulator_rows()
+            rows += [wording.calibration_row(self.model, self.sources, check, "out_of_sample")
+                     for check in cap.out_of_sample_checks(self.model)]
+            rows.sort(key=lambda row: int(row["id"][1:]))     # stable: rows of one id keep their order
+            cached = _CALIBRATION_CACHE[self._params_key] = rows
+        return [dict(row) for row in cached]
+
+    def _simulator_rows(self) -> List[Dict[str, Any]]:
+        """C3, C8 and C11 from a headless simulator run; rows without a value if it cannot run."""
+        days = self.model.p("calib.run_days")
+        try:
+            from ..sim import Simulator  # here: the simulator is needed for this table only
+            sim = Simulator.from_files()
+            sim.run_days(days)
+            checks = [cap.calibration_basis(check) for check in sim.calibration_checks()]
+            run = wording.simulator_run(days, sim.p("sim.seed"))
+        except Exception as exc:  # the table still lists the checks, without a value
+            run = wording.simulator_run_failed(exc)
+            checks = []
+        if not checks:
+            return [wording.calibration_row(self.model, self.sources, None, "simulator", check_id=check_id,
+                                            run=run) for check_id in ("C3", "C8", "C11")]
+        return [wording.calibration_row(self.model, self.sources, check, "simulator", run=run) for check in checks]
 
     # --- report ------------------------------------------------------------------------------
 
@@ -443,14 +663,14 @@ class Advisor:
         ``achievable_ktpa``, ``achievable_exact_ktpa``, ``binding_link``, ``binding_link_name``,
         ``target_reached``, ``links`` (eight rows), ``next_measure`` (a step or ``None``),
         ``measures_needed``, ``sequence`` (steps from the current state to the target),
-        ``sequence_outcome``, ``kpi``, ``sustainable_baseline``, ``ladder`` (one row per target),
+        ``sequence_outcome``, ``conditions`` (disturbances no action removes), ``kpi`` (steady
+        state), ``sustainable_baseline``, ``ladder`` (one row per target, with ``economics``),
         ``projection``, ``effects``, ``calibration``.
         """
         state = self.state(inputs)
         plan = self.plan(state, inputs.target_ktpa)
         res = plan.start
         steps = [step.to_dict() for step in plan.steps]
-        base = self.baseline
         return {
             "schema": SCHEMA,
             "report_revision": inputs.revision,
@@ -468,31 +688,43 @@ class Advisor:
             "measures_needed": len(steps),
             "sequence": steps,
             "sequence_outcome": self._outcome(plan),
+            "conditions": self.conditions(res),
             "kpi": self.kpi(res, inputs.stockpile_t),
-            "sustainable_baseline": {
-                "ktpa": achievable_rounded(base),
-                "binding_link": base.binding_link,
-                "grade_gpt": _finite(base.gold.grade_gpt, 2),
-                "gold_koz_year": _finite(base.gold.oz_per_year / cap.KILO, 2),
-                "stockpile_t": self.model.p("stockpile.start_t"),
-                "stockpile_days_left": self.kpi(base, self.model.p("stockpile.start_t"))["stockpile_days_left"],
-            },
+            "sustainable_baseline": self.sustainable_baseline(),
             "ladder": self.ladder(inputs),
             "projection": self.projection(inputs),
             "effects": self.effects(before, inputs),
-            "calibration": [dict(row) for row in self._calibration],
+            "calibration": self.calibration(),
         }
+
+    def sustainable_baseline(self) -> Dict[str, Any]:
+        """The undisturbed baseline: what the mine sustains, and the plant while the stockpile lasts."""
+        base = self.baseline
+        start_t = self.model.p("stockpile.start_t")
+        stock = self.stockpile_flow(base, start_t)
+        row = {
+            "ktpa": achievable_rounded(base),
+            "binding_link": base.binding_link,
+            "grade_gpt": _finite(base.gold.grade_gpt, 2),
+            "gold_koz_year": _finite(base.gold.oz_per_year / cap.KILO, 2),
+            "plant_ktpa": cap.round_kt(base.capacity_ktpa["plant"]),
+            "stockpile_t": start_t,
+            "stockpile_days_left": _finite(stock["days"], 0),
+            "stockpile_net_tpd": _finite(stock["net_tpd"], 0),
+        }
+        row["text"] = wording.baseline_text(row)
+        return row
 
     # --- action ------------------------------------------------------------------------------
 
     def apply(self, inputs: Inputs, mode: str) -> Dict[str, Any]:
-        """Knob changes for the Stand to write: the next measure, or the whole remaining sequence.
+        """Knob changes for the Stand to write: the next step, or the whole remaining sequence.
 
         ``changes`` maps knob -> new value (absolute, so writing it twice is harmless). In mode
-        ``next`` it raises the knob of the binding link by one stage; in mode ``all`` it holds
-        the final stage of every knob of the sequence. It is empty when the target is reached,
-        when the binding link has no stage left, or when flooded levels are being pumped out
-        with the pumps already restored.
+        ``next`` it removes the leading disturbance, or raises the knob of the binding link by one
+        stage; in mode ``all`` it holds every removal and the final stage of every knob of the
+        sequence. It is empty when the target is reached, when the binding link has no stage
+        left, or when flooded levels are being pumped out with the pumps already restored.
         """
         if mode not in MODES:
             raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
