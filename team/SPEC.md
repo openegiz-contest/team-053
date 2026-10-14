@@ -1,11 +1,10 @@
-# SPEC: Sekisovskoye digital twin on OpenEgiz (team-053)
+# Sekisovskoye digital twin: design
 
-Status: decided on 13 October 2026. Freeze: 25 October 2026, 23:59 Astana time.
-This file is the single source every sub-agent reads. It is written in English; all text shown on the Stand, README.md, SUBMISSION.md and presentation.pdf are Russian.
+This document is the design of the Sekisovskoye digital twin built on the OpenEgiz platform v1.0.4: the twin model, the simulation model with its parameters and calibration, the what-if scenarios and the decision module, the visualization, the runtime architecture and the repository layout. Later design decisions are collected in sections 9–11 and override the earlier sections where they differ. The document is in English; all text shown on the Stand, README.md, SUBMISSION.md and presentation.pdf is Russian.
 
-Inputs this spec is built on: `SUBMISSION.md` (Concept, fixed), `team/research/sekisovskoye-facts.md` (the "facts file"), the OpenEgiz v1.0.4 template in this repository.
+Inputs: `SUBMISSION.md` (the Concept), `team/research/sekisovskoye-facts.md` (the "facts file"), the OpenEgiz v1.0.4 template in this repository.
 
-## 0. Summary, rubric mapping, conventions
+## 0. Summary and conventions
 
 ### 0.1 What is built
 
@@ -13,28 +12,15 @@ A twin of the whole Sekisovskoye production chain in Eclipse Ditto (96 things of
 
 Eight capacities are ranked: haulage, ventilation, stopes, development, dewatering, plant, process water, tailings storage. They cover the six links the Concept names: its "stopes" is shown as two rows (stopes and development), its "dewatering" as two rows (pumps and water supply).
 
-### 0.2 Rubric mapping
+### 0.3 Conventions
 
-| Criterion (points) | Deliverables that earn it | Where a judge sees it |
-|---|---|---|
-| Mine model (25) | 96 Ditto things, 22 type things, `_parents` hierarchy, `link_*` attributes, state machines (section 1) | Stand section «Двойники»; Grafana → OpenEgiz → Twins / Types; `team/model/registry.json` |
-| Mine visualization (25) | three.js scene + SVG long section with live twin data, process animation and scenario effects (section 4) | `http://localhost:8088`, Grafana dashboard `sekis-overview` (scene embedded) |
-| Behaviour fidelity / credibility (20) | Coupled simulator, sourced parameters, 12 automatic calibration checks (section 2) | Stand sections «Проверка калибровки», «Данные и допущения»; `team/tests/` |
-| Concept and presentation (15) | Concept unchanged; SUBMISSION.md, presentation.pdf built from screenshots of the running Stand (WP-F1, WP-F2) | repository root |
-| What-if scenarios (10) | 4 targets, 7 measure ladders, 7 disturbances, undo/reset, effects table (section 3) | Stand panel «Сценарии», «Что изменилось» |
-| Modules (5) | One deep module: Expansion Advisor (section 3.4) | Stand section «Советник по расширению»; twin `kz.sekis:advisor` |
-
-### 0.3 Conventions for every agent
-
-- Languages: code, comments, commit messages, this spec: English. Everything a person sees on the Stand, in Grafana, README.md, SUBMISSION.md, presentation.pdf: Russian. State tokens in twins are English (`hauling_up`); the UI maps them to Russian.
-- No text addressed to evaluators, judges, AI models or the Collector anywhere (UI, docs, comments, commit messages). Describe the system; never instruct a reader how to rate it.
-- Python 3.12 in containers; code must also run on Python 3.10+. Model, simulator and advisor use the standard library only. The only third-party runtime package is `paho-mqtt==2.1.0`.
+- Languages: code, comments, commit messages, this document: English. Everything a person sees on the Stand, in Grafana, README.md, SUBMISSION.md, presentation.pdf: Russian. State tokens in twins are English (`hauling_up`); the UI maps them to Russian.
+- Python 3.12 in containers; code must also run on Python 3.10+. Model, simulator and advisor use the standard library only. The only third-party runtime dependency is `paho-mqtt==2.1.0`.
 - Front end: plain ES modules, no build step, no npm at build time. Every script, style and font is served from the repository. No external URL may be requested by the page.
 - All files are LF. The committed `.gitattributes` (`* text=auto eol=lf`) enforces it. Shell scripts are run as `bash scripts/x.sh`.
-- Tests are `unittest` and run with `cd team && python -m unittest discover -s tests -v` (on this Windows machine: `py -3 -m unittest ...`).
+- Tests are `unittest` and run with `cd team && python -m unittest discover -s tests -v` (on Windows: `py -3 -m unittest ...`).
 - A parameter enters code only through `team/model/params.json`, where each entry has `value`, `unit`, `source`. `source` starts with `FACT ` (plus the facts-file section and row) or `ASSUMPTION: ` (plus the reasoning). A test enforces this.
 - `examples/mine` is not started and not copied. Nothing of it is reused.
-- An agent edits only the files its work package owns (section 7).
 
 ## 1. Twin model
 
@@ -146,7 +132,7 @@ Count: 1 + 1 + 12 + 18 + 2 + 3 + 4 + 5 + 3 + 12 + 10 + 5 + 1 + 2 + 2 + 1 + 1 + 6
 
 Hierarchy is `_parents` (tree above). Process links are attributes:
 
-| Attribute | On | Points to |
+| Attribute | On | Refers to |
 |---|---|---|
 | `link_level` | stope | its level |
 | `link_ore_route` | stope | the declines that reach its level |
@@ -235,7 +221,7 @@ No unit is held in these four sets, so their ventilation column is headroom. Sta
 | Baseline, `fan-vs2` failed | 317.2 / 252 | trucks 05, 04, 03; LHD 04 | 238.6 | 926 | 374 | 378 |
 | Full set for 1.2 Mtpa, `fan-vs2` failed | 385.7 / 357 | trucks 07, 06 | 333.0 | 1388 | 926 | 968 |
 
-The rule holds trucks first, so a fleet measure taken without air can lower the output: five more trucks at 322 m³/s cost two LHDs and nearly half the tonnage, one more LHD costs the only AD45. In the two rows with five producing stopes the simulator is 6.3 % and 4.5 % above `C_vent`. About three points of each belong to item 1, not to the air rule: item 1 hauls from the +75 m centroid whatever the producing set, while the fifth stope lies at +150 m (at the mean of +90 m item 1 gives 705 and 955 kt/yr), and the same 968 kt/yr are hoisted against a haulage of 926 with no unit held (`m_stopes = 1`, `m_vent = 1`). The rest is the simulator's spread around item 1, 0.6 % at baseline.
+The rule holds trucks first, so a fleet measure taken without air can lower the output: five more trucks at 322 m³/s cost two LHDs and nearly half the tonnage, one more LHD costs the only AD45. In the two rows with five producing stopes the simulator is 6.3 % and 4.5 % above `C_vent`. About 3 % of each belong to item 1, not to the air rule: item 1 hauls from the +75 m centroid whatever the producing set, while the fifth stope lies at +150 m (at the mean of +90 m item 1 gives 705 and 955 kt/yr), and the same 968 kt/yr are hoisted against a haulage of 926 with no unit held (`m_stopes = 1`, `m_vent = 1`). The rest is the simulator's spread around item 1, 0.6 % at baseline.
 
 Depth effect: every 50 m the production centroid goes down costs about 8.5 % of haul capacity (baseline fleet: 926 → 841 → 770 → 710 kt/yr at +75, +25, −25, −75 m).
 
@@ -248,7 +234,7 @@ Cycle: `surface_haul` (empty, ROM pad → portal) → `descending` → `tram_lev
 - Dispatch: an empty truck at the portal is sent to the stope with the largest `broken_ore_t` per truck already assigned, among stopes its decline reaches.
 - Decline geometry for traffic: nodes at the portal, at every multiple of 25 m of elevation below it, and at the current bottom; level accesses are the nodes at multiples of 50 m. Each node is a passing bay with one waiting slot. Segments between nodes are single lane.
 - Traffic rules (deadlock-free; loaded trucks have priority): an up-going truck enters the segment above it when no down-going truck is inside; it never uses a waiting slot. A down-going truck enters the segment below it only when no up-going truck is inside and the waiting slot of the node at its lower end is free and not reserved; it reserves that slot. Trucks in the same direction may follow each other.
-- Operational delay: each cycle gets an extra delay drawn from an exponential distribution with mean `T × (1/k − 1)`, where `k = sim.op_delay_factor` (start at 0.81; the simulator builder tunes it in 0.70–0.95 so that check C3 passes).
+- Operational delay: each cycle gets an extra delay drawn from an exponential distribution with mean `T × (1/k − 1)`, where `k = sim.op_delay_factor` (start at 0.81; tuned within 0.70–0.95 so that check C3 passes).
 - Breakdowns: time to failure exponential with mean 40 h, repair 10 h (availability 0.80); a broken truck finishes its trip to the surface and goes to `maintenance`.
 - Shift end: trucks finish the current trip and wait at the surface in `shift_break` through the blast window and the unproductive part of the shift.
 - Closed decline: its trucks leave it, re-home to the other decline at the surface and use it until the closure ends. Stopes below −34 m are reachable only by TU1.
@@ -384,7 +370,7 @@ Analytic checks run in `team/tests/test_calibration.py`; simulator checks in `te
 | C2 | Gold FY2024: 593 612 t × 2.29 g/t × R | 37 279 oz (F B) | ±1.5 % | fit (recovery fit) |
 | C3 | Simulator, baseline, 60 days, annualised ore hoisted (× 360/60) | 926 422 t (F B) | ±3 % | fit (`K_HAUL`, `sim.op_delay_factor`) |
 | C4 | Gold H1 2026: 498 331 t × 1.76 g/t × R; and H1 2025: 452 593 t × 2.04 g/t × R | 23 906 oz; 25 081 oz (F D1) | ±1.5 % | fit (recovery fit) |
-| C5 | Recovery model at 2.29, 2.05, 2.04, 1.76 g/t | 85.42, 85.07, 84.75, 84.55 % | ±0.25 points | fit |
+| C5 | Recovery model at 2.29, 2.05, 2.04, 1.76 g/t | 85.42, 85.07, 84.75, 84.55 % | ±0.25 % absolute | fit |
 | C6 | Air demand of the baseline fleet (peak) | 322 m³/s (F A5) | 95–100 % of it | fit (`vent.q_base`) |
 | C7 | Air demand at half the baseline fleet power | 252 m³/s (F A5) | ±3 % | fit (`vent.q_base`) |
 | C8 | Simulator, baseline, 60 days: plant feed annualised (× 365/60) with stockpile available | 1 000 000 t nameplate (F B2; F D1: 498 331 t in H1 2026) | ±3 % | fit (line rates from the nameplate) |
@@ -508,7 +494,7 @@ Outputs:
 
 A three.js scene and an SVG long section, both in the Stand page served by `sekis-stand` on port 8088, and the 3D scene embedded in the Grafana dashboard `sekis-overview` through an iframe.
 
-Reasons: no GPU in the Judge Environment, so the scene must be small and under our control (a Unity build is neither buildable by agents nor small); three.js is one vendored file with no build step; the SVG section is the fallback when WebGL is unavailable and puts every label and value into the DOM as text, where a reader that does not see canvas pixels still finds them.
+Reasons: the target machine is a clean Ubuntu 24.04 amd64 machine with 8 vCPU, 16 GiB and no GPU, so the scene must be small and under our control (a Unity build is not small enough); three.js is one vendored file with no build step; the SVG section is the fallback when WebGL is unavailable and puts every label and value into the DOM as text, which also makes them available to assistive technology.
 
 - Vendored in `team/stand/web/vendor/three/`: `three.module.min.js`, `OrbitControls.js`, `CSS2DRenderer.js` (three.js r160, MIT, with its LICENSE file), loaded through an import map. System fonts only.
 - The page shows both views side by side on wide screens (3D left, section under it or in a tab on narrow screens). If the WebGL context cannot be created, the 3D area shows the section instead.
@@ -553,6 +539,10 @@ The section projects the same geometry onto the X–Y plane with an elevation ru
 ### 4.5 Performance budget
 
 At most 20 000 triangles and 150 draw calls (static geometry merged into at most 10 meshes); no textures, shadows or post-processing; at most 5 translucent meshes; `antialias: false`, pixel ratio 1, canvas at most 1280 × 720 CSS pixels; rendering only while something moves, capped at 12 frames per second; three.js files under 1.5 MB. Target on software rendering (Chromium with `--disable-gpu --enable-unsafe-swiftshader`): at least 8 frames per second and under one CPU core.
+
+### 4.6 View contract
+
+Each view module (`scene3d`, `section2d`) exports `mount(container, geometry)` returning `{update(state), focus(thingId), dispose()}`; `app.js` owns fetching and calls `update` every 2 s. If `scene3d.mount` throws, `app.js` mounts the section in its place.
 
 ## 5. Runtime architecture
 
@@ -614,7 +604,7 @@ make stand-smoke
 - A marker `deploy/compose/.sekis` makes `make up`, `make down`, `make ps`, `make logs` include the overlay; `make clean` removes it.
 - `make stand-test` runs the unit tests in the image. `make stand-twins` starts only the platform and `sekis-setup`.
 
-Expected cold start in the Judge Environment: 8–20 minutes (image pulls about 2.5 GB, the platform's extended-api build, Ditto start, our image build about 1 minute). The sum of all script timeouts is under 45 minutes, against the 75-minute limit. Memory: container limits total about 7.0 GiB (platform 6.5 GiB, ours 0.5 GiB), measured use about 4 GiB, leaving 8 GiB or more for the browser. Disk: under 5 GB.
+Expected cold start on a clean Ubuntu 24.04 amd64 machine with 8 vCPU, 16 GiB and no GPU: 8–20 minutes (image pulls about 2.5 GB, the platform's extended-api build, Ditto start, our image build about 1 minute). The sum of all script timeouts is under 45 minutes, against a 75-minute limit. Memory: container limits total about 7.0 GiB (platform 6.5 GiB, ours 0.5 GiB), measured use about 4 GiB, leaving 8 GiB or more for the browser. Disk: under 5 GB.
 
 ### 5.5 Smoke check (`scripts/stand-smoke.sh`)
 
@@ -654,7 +644,7 @@ Template files changed: `Makefile` (targets `stand`, `stand-twins`, `stand-test`
 
 Difference from `examples/mine`:
 
-| | Example Mine | This Submission |
+| | Example Mine | This twin |
 |---|---|---|
 | Object | generic open pit, copper | real underground gold mine with plant, water and tailings |
 | Twins | 5 things, 4 kinds, one parent link | 96 things, 22 type things, tree plus process links |
@@ -664,125 +654,29 @@ Difference from `examples/mine`:
 | View | Grafana charts | 3D scene, long section, three dashboards |
 | Code | 1 script | simulator, advisor, Stand, tests under `team/` |
 
-## 7. Work packages and schedule
+## 9. Decisions taken on 13 October: analytic library and simulator
 
-### 7.1 Work packages
-
-Each package gets this spec plus the listed inputs. Packages in the same phase run in parallel; file sets are disjoint.
-
-| Id | Tier | Deliverables | Owns | Inputs | Completion check |
-|---|---|---|---|---|---|
-| A1 | worker | Parameter file and twin registry | `team/model/params.json`, `team/model/registry.json`, `team/tests/test_model_files.py` | sections 1, 2.8 | test passes: 96 things, 22 types, every parent and `link_*` resolves, feature ids keep one type, every parameter has a `FACT`/`ASSUMPTION` source |
-| A2 | worker | Runtime skeleton and twin setup | `team/Dockerfile`, `team/requirements.txt`, `team/compose.yml`, `team/sekis/__init__.py`, `team/sekis/ditto.py`, `team/sekis/setup_twins.py`, `Makefile`, `.gitignore`, `scripts/stand-wait.sh`, `scripts/stand-urls.sh` | section 5; A1 registry (a 3-thing stub until A1 lands) | `make stand-twins` in WSL, then Ditto search returns 96 + 22 things and Grafana → OpenEgiz → Twins shows the tree under «Предприятие „Секисовское“»; Telegraf log has no parse errors |
-| B1 | builder | Capacity library and analytic calibration | `team/sekis/capacity.py`, `team/tests/test_calibration.py` | A1; sections 2.3, 2.9 | tests pass: C1, C2, C4–C7, C9, C10, C12 and the reference table of 2.3 within ±1 % |
-| B2 | builder | Geometry generator | `team/sekis/geometry.py`, `team/model/geometry.json`, `team/tests/test_geometry.py` | A1; section 4.2 | test passes: decline polylines keep 8° ± 0.2°, every thing with a position is present, regenerating gives the same file |
-| C1 | builder | Simulator core (headless) | `team/sekis/sim/`, `team/tests/test_sim.py` | A1, B1, B2; sections 2.4–2.7 | tests pass: C3, C8, C11, the consistency checks of 2.9; 60 simulated days in 60 s or less |
-| C2 | builder | Expansion Advisor | `team/sekis/advisor/`, `team/tests/test_advisor.py` | A1, B1; section 3.4 | tests pass: the four sequences of 3.4, projection has 10 rows, `/report` and `/apply` answer on port 8089 against a fixture state |
-| C3 | builder | Stand server and page (panels, scenario controls, twin table, calibration, assumptions) | `team/stand/server.py`, `team/stand/fixtures/`, `team/stand/web/index.html`, `team/stand/web/css/`, `team/stand/web/js/app.js`, `team/stand/web/js/panels/`, `team/tests/test_stand_api.py` | sections 3.2, 3.3, 5.2; view contract below | `STAND_FIXTURE=1 python stand/server.py` serves the page; `test_stand_api.py` passes; all buttons of 3.2 present with Russian labels |
-| D1 | builder | 3D scene | `team/stand/web/js/scene3d/`, `team/stand/web/vendor/three/` | B2, C3 fixture; section 4 | page in fixture mode shows the scene under `--disable-gpu --enable-unsafe-swiftshader` at 8 fps or more; triangle and draw-call counts printed by `?debug=1` are inside the budget; a screenshot is attached to the report |
-| D2 | builder | 2D long section | `team/stand/web/js/section2d/` | B2, C3 fixture; section 4 | fixture page shows the section; the DOM contains the Russian label and a live value for every level, stope, fan and pump station |
-| D3 | worker | Simulator service | `team/sekis/sim_service.py`, `team/tests/test_publish.py` | C1, A2 | `make stand`: `/api/state` shows `enterprise.sim_day` growing; message rate measured on `telemetry/sekis/#` is 20 per second or less |
-| D4 | builder | Grafana dashboards | `deploy/compose/grafana/dashboards/Sekisovskoye/*.json` | running stack (D3); section 5.3 | the three uids load without login; no panel shows "No data" after 5 minutes of running |
-| E1 | worker | Smoke and soak scripts | `scripts/stand-smoke.sh`, `scripts/stand-soak.sh` (the Makefile target `stand-smoke` already exists from A2 and calls the script) | section 5.5 | `make stand-smoke` exits 0 on a fresh stack; soak passes once |
-| E2 | judge | Review against the rubric and this spec | none (report only) | running Stand, repository | ranked findings with file and line; each must-level gap named |
-| E3 | worker / builder | Fix rounds (one batch of notes per round) | files named in the notes | E2 report, human notes | named checks pass again; `make stand-smoke` exits 0 |
-| F1 | builder | README.md and SUBMISSION.md (Russian) | `README.md`, `SUBMISSION.md` | this spec, `params.json`, running Stand | README procedure equals 5.4 and passes the clean run; every row of the SUBMISSION table names where it is seen and how it is undone; "Data and Assumptions" lists every source URL (facts file section D) and every `ASSUMPTION`; no sentence addresses a reader who evaluates |
-| F2 | builder | presentation.pdf (Russian, 10–14 pages) | `presentation.pdf`, `team/presentation/` | screenshots from the clean run | PDF opens, every screenshot is from the clean-run Stand, each claim names the Stand place that shows it, file under 20 MB |
-| F3 | worker | Clean-run rehearsal | none (report only) | README.md | fresh clone in WSL, Docker pruned, WSL limited to 8 CPUs and 16 GB: the three README commands succeed with no other input; elapsed time and peak memory reported |
-
-View contract for C3, D1, D2: each view module exports `mount(container, geometry)` returning `{update(state), focus(thingId), dispose()}`; `app.js` owns fetching and calls `update` every 2 s. If `scene3d.mount` throws, `app.js` mounts the section in its place.
-
-A scout verifies the H1 2026 figures (facts file D1, tagged UNCONFIRMED) against the primary RNS text before F1; corrected values go into `params.json` and the tests.
-
-Development loop on this machine: unit tests run on Windows with `py -3`; anything needing Docker runs in WSL from a clone in the Linux home directory (not under `/mnt/c`), updated from the Windows repository by `git pull`.
-
-### 7.2 Schedule (Astana dates)
-
-| Date | Agents | The human looks at (up to 1 hour) |
-|---|---|---|
-| Wed 14 Oct | A1, A2 in parallel; `git fetch origin` for Organizer updates (every day) | finishes WSL2 + Docker; runs `make up && make smoke` on the template once; answers the open questions of 8.4; skims the assumptions in `params.json` |
-| Thu 15 Oct | B1, B2 in parallel | reads the capacity table and the four bottleneck sequences printed by the B1 tests: does the story match the Concept? |
-| Fri 16 Oct | C1 (two days), C2, C3 in parallel | opens the Stand page in fixture mode; comments on layout and Russian wording |
-| Sat 17 Oct | C1 continues; D1, D2 in parallel | looks at the 3D scene and the section in fixture mode |
-| Sun 18 Oct | D3, then first full `make stand`; D4 | first live look: trucks move, twins update, advisor answers |
-| Mon 19 Oct | E1; fix round 1; push | runs every scenario and its undo once; notes what is unclear |
-| Tue 20 Oct | E2 review; fix round 2 | reads the review, decides what to cut (8.1) |
-| Wed 21 Oct | fixes; software-rendering test; 60-minute soak. Feature freeze at 23:59 | checks the page in a browser with the GPU disabled |
-| Thu 22 Oct | buffer for slipped packages; F1 draft; push | reads README.md |
-| Fri 23 Oct | F3 rehearsal 1; F1 final | reads SUBMISSION.md; sees the rehearsal report |
-| Sat 24 Oct | F2; fixes from rehearsal 1; F3 rehearsal 2 | reads presentation.pdf against the Stand |
-| Sun 25 Oct | F3 rehearsal 3 on the final commit; wording scan; final push by 20:00; fresh clone from GitHub compared with the local commit | approves the push; last look. Four hours of buffer remain |
-
-## 8. Scope control
-
-### 8.1 Must, should, cut first
-
-| Rank | Item | Rubric it serves |
-|---|---|---|
-| Must | README procedure runs clean; Stand on 8088 | cap of 40/100 otherwise |
-| Must | 96 things, types, hierarchy, links; twin table on the Stand | Mine model 25 |
-| Must | Simulator: haulage with bay traffic, stopes, ventilation rule, cascade, plant, tailings, water balance; checks C1–C12 | Behaviour 20 |
-| Must | 3D scene and 2D section with live data and scenario effects | Visualization 25 |
-| Must | Targets, «Снять узкое место», `close_tu2`, `fan_vs2_fail`, `pump_station_fail`, `grade_drop`, undo and reset | What-if 10 |
-| Must | Advisor: ranking, sequences for four targets, gold, water, tailings years | Modules 5, Concept 15 |
-| Must | SUBMISSION.md, presentation.pdf, LICENSE | Concept 15; required files |
-| Should | Grafana dashboards `sekis-overview`, `sekis-underground` with the embedded scene | Visualization, built on OpenEgiz |
-| Should | Ten-year projection; «Что изменилось» list; «Проверка калибровки» and «Данные и допущения» on the Stand | Modules, Behaviour |
-| Should | `flood`, `close_tu1`, `pump_one_fail`, `line2_down` | What-if |
-| Cut first | Dashboard `sekis-eco`; fan and pump `power_kw`; level air distribution; rigs as moving objects; camera presets; stope grade colouring; soak script | small |
-
-If C1 slips past 18 October: drop the bay traffic rules (use the `K_BAY` delay per trip instead) before anything else. If D1 slips past 20 October: ship the section as the main view and the 3D scene with static geometry and moving trucks only.
-
-### 8.2 Top risks
-
-| Risk | Mitigation |
-|---|---|
-| Docker in WSL is late or agents cannot reach it | pure-Python tests and fixture mode keep A1–D2 moving; integration starts 18 October at the latest |
-| CRLF line endings from Windows break shell scripts in Linux | `.gitattributes` with `* text=auto eol=lf` is committed; Docker runs and rehearsals use a clone, never the Windows working tree |
-| Ditto unstable at 15–20 messages per second on 8 vCPUs with a software-rendered browser | publishing budget, `PUBLISH_SCALE`, soak test on 21 October; raise the `things` heap only if the soak fails |
-| WebGL missing or too slow in the judging browser | SVG section as automatic fallback; all values also in the DOM; 12 fps cap |
-| Simulator does not match the analytic capacities | tolerances of 2.9; one tuning knob with a range; fallback in 8.1 |
-| Results rest on assumptions (tailings free capacity, water per tonne, ventilation stages) | each is labelled on the Stand and in SUBMISSION.md; calibration table shows what is checked against reports and what is not |
-| Platform build of extended-api from GitHub fails during the run | `make stand` tries the platform start twice |
-| Grafana anonymous access or iframe settings do not take | the Stand on 8088 is the primary address and does not depend on Grafana |
-| One reviewer, 12 days | cut list above; feature freeze on 21 October |
-| Wording read as addressed to evaluators | wording scan on 25 October over README, SUBMISSION, presentation, UI strings, comments |
-
-### 8.3 Known limits to state in SUBMISSION.md
-
-No mine plan is public, so plan positions are schematic. Fleet size in 2026, pump ratings, tailings fill state and plant water demand are assumptions. JORC 2019 reserve grade (3.53 g/t) is not used; the model uses reported production grades. Energy is shown only as computed fan and pump power. The work is independent of AltynGold and SATREPS.
-
-### 8.4 Open questions for the human
-
-1. README title: default «Секисовское: цифровой двойник рудника на OpenEgiz». Confirm or give the team name to put in front of it.
-2. Docker for agents: is `wsl -d Ubuntu-24.04 -- docker version` usable from the agent shell, and may rehearsals run `docker system prune -af --volumes` there?
-3. Three load-bearing assumptions are accepted as written unless a better public source is known: tailings free capacity (about 3.2 Mt at the epoch), plant water 1.123 m³/t, baseline air supply 322 m³/s.
-4. Who pushes to `origin/main`: default is the orchestrator after the human's daily look, with pushes on 19, 22, 24 and 25 October.
-
-## 9. Decisions taken after package B1 (13 October)
-
-These settle ambiguities package B1 found. They override sections 2 and 3 where they differ.
+These decisions settle ambiguities between the analytic library and the simulator. They override sections 2 and 3 where they differ.
 
 1. **Water supply in the analytic library** (`capacity.py`, the advisor's bars): supply is the mine inflow, `water.inflow_m3h × inflow_factor`, as a long-run average. `C_water` is not changed by pump failures and keeps ignoring `inflow_factor` (flood surplus is discharged, not used).
-2. **Water supply in the simulator** (the transient the Stand shows): pumped mine water enters the settling ponds; the plant draws from the ponds. While `ps-p150` is failed nothing reaches the ponds, their stored volume falls, and when it is empty the plant feed is limited to `WaterBalance.feed_limit_tph` for the remaining sources (reclaim and extra intake, if the measures are active). The `pump_station_fail` row of 3.3 therefore gains one visible effect: the pond reserve counts down in hours, then the plant slows. If this costs package C1 more than half a day, fall back to decision 1 in the simulator too and say so in the report.
+2. **Water supply in the simulator** (the transient the Stand shows): pumped mine water enters the settling ponds; the plant draws from the ponds. While `ps-p150` is failed nothing reaches the ponds, their stored volume falls, and when it is empty the plant feed is limited to `WaterBalance.feed_limit_tph` for the remaining sources (reclaim and extra intake, if the measures are active). The `pump_station_fail` row of 3.3 therefore gains one visible effect: the pond reserve counts down in hours, then the plant slows.
 3. **Feed grade**: the simulator rescales the grades of the producing stopes so that their tonnage-weighted mean equals `grade_gpt` (`Stopes.mean_grade_gpt` gives the unscaled mean). The advisor and the simulator then pour the same gold.
 4. **Plant line rates** come from `capacity.plant()`; the registry attribute `rated_tph` is static. The simulator publishes the stage-dependent rate as the feature the plant-line type already has for throughput; no new feature is added.
-5. **Everything else B1 reported** (haulage not capped at the decline bottom, the unreachable 80 % recovery floor, sludge without a retention factor, `air_margin_pct = (supply − demand) / supply × 100`, `achievable_ktpa` unrounded) stays as implemented.
+5. **Everything else in the analytic library** (haulage not capped at the decline bottom, the unreachable 80 % recovery floor, sludge without a retention factor, `air_margin_pct = (supply − demand) / supply × 100`, `achievable_ktpa` unrounded) stays as implemented.
 6. **Counts in section 0**: the Stand has eight disturbance buttons (section 3.2 is authoritative), not seven.
 
-## 10. Decisions taken after package C1 (13 October)
+## 10. Decisions taken on 13 October: simulator behaviour
 
 1. **Stope cycle** (overrides 2.5): the next ring is drilled and charged while the previous one is mucked, and is fired at the first blast window at least four shifts after the stope's last blast if no more than one ring of broken ore is left. The strictly sequential cycle of 2.5 hoists 630 kt/yr at baseline against the reported 926 kt, so it cannot be right for this mine. Stopes start the epoch with one ring of broken ore, staggered a shift apart.
 2. **Dispatch** is decided at the ROM pad; breakdowns run on calendar time with a 10 h repair; productive time is two blocks of 4.25 h around a meal hour. As implemented.
 3. **`sim.op_delay_factor`** is 0.785 (was 0.81): with the bay rules a truck waits 0.45 min per trip for opposing traffic, less than the 2.25 min the analytic formula books on TU2. The value and the 17 constants of the simulator's `MISSING_PARAMS` table move into `params.json`.
 4. **Grade knob** rescales the stockpile and loaded trucks at once (a what-if on the ore), so the plant responds within minutes.
-5. **Air rule consistency** (settled in fix round 1; 2.3 item 3 is rewritten accordingly). One function, `capacity.hold_units`, decides for the simulator and for the library which units wait for air, and while units are held `C_vent` is the tonnage the units left working can hoist and muck; with nothing held the bar is headroom and cannot bind. In the simulator a held truck no longer counts among the `n` trucks on its decline. The 1000 kt/yr sequence becomes haulage, then ventilation (926 kt/yr until `fan-vpv` runs, where the old formula gave 1038), and `fan_vs2_fail` gives 374 kt/yr against 378 in the simulator (was 486 against 376).
+5. **Air rule consistency** (2.3 item 3 is written accordingly). One function, `capacity.hold_units`, decides for the simulator and for the library which units wait for air, and while units are held `C_vent` is the tonnage the units left working can hoist and muck; with nothing held the bar is headroom and cannot bind. In the simulator a held truck no longer counts among the `n` trucks on its decline. The 1000 kt/yr sequence becomes haulage, then ventilation (926 kt/yr until `fan-vpv` runs, where the old formula gave 1038), and `fan_vs2_fail` gives 374 kt/yr against 378 in the simulator (was 486 against 376).
 
-## 11. Decisions taken after the review (14 October)
+## 11. Decisions taken on 14 October
 
 1. **Economics in the advisor.** Each target of the ladder also reports the gold gained per year in US dollars at the realised gold price and the published expansion capex estimate, with a simple payback, every number sourced in `params.json` (gold price US$4,615/oz, H1 2026; capex about US$125m for 2.0–2.5 Mtpa, Q3 2025 results; AISC from the reports).
-2. **This file is cleaned before the Freeze**: sections 0.2, 7 and 8, the work-package and schedule material and every sentence about how the work is assessed are removed; the design of the model stays.
-3. **Fix round 2 (14 October), from the review of the live Stand.**
+2. **Advisor and projection revisions after a run of the live Stand.**
    1. Disturbances first (3.4 step 3): a repair of an active disturbance precedes every expansion measure, the largest gain first; `POST /apply` performs it through the same knob. Grade and flood inflow are conditions.
    2. Projection notes: each year without tailings storage says so; the year storage runs out and the measure that prevents it head the table.
    3. Stockpile direction: the plant side of the stockpile flow is the feed the water sustains at the actual hoisting rate, not `C_water`; with `step1200` the days fall (564 → 368), with the full 2.5 Mtpa set the stockpile grows by 137 t/day, as the simulator does over 20 days.
