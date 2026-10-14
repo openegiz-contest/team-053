@@ -1,6 +1,6 @@
 // 2D long section of the mine: an SVG projection of geometry.json onto the X-Y
 // plane (x east, y elevation, seen from the south), with live twin data.
-// View contract (spec 7.1): mount(container, geometry) -> { update, focus, dispose }.
+// View contract (spec 4.6): mount(container, geometry) -> { update, focus, dispose }.
 // The same module is mounted in the scene's container when WebGL is unavailable,
 // so nothing here assumes a container id or size.
 //

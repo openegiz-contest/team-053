@@ -1,6 +1,6 @@
 // 3D scene of the Sekisovskoye twin (spec section 4, work package D1).
 //
-// View contract (spec 7.1): mount(container, geometry) returns
+// View contract (spec 4.6): mount(container, geometry) returns
 // { update(state), focus(thingId), dispose() }. `geometry` is the answer of
 // GET /api/geometry, `state` the answer of GET /api/state (every 2 s). A click
 // on an object dispatches a bubbling 'sekis:select' event on the container.

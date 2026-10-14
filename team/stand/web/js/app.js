@@ -1,5 +1,5 @@
 // Stand page: owns fetching and hands the data to the panels and to the two
-// view modules. View contract (spec 7.1): a view module exports
+// view modules. View contract (spec 4.6): a view module exports
 // mount(container, geometry) -> { update(state), focus(thingId), dispose() };
 // update() is called with the unchanged answer of GET /api/state every 2 s.
 // If scene3d.mount throws, the section is mounted in the scene's container.
