@@ -761,3 +761,8 @@ These settle ambiguities package B1 found. They override sections 2 and 3 where 
 3. **`sim.op_delay_factor`** is 0.785 (was 0.81): with the bay rules a truck waits 0.45 min per trip for opposing traffic, less than the 2.25 min the analytic formula books on TU2. The value and the 17 constants of the simulator's `MISSING_PARAMS` table move into `params.json`.
 4. **Grade knob** rescales the stockpile and loaded trucks at once (a what-if on the ore), so the plant responds within minutes.
 5. **Air rule consistency** (settled in fix round 1; 2.3 item 3 is rewritten accordingly). One function, `capacity.hold_units`, decides for the simulator and for the library which units wait for air, and while units are held `C_vent` is the tonnage the units left working can hoist and muck; with nothing held the bar is headroom and cannot bind. In the simulator a held truck no longer counts among the `n` trucks on its decline. The 1000 kt/yr sequence becomes haulage, then ventilation (926 kt/yr until `fan-vpv` runs, where the old formula gave 1038), and `fan_vs2_fail` gives 374 kt/yr against 378 in the simulator (was 486 against 376).
+
+## 11. Decisions taken after the review (14 October)
+
+1. **Economics in the advisor.** Each target of the ladder also reports the gold gained per year in US dollars at the realised gold price and the published expansion capex estimate, with a simple payback, every number sourced in `params.json` (gold price US$4,615/oz, H1 2026; capex about US$125m for 2.0–2.5 Mtpa, Q3 2025 results; AISC from the reports).
+2. **This file is cleaned before the Freeze**: sections 0.2, 7 and 8, the work-package and schedule material and every sentence about how the work is assessed are removed; the design of the model stays.
