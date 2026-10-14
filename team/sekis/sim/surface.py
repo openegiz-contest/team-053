@@ -12,8 +12,9 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from .. import capacity as cap
-from .timebase import Rolling
+from .timebase import Rolling, bucket_for
 
+SECONDS_PER_MINUTE = 60.0
 SECONDS_PER_HOUR = 3600.0
 SECONDS_PER_DAY = 86400.0
 PERCENT = 100.0
@@ -46,10 +47,29 @@ class Dewatering:
             ("lvl-m050", float(p("water.flood_threshold_m050_m3"))),
             ("lvl-000", float(p("water.flood_threshold_000_m3"))),
         )
+        # Pumping bands of the two sumps (m3): from the stop level up to the level at which the last
+        # pump of the cycle joins. Water inside the bands is what the pump cycle holds back for a
+        # few hours; see ``levelled_m3``.
+        self.band_main = (self.sump_main * p("water.ps_p150.stop_pct") / PERCENT,
+                          self.sump_main * p("water.ps_p150.start2_pct") / PERCENT)
+        self.band_lower = (self.sump_lower * p("water.ps_m050.stop_pct") / PERCENT,
+                           self.sump_lower * p("water.ps_m050.start_standby_pct") / PERCENT)
+        self.in_band = self._in_band()
+        self._was_available = True
+        #: Water delivered to the ponds in the last minute, levelled over the pump cycle (m3).
+        self.levelled_m3 = 0.0
 
     def available_main(self) -> int:
         p = self.sim.p
         return max(0, int(p("water.ps_p150.pumps")) - self.sim.cap_state.pumps_failed_p150)
+
+    def _in_band(self) -> float:
+        """Water held in the pumping bands of both sumps, m3."""
+        low, high = self.band_main
+        main = min(max(self.v_main - low, 0.0), high - low)
+        low, high = self.band_lower
+        lower = min(max(self.v_lower - low, 0.0), high - low)
+        return main + lower
 
     def minute(self, dt_s: float) -> float:
         """Advance the cascade by ``dt_s``; returns the water delivered to the ponds, m3."""
@@ -103,6 +123,21 @@ class Dewatering:
             back = min(self.flood, self.sump_lower - self.v_lower)
             self.v_lower += back
             self.flood -= back
+
+        # Delivery to the ponds levelled over the pump cycle: what the pumps sent up plus the change
+        # of the water held in the pumping bands of the sumps, which the next pump runs send up.
+        # While the station works this is the mine water reaching the sumps (the inflow, less what
+        # floods the mine), so the 300 / 600 m3/h cycle of the pumps does not show. While ps-p150
+        # cannot pump, nothing is delivered; the water then rising in the sumps is counted when it
+        # is pumped (the bands are taken as they are when the station is back).
+        band = self._in_band()
+        available = self.available_main() > 0
+        if available and self._was_available:
+            self.levelled_m3 = max(0.0, out_main + band - self.in_band)
+        else:
+            self.levelled_m3 = out_main
+        self.in_band = band
+        self._was_available = available
 
         self.in_main = (upper_in + out_lower) / hours
         self.in_lower = (lower_in + spill) / hours
@@ -170,10 +205,10 @@ class Water:
         self.intake_fill = float(p("water.intake_pond_fill"))
         self.reserve_fill = float(p("water.pond_reserve_fill"))
         window_s = p("water.rolling_window_h") * SECONDS_PER_HOUR
-        bucket_s = window_s / 48.0
-        # Start the 24-hour means from the analytic baseline, as if the day before was normal.
+        bucket_s = bucket_for(window_s)
+        # Start the means from the analytic baseline, as if the hour before was normal.
         base = sim.baseline
-        hoist_tph = base.capacity_ktpa["haulage"] * cap.KILO / model.hours_per_year
+        hoist_tph = sim.mine_rate_tph(base)
         feed_tph = base.plant.capacity_ktpa * cap.KILO / model.hours_per_year
         balance = cap.water_balance(model, hoist_tph, feed_tph, base.dewatering.pumped_m3h)
         self.r_mine = Rolling(window_s, bucket_s, balance.mine_water_m3h)
@@ -186,20 +221,29 @@ class Water:
         self.r_draw = Rolling(window_s, bucket_s, balance.demand_m3h)
         self._rolls = (self.r_mine, self.r_site, self.r_plant, self.r_reclaim, self.r_intake, self.r_deficit,
                        self.r_discharge, self.r_draw)
+        self.deadband_pct = float(p("water.permit_deadband_pct"))
+        self.outfall_state = self.permit().permit_state
         self.limited = False
         self.total = {"site": 0.0, "plant": 0.0, "reclaim": 0.0, "intake": 0.0, "deficit": 0.0,
                       "discharge": 0.0, "into_ponds": 0.0}
         self.min_stored = sum(self.stored)
 
-    def minute(self, dt_s: float, pumped_m3: float, hoisted_t: float, feed_wanted_tph: float) -> float:
-        """Book one minute of water. Returns the plant feed the water supply allows, t/h."""
+    def minute(self, dt_s: float, pumped_m3: float, levelled_m3: float, feed_wanted_tph: float) -> float:
+        """Book one minute of water. Returns the plant feed the water supply allows, t/h.
+
+        ``pumped_m3`` is what ps-p150 sent to the ponds this minute, ``levelled_m3`` the same
+        delivery levelled over the pump cycle (``Dewatering.levelled_m3``), used for the published
+        flows only.
+        """
         sim = self.sim
         model = sim.model
         hours = dt_s / SECONDS_PER_HOUR
         m_water = sim.cap_state.m_water
         stored = self.stored[0] + self.stored[1]
         available_m3h = (stored + pumped_m3) / hours
-        ore_tph = hoisted_t / hours
+        # Site water (dust suppression, drilling, washing) follows the day's production, not each
+        # truck that tips: it is drawn at the 24-hour hoisting rate.
+        ore_tph = sim.plant.r_hoist_day.per_hour()
         wanted = cap.water_balance(model, ore_tph, feed_wanted_tph, available_m3h, m_water)
         feed = feed_wanted_tph
         if feed > EPS:
@@ -251,17 +295,22 @@ class Water:
         discharge = max(0.0, lower - self.volumes[1])
         lower -= discharge
         self.stored[0], self.stored[1] = upper, lower
+        # The outfall as published: while the full ponds overflow, the water the pump cycle holds
+        # back in the sumps (or releases from them) belongs to this overflow too, so the outfall
+        # carries the levelled delivery less the draw and not the 300 / 600 m3/h pump steps.
+        outfall = max(0.0, discharge + levelled_m3 - pumped_m3) if discharge > EPS else 0.0
 
-        self.r_mine.add(pumped_m3)
+        self.r_mine.add(levelled_m3)
         self.r_site.add(site)
         self.r_plant.add(plant)
         self.r_reclaim.add(reclaim)
         self.r_intake.add(intake)
         self.r_deficit.add(deficit_m3)
-        self.r_discharge.add(discharge)
+        self.r_discharge.add(outfall)
         self.r_draw.add(draw)
         for roll in self._rolls:
             roll.tick(dt_s)
+        self._classify_outfall()
         total = self.total
         total["site"] += site
         total["plant"] += plant
@@ -281,10 +330,25 @@ class Water:
         """Discharge against the permit, classified by the library (normal, warning, exceeded)."""
         return cap.water_balance(self.sim.model, 0.0, 0.0, self.r_discharge.per_hour())
 
+    _RANK = {"normal": 0, "warning": 1, "exceeded": 2}
+
+    def _classify_outfall(self) -> None:
+        """State of the outfall with a deadband: a higher state is taken at once, a lower one only
+        when the use of the permit is ``water.permit_deadband_pct`` below the threshold of the
+        state it leaves, so a discharge that sits on a threshold does not blink."""
+        permit = self.permit()
+        new, old = permit.permit_state, self.outfall_state
+        if self._RANK[new] >= self._RANK[old]:
+            self.outfall_state = new
+            return
+        threshold = PERCENT if old == "exceeded" else float(self.sim.p("water.permit_warning_pct"))
+        if permit.permit_use_pct < threshold - self.deadband_pct:
+            self.outfall_state = new
+
     def water_features(self) -> Dict[str, Any]:
         if self.limited:
             state = "deficit"
-        elif self.permit().permit_state == "exceeded":
+        elif self.outfall_state == "exceeded":
             state = "discharge_over_permit"
         else:
             state = "balanced"
@@ -381,15 +445,35 @@ class Plant:
         window_s = p("sim.rate_window_h") * SECONDS_PER_HOUR
         day_s = SECONDS_PER_DAY
         base = sim.baseline
-        hoist_tph = base.capacity_ktpa["haulage"] * cap.KILO / model.hours_per_year
+        hoist_tph = sim.mine_rate_tph(base)
         feed_tph = base.plant.capacity_ktpa * cap.KILO / model.hours_per_year
         gold_per_h = cap.gold_oz(model, feed_tph, self.stock_grade)
-        self.r_hoist_now = Rolling(window_s, window_s / 24.0)
-        self.r_hoist_day = Rolling(day_s, day_s / 48.0, hoist_tph)
-        self.r_feed_day = Rolling(day_s, day_s / 48.0, feed_tph)
-        self.r_gold_now = Rolling(window_s, window_s / 24.0, gold_per_h)
-        self.r_gold_day = Rolling(day_s, day_s / 48.0, gold_per_h)
+        self.r_hoist_now = Rolling(window_s, bucket_for(window_s, 24), hoist_tph)
+        self.r_hoist_day = Rolling(day_s, bucket_for(day_s), hoist_tph)
+        self.r_feed_day = Rolling(day_s, bucket_for(day_s), feed_tph)
+        self.r_gold_now = Rolling(window_s, bucket_for(window_s, 24), gold_per_h)
+        self.r_gold_day = Rolling(day_s, bucket_for(day_s), gold_per_h)
         self._rolls = (self.r_hoist_now, self.r_hoist_day, self.r_feed_day, self.r_gold_now, self.r_gold_day)
+
+    def restart_rates(self, hoist_tph: float) -> None:
+        """A new scenario: the rate windows describe the new regime only.
+
+        Hoisting comes in truck loads and stops in the blast windows and between the productive
+        blocks, so its windows restart from ``hoist_tph`` (the analytic mine rate of the new
+        state), which the measured minutes replace one by one. Feed and gold run evenly while the
+        lines run, so their windows are extrapolated from the time since the change (until the
+        first minute is measured they count at the rated feed of the lines ready to run).
+        """
+        tick_s = float(SECONDS_PER_MINUTE)
+        day = self.sim.t / SECONDS_PER_DAY
+        feed_tph = sum(line.rated_tph for line in self.lines
+                       if line.built == "running" and not self.in_maintenance(line, day))
+        gold_per_h = cap.gold_oz(self.sim.model, feed_tph, self.stock_grade)
+        self.r_hoist_now.restart(hoist_tph)
+        self.r_hoist_day.restart(hoist_tph)
+        self.r_feed_day.restart(feed_tph, tick_s)
+        self.r_gold_now.restart(gold_per_h, tick_s)
+        self.r_gold_day.restart(gold_per_h, tick_s)
 
     def configure(self) -> None:
         """Line rates for the plant stage and the line stopped for repair (decision 9.4)."""
@@ -421,7 +505,7 @@ class Plant:
         self.r_hoist_now.add(tonnes)
         self.r_hoist_day.add(tonnes)
 
-    def minute(self, now: float, dt_s: float, pumped_m3: float, hoisted_t: float) -> None:
+    def minute(self, now: float, dt_s: float, pumped_m3: float, levelled_m3: float) -> None:
         sim = self.sim
         hours = dt_s / SECONDS_PER_HOUR
         day = now / SECONDS_PER_DAY
@@ -444,7 +528,7 @@ class Plant:
         storage_limit = self.tailings_free_t / hours
         self.tailings_full = self.tailings_free_t <= EPS
         wanted = max(0.0, min(ore_limit, storage_limit))
-        feed = sim.water.minute(dt_s, pumped_m3, hoisted_t, wanted)
+        feed = sim.water.minute(dt_s, pumped_m3, levelled_m3, wanted)
         if feed > wanted:
             feed = wanted
         if feed < wanted - EPS:

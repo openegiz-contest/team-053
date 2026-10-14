@@ -386,9 +386,9 @@
   "water.head_ps_p150_m": {"value": 280, "unit": "m", "source": "ASSUMPTION: head from +150 to +430 (elevations from FACT A2)"},
   "water.head_ps_m050_m": {"value": 200, "unit": "m", "source": "ASSUMPTION: head from -50 to +150 (elevations from FACT A2 and A6)"},
   "water.rolling_window_h": {
-    "value": 24,
+    "value": 1,
     "unit": "h",
-    "source": "ASSUMPTION: rolling 24-hour means hide pump cycling in the water balance (spec 2.7)"
+    "source": "ASSUMPTION: the published water flows are rolling 1-hour means; the pump cycle is levelled by the water held in the pumping bands of the sumps, so the mean only smooths minute-to-minute steps and a scenario shows within the hour (replaces the 24-hour means of spec 2.7, which delayed the answer by up to a day)"
   },
   "pond.volume_m3": {
     "value": 4530,
@@ -438,6 +438,11 @@
     "value": 80,
     "unit": "% of permit",
     "source": "ASSUMPTION: monitoring point state is 'warning' above 80 % of the permit (spec 2.7)"
+  },
+  "water.permit_deadband_pct": {
+    "value": 2,
+    "unit": "% of permit",
+    "source": "ASSUMPTION: alarm deadband of the outfall monitoring point: a state is left only when the use of the permit is 2 points below the threshold that raised it (warning 80 %, exceeded 100 %), so a discharge that sits on a threshold does not blink"
   },
   "water.measure_W1.reclaim_m3_per_t": {"value": 0.6, "unit": "m3/t milled", "source": "ASSUMPTION: about half of the slurry water at 45 % solids"},
   "water.measure_W2.extra_intake_m3h": {"value": 150, "unit": "m3/h", "source": "ASSUMPTION: extra river intake sized for 2.5 Mtpa"},

@@ -15,7 +15,7 @@ from .. import geometry as geometry_module
 from .mining import Mining
 from .params import Params
 from .surface import Dewatering, Plant, UNBOUNDED, Water
-from .timebase import Calendar, Rolling, SECONDS_PER_DAY, SECONDS_PER_HOUR, parse_epoch
+from .timebase import Calendar, SECONDS_PER_DAY, SECONDS_PER_HOUR, parse_epoch
 from .traffic import Haulage, P_MAINT
 
 PERCENT = 100.0
@@ -103,8 +103,9 @@ class Simulator:
         self.ore_hoisted_t = 0.0
         self.ore_hoisted_today_t = 0.0
         self.ore_broken_start_t = 0.0
-        self._minute_hoisted = 0.0
         self.air_demand_peak = 0.0
+        #: Simulated second of the last restart of the rate windows (a scenario change).
+        self.rates_since_t = 0
         self.last_blast: Tuple[str, ...] = ()
 
         # processes
@@ -115,9 +116,6 @@ class Simulator:
         self.dewater = Dewatering(self)
         self.water = Water(self)
         self.plant = Plant(self)
-        self.r_pumped = Rolling(self.p("sim.rate_window_h") * SECONDS_PER_HOUR,
-                                self.p("sim.rate_window_h") * SECONDS_PER_HOUR / 24.0,
-                                self.baseline.dewatering.pumped_m3h)
         self.dewater_spec = cap.dewatering(model, self.cap_state)
         self.fans_installed: Tuple[str, ...] = ()
         self.fans_running: Tuple[str, ...] = ()
@@ -223,16 +221,12 @@ class Simulator:
         productive = cal.productive[(i - self.steps_per_minute // 2) % cal.steps_per_day]
         self.mining.minute(t, dt, productive)
         pumped = self.dewater.minute(dt)
-        self.r_pumped.add(pumped)
-        self.r_pumped.tick(dt)
         flooded = self.dewater.flooded_levels()
         if flooded != self._flooded:
             self._flooded = flooded
             self.mining.set_flooded(flooded)
             self._refresh_analytic()
-        hoisted = self._minute_hoisted
-        self._minute_hoisted = 0.0
-        self.plant.minute(t, dt, pumped, hoisted)
+        self.plant.minute(t, dt, pumped, self.dewater.levelled_m3)
         self._ventilation_rule()
         if productive and self.dev_rate_m_per_s > 0.0:
             for ramp in self.haul.ramps.values():       # decline development advances the face
@@ -243,7 +237,6 @@ class Simulator:
         """A truck tipped its load on the ROM pad."""
         self.ore_hoisted_t += tonnes
         self.ore_hoisted_today_t += tonnes
-        self._minute_hoisted += tonnes
         self.plant.add_ore(tonnes, grade)
 
     # ---------------------------------------------------------------------------------------
@@ -278,8 +271,24 @@ class Simulator:
         self.cap_state = state
         self._configure(first=False)
         self.haul.step(self.t)          # units waiting at the surface take their new state at once
+        if any(name not in _SCENARIO_META for name in changed):
+            self.restart_rates()
         self._snapshot_tick = -1
         return changed
+
+    def mine_rate_tph(self, result: Optional[cap.Result] = None) -> float:
+        """The analytic mine rate of a state as a mean over the day, t/h: the smallest of the
+        haulage, ventilation, stopes and dewatering capacities spread over the working days (the
+        simulator runs every day as a working day, spec 2.1)."""
+        result = result or self.analytic
+        ktpa = min(result.capacity_ktpa[link] for link in ("haulage", "ventilation", "stopes", "dewatering"))
+        return ktpa * cap.KILO / (self.p("regime.working_days") * cap.HOURS_PER_DAY)
+
+    def restart_rates(self) -> None:
+        """Restart the rate and per-day windows so that they describe the new regime only (see
+        ``Plant.restart_rates``). The water means are short and are not restarted."""
+        self.plant.restart_rates(self.mine_rate_tph())
+        self.rates_since_t = self.t
 
     def reset_scenario(self) -> List[str]:
         """Back to the baseline knobs; ``revision`` and ``label`` are kept."""
@@ -426,7 +435,7 @@ class Simulator:
         running_kw = haul.running_kw() + mining.running_lhd_kw(self.t, self.productive)
         margin = (self.air_supply - self.air_demand) / self.air_supply * PERCENT if self.air_supply > 0 else -PERCENT
         return {"state": self.mine_state(),
-                "ore_hoisted_tph": round(self.plant.r_hoist_now.per_hour(), 1),
+                "ore_hoisted_tph": round(self.plant.r_hoist_day.per_hour(), 1),
                 "ore_hoisted_today_t": round(self.ore_hoisted_today_t, 1),
                 "ore_hoisted_total_t": round(self.ore_hoisted_t, 1),
                 "trucks_active": float(available), "diesel_kw_active": round(float(running_kw), 1),
@@ -434,7 +443,7 @@ class Simulator:
                 "air_margin_pct": round(margin, 1),
                 "units_held_vent": float(len(self.held_trucks) + len(self.held_lhds)),
                 "inflow_m3h": round(self.dewater_spec.inflow_m3h, 1),
-                "pumped_m3h": round(self.r_pumped.per_hour(), 1),
+                "pumped_m3h": round(self.water.r_mine.per_hour(), 1),
                 "flood_volume_m3": round(self.dewater.flood, 1)}
 
     def _air_by_level(self) -> Tuple[Dict[str, cap.LevelAir], Dict[str, float]]:
@@ -530,7 +539,7 @@ class Simulator:
         if "permit_m3h" in self.things[name]["attributes"]:     # the outfall
             permit = self.water.permit()
             tss = self.water.pond_features()[-1]["tss_out_mgl"] if permit.discharge_m3h > 0 else 0.0
-            return {"state": permit.permit_state, "discharge_m3h": round(permit.discharge_m3h, 1),
+            return {"state": self.water.outfall_state, "discharge_m3h": round(permit.discharge_m3h, 1),
                     "intake_m3h": 0.0, "tss_mgl": round(tss, 3),
                     "permit_use_pct": round(permit.permit_use_pct, 1)}
         return {"state": "normal", "discharge_m3h": 0.0,

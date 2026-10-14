@@ -25,6 +25,7 @@ from sekis import capacity as cap  # noqa: E402
 from sekis import geometry  # noqa: E402
 from sekis.sim import (MISSING_PARAMS, TUNED_PARAMS, PublishPlanner, STRING_FEATURES, Simulator,  # noqa: E402
                        ditto_modify, telemetry_topic)
+from sekis.sim.timebase import Rolling, bucket_for  # noqa: E402
 
 REGISTRY = json.loads((TEAM / "model" / "registry.json").read_text(encoding="utf-8"))
 MODEL = cap.load_model()
@@ -205,8 +206,9 @@ class TestCalibration(SimCase):
         inflow = MODEL.p("water.inflow_m3h") * MODEL.hours_per_year
         self.assertWithin(y["water_inflow_m3"], inflow, 0.01, "mine inflow:")
         self.assertWithin(y["water_pumped_m3"], inflow, 1.0, "pumped to the ponds:")
+        # the site draws at the 24-hour hoisting rate, which lags the trucks by up to a day
         self.assertWithin(y["water_site_use_m3"], MODEL.p("water.site_m3_per_t") * self.totals["ore_hoisted_t"]
-                          * 365 / 60, 0.01, "site use per tonne hoisted:")
+                          * 365 / 60, 0.5, "site use per tonne hoisted:")
         self.assertWithin(y["water_plant_supply_m3"], MODEL.p("water.plant_m3_per_t") * y["ore_milled_t"], 0.01,
                           "plant water per tonne milled:")
         # at 1000 kt/yr the demand equals the mine water (C10), so next to nothing is discharged
@@ -432,6 +434,43 @@ class TestTimeBase(SimCase):
         sim.advance(5 * 60 + 30)
         self.assertEqual(sim.sim_time, "2027-03-10T19:30:00")
         self.assertEqual(sim.snapshot()["enterprise"]["shift"], "blast")
+
+
+class TestRolling(SimCase):
+    def test_buckets_are_whole_minutes_and_time_is_not_lost_between_buckets(self):
+        self.assertEqual((bucket_for(86400), bucket_for(7200, 24), bucket_for(3600)), (1800, 300, 60))
+        roll = Rolling(3600, 75)                      # a bucket that is not a whole number of ticks
+        for _ in range(30):
+            roll.add(2.0)
+            roll.tick(60)
+        self.assertAlmostEqual(roll.covered_s(), 1800)
+        self.assertAlmostEqual(roll.per_hour(), 120.0)
+
+    def test_restart_from_a_prior_over_the_window(self):
+        roll = Rolling(86400, 1800, prefill=500.0)
+        roll.restart(100.0)
+        self.assertAlmostEqual(roll.per_hour(), 100.0)
+        for _ in range(12 * 60):                      # half a day at 200 per hour
+            roll.add(200.0 / 60)
+            roll.tick(60)
+        self.assertAlmostEqual(roll.per_hour(), 150.0)
+        for _ in range(12 * 60 + 60):                 # a full window of measurement: the prior is gone
+            roll.add(200.0 / 60)
+            roll.tick(60)
+        self.assertAlmostEqual(roll.per_hour(), 200.0)
+
+    def test_restart_extrapolated_from_the_first_minute(self):
+        roll = Rolling(86400, 1800, prefill=500.0)
+        roll.restart(100.0, 60)
+        self.assertAlmostEqual(roll.per_hour(), 100.0)
+        roll.add(2.0)
+        roll.tick(60)
+        self.assertAlmostEqual(roll.per_hour(), 120.0)
+        self.assertAlmostEqual(roll.total(), 120.0 * 24)
+        for _ in range(59):
+            roll.add(1.0)
+            roll.tick(60)
+        self.assertAlmostEqual(roll.per_hour(), 61.0)
 
 
 class TestOpening(SimCase):
@@ -1085,7 +1124,8 @@ class TestDisturbances(SimCase):
         self.assertGreater(mean, MODEL.p("water.permit_m3h"))
         snap = sim.snapshot()
         self.assertEqual(snap["mon-volchevka"]["state"], "exceeded")
-        self.assertGreater(snap["mon-volchevka"]["permit_use_pct"], 100.0)
+        # the state is left only below the deadband (water.permit_deadband_pct)
+        self.assertGreater(snap["mon-volchevka"]["permit_use_pct"], 100.0 - MODEL.p("water.permit_deadband_pct"))
         self.assertEqual(snap["water"]["state"], "discharge_over_permit")
         self.assertGreater(snap["water"]["mine_water_m3h"], 400.0)
         self.assertEqual(snap["mon-volchevka"]["discharge_m3h"], snap["water"]["discharge_m3h"])
@@ -1177,13 +1217,17 @@ class TestMeasures(SimCase):
         sim.run_days(12)
         milled = sim.plant.milled_t
         states = set()
+        deficits = []
         for _ in range(4 * 24):
             sim.advance(60)
             snap = sim.snapshot()
             states.add(snap["plant-line-3"]["state"])
             self.assertIn(snap["plant-line-1"]["state"], ("running", "maintenance"))
+            if snap["plant"]["state"] == "water_limited":
+                deficits.append(snap["water"]["deficit_m3h"])
         self.assertIn("water_limited", states)
-        self.assertGreater(snap["water"]["deficit_m3h"], 5.0)
+        self.assertTrue(deficits and min(deficits) > 0.0, "a water-limited plant shows a deficit")
+        self.assertGreater(max(deficits), 5.0)
         rate = (sim.plant.milled_t - milled) / 4 * 365
         self.assertLess(rate, 1100000, "the plant cannot hold 1200 kt/yr on the mine water alone")
         self.assertLess(sim.snapshot()["rom-stockpile"]["days_of_feed"], days_before)
@@ -1508,6 +1552,158 @@ class TestAirLimitedCases(SimCase):
         self.assertEqual((analytic.binding_link, analytic.capacity_rounded["plant"]), ("plant", 1000))
         # seven trucks on four stopes: the mine delivers the 1000 kt/yr the advisor names as reached
         self.assertGreater(run.year["ore_hoisted_t"], 0.97 * 1000000)
+
+
+# ---------------------------------------------------------------------------------------------
+# response of the displayed values to a scenario change (60x: a simulated minute is a real second)
+# ---------------------------------------------------------------------------------------------
+
+WATER_WINDOW_MIN = MODEL.p("water.rolling_window_h") * 60
+
+
+def overflow_minute(sim):
+    """Advance minute by minute until the full ponds overflow; the minutes it took."""
+    for minute in range(1, 2 * 24 * 60):
+        before = sim.water.total["discharge"]
+        sim.advance(1)
+        if sim.water.total["discharge"] > before:
+            return minute
+    raise AssertionError("the ponds did not overflow within two days")
+
+
+class TestResponseTimes(SimCase):
+    def test_flood_with_the_ponds_at_the_weir_exceeds_the_permit_within_the_water_window(self):
+        sim = new_sim()
+        overflow_minute(sim)                          # the pump is running and the full ponds overflow
+        self.assertEqual(sim.snapshot()["mon-volchevka"]["state"], "normal")
+        sim.apply_scenario({"inflow_factor": 2.18})
+        exceeded = None
+        for minute in range(1, 181):
+            sim.advance(1)
+            if sim.snapshot(["mon-volchevka"])["mon-volchevka"]["state"] == "exceeded":
+                exceeded = minute
+                break
+        self.assertIsNotNone(exceeded, "outfall not exceeded 180 simulated minutes after the flood")
+        self.assertLessEqual(exceeded, WATER_WINDOW_MIN + 1)
+
+    def test_flood_outfall_follows_the_ponds_and_does_not_blink_with_the_pumps(self):
+        sim = new_sim()
+        sim.advance(26 * 60)                          # the ponds have room: the overflow starts later
+        sim.apply_scenario({"inflow_factor": 2.18})
+        start = sim.water.total["discharge"]
+        overflow = exceeded = None
+        mine_water, states, pumps = [], [], set()
+        for minute in range(1, 36 * 60):
+            sim.advance(1)
+            snap = sim.snapshot(["mon-volchevka", "water", "mine", "ps-p150"])
+            if overflow is None and sim.water.total["discharge"] > start:
+                overflow = minute
+            state = snap["mon-volchevka"]["state"]
+            if overflow is None:
+                self.assertEqual((state, snap["mon-volchevka"]["discharge_m3h"]), ("normal", 0.0), minute)
+            if exceeded is None and state == "exceeded":
+                exceeded = minute
+            if exceeded is not None:
+                states.append(state)
+                pumps.add(snap["ps-p150"]["pumps_running"])
+            if minute >= WATER_WINDOW_MIN:
+                mine_water.append((snap["water"]["mine_water_m3h"], snap["mine"]["pumped_m3h"]))
+        self.assertIsNotNone(overflow)
+        self.assertIsNotNone(exceeded)
+        self.assertGreater(overflow, 60, "the ponds take the first surplus")
+        self.assertLessEqual(exceeded - overflow, WATER_WINDOW_MIN + 1, "measurement lag after the overflow")
+        # the pumps step between one and two units, the published values do not
+        self.assertEqual(pumps, {1.0, 2.0})
+        self.assertEqual(set(states), {"exceeded"})
+        inflow = MODEL.p("water.inflow_m3h") * 2.18
+        self.assertTrue(all(abs(w - inflow) < 0.01 * inflow and p == w for w, p in mine_water),
+                        [x for x in mine_water if abs(x[0] - inflow) >= 0.01 * inflow][:5])
+        # undo: the outfall is back under the permit within two water windows
+        sim.apply_scenario({"inflow_factor": 1.0})
+        sim.advance(2 * WATER_WINDOW_MIN)
+        self.assertEqual(sim.snapshot()["mon-volchevka"]["state"], "normal")
+
+    def test_pump_station_fail_limits_the_plant_in_the_minute_the_ponds_run_dry(self):
+        sim = new_sim()
+        sim.advance(26 * 60)
+        sim.apply_scenario({"pumps_failed_p150": 3})
+        names = ["plant", "water", "mine", "pond-upper", "pond-lower"]
+        limited = None
+        before = (sum(sim.water.stored), sim.snapshot()["plant"]["state"])
+        for minute in range(1, 30 * 60):
+            sim.advance(1)
+            snap = sim.snapshot(names)
+            stored = sum(sim.water.stored)
+            if minute == WATER_WINDOW_MIN + 1:
+                self.assertEqual(snap["water"]["mine_water_m3h"], 0.0)
+                self.assertEqual(snap["mine"]["pumped_m3h"], 0.0)
+            if limited is None and snap["plant"]["state"] == "water_limited":
+                limited = minute
+                self.assertLess(stored, 1.0, "the ponds are empty")
+                self.assertGreater(before[0], 0.0, "the minute before they were not")
+                self.assertNotEqual(before[1], "water_limited")
+                self.assertEqual(snap["water"]["state"], "deficit")
+                self.assertEqual(snap["pond-upper"]["retention_h"] + snap["pond-lower"]["retention_h"], 0.0)
+            if limited is not None:
+                self.assertGreater(snap["water"]["deficit_m3h"], 0.0, minute)
+                self.assertEqual(snap["plant"]["state"], "water_limited", minute)
+            before = (stored, snap["plant"]["state"])
+        self.assertIsNotNone(limited)
+        self.assertTrue(12 * 60 < limited < 30 * 60, limited)   # the pond reserve, in hours
+
+    def test_reset_after_2500_shows_the_baseline_day_figures_at_once(self):
+        sim = new_sim(target_ktpa=2500, **FULL_2500)
+        sim.run_days(3)
+        before = sim.snapshot()["enterprise"]
+        max_tpd = sum(line.rated_tph for line in cap.plant(MODEL, 0, 0).lines) * 24
+        self.assertGreater(before["ore_milled_tpd"], 2 * max_tpd)
+        sim.reset_scenario()
+        grades = []
+        for minute in range(0, 181):
+            if minute:
+                sim.advance(1)
+            snap = sim.snapshot()
+            grades.append(snap["plant"]["feed_grade"])
+            gold_max = cap.gold_oz(MODEL, max_tpd, max(grades)) + 0.1
+            ent = snap["enterprise"]
+            self.assertLessEqual(ent["ore_milled_tpd"], max_tpd + 0.5, minute)
+            self.assertLessEqual(snap["tailings"]["inflow_tpd"], max_tpd + 0.5, minute)
+            self.assertLessEqual(ent["gold_poured_oz_day"], gold_max, minute)
+            self.assertLessEqual(snap["plant"]["gold_poured_oz_day"], gold_max, minute)
+            self.assertLess(ent["ore_mined_tpd"], 0.5 * before["ore_mined_tpd"], minute)
+            self.assertAlmostEqual(ent["ore_mined_tpd"], 24 * snap["mine"]["ore_hoisted_tph"], delta=2.0)
+            if minute > WATER_WINDOW_MIN:
+                self.assertEqual((snap["water"]["reclaim_m3h"], snap["water"]["extra_intake_m3h"]), (0.0, 0.0))
+                self.assertEqual(snap["tailings"]["reclaim_m3h"], 0.0)
+
+    def test_a_knob_change_restarts_the_rate_windows_and_a_revision_alone_does_not(self):
+        sim = new_sim()
+        sim.advance(30 * 60)
+        self.assertEqual(sim.rates_since_t, 0)
+        sim.apply_scenario({"revision": 3, "label": "x"})
+        self.assertEqual(sim.rates_since_t, 0)
+        sim.apply_scenario({"grade_gpt": 1.76})
+        self.assertEqual(sim.rates_since_t, sim.t)
+        snap = sim.snapshot()
+        # hoisting restarts from the analytic mine rate, feed from the lines ready to run
+        self.assertAlmostEqual(snap["mine"]["ore_hoisted_tph"], sim.mine_rate_tph(), delta=0.05)
+        self.assertAlmostEqual(sim.mine_rate_tph(), 926.4 * 1000 / 360 / 24, delta=0.2)
+        self.assertAlmostEqual(snap["enterprise"]["ore_milled_tpd"], 24 * snap["plant"]["feed_tph"], delta=0.5)
+        sim.advance(10)                               # ten measured minutes, extrapolated to the day
+        snap = sim.snapshot()
+        self.assertAlmostEqual(snap["enterprise"]["ore_milled_tpd"], 24 * snap["plant"]["feed_tph"], delta=0.5)
+
+    def test_header_mine_rate_is_steady_next_to_the_two_hour_pad_inflow(self):
+        run = baseline_run()
+        days = run.totals["sim_days"]
+        mean = run.totals["ore_hoisted_t"] / days / 24
+        day = [s["mine"]["ore_hoisted_tph"] for s in run.samples[24:]]
+        pad = [s["rom-stockpile"]["inflow_tph"] for s in run.samples[24:]]
+        self.assertGreater(min(day), 0.6 * mean)
+        self.assertLess(max(day), 1.4 * mean)
+        self.assertLess(max(day) - min(day), 0.4 * (max(pad) - min(pad)))
+        for s in run.samples[24:]:
+            self.assertAlmostEqual(s["enterprise"]["ore_mined_tpd"], 24 * s["mine"]["ore_hoisted_tph"], delta=2.0)
 
 
 # ---------------------------------------------------------------------------------------------

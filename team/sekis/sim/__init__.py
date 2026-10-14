@@ -58,7 +58,10 @@ Scenario (spec 3.1, 3.3)
         ``ValueError`` and changes nothing when the set is invalid (both declines closed, a stage
         outside its ladder, a line that is not built). Planned units enter service and leave it
         again as the knobs say; a truck taken out of service finishes its trip first.
+        A change of any knob restarts the rate windows (``restart_rates()``; ``rates_since_t`` is
+        the simulated second of the last restart); see "What the displayed values mean".
     ``reset_scenario()``        back to the baseline knobs
+    ``mine_rate_tph(result=None)``   analytic mine rate of a state as a day mean, t/h
     ``default_knobs()``, ``knobs``, ``cap_state`` (the ``capacity.State`` of the knobs)
 
 Twins
@@ -97,12 +100,47 @@ Totals and calibration
         tailings placed): the source of ``enterprise.binding_link`` and ``annual_rate_ktpa``
 
 What the displayed values mean
-    * "now" rates (``mine.ore_hoisted_tph``, ``mine.pumped_m3h``, ``rom-stockpile.inflow_tph``,
-      ``plant.gold_poured_oz_day``) are rolling means over ``sim.rate_window_h``; the water balance
-      and the discharge at the outfall are rolling means over ``water.rolling_window_h`` (24 h),
-      which hides pump cycling and also delays their answer to a scenario by up to a day; the
-      enterprise day figures are rolling 24-hour totals. The 24-hour windows start from the
-      analytic baseline. ``..._today`` values reset at the start of shift A.
+    * Mine rate. ``mine.ore_hoisted_tph`` is the ore hoisted over the last 24 simulated hours in
+      t/h and ``enterprise.ore_mined_tpd`` the same in t/day (24 x the first), so the mine can be
+      set beside the plant feed. ``rom-stockpile.inflow_tph`` keeps the rolling 2-hour mean
+      (``sim.rate_window_h``) of the ore tipped on the pad, which swings with the truck loads and
+      the shift pattern.
+    * Plant rates. ``plant.gold_poured_oz_day`` is the gold of the last 2 hours x 12;
+      ``enterprise.ore_milled_tpd``, ``enterprise.gold_poured_oz_day`` and
+      ``tailings.inflow_tpd`` are totals over the last 24 hours. ``plant.feed_tph`` and the line
+      feeds are the present minute.
+    * Restart on a scenario change. When ``apply_scenario`` changes a knob (``revision`` or
+      ``label`` alone do not count), the windows of the six features above start again, so that
+      they describe the new regime only (``restart_rates``, ``rates_since_t``). The hoisting
+      windows restart from the analytic mine rate of the new state (``mine_rate_tph``: the
+      smallest of the haulage, ventilation, stopes and dewatering capacities over 360 working
+      days x 24 h) and each measured minute replaces a minute of it, so after 2 h (pad inflow) or
+      24 h (mine rate) they are measurement only; trucks come in loads of 30-45 t, and a plain
+      extrapolation of the first minutes would read 0 or 1500 t/h. The feed and gold windows are
+      extrapolated from the time since the change: the mean since the change, scaled to the
+      window, until the window is full again. At the epoch all these windows start from the
+      analytic baseline.
+    * Water. The flows of ``water``, ``mine.pumped_m3h``, the ponds' ``inflow_m3h``,
+      ``tailings.reclaim_m3h``, ``mon-sekisovka.intake_m3h`` and the outfall ``mon-volchevka``
+      are rolling means over ``water.rolling_window_h`` (1 h) and are not restarted. The mine
+      water delivered to the ponds (``water.mine_water_m3h``, ``mine.pumped_m3h``, pond
+      ``inflow_m3h``) is levelled over the pump cycle: what ps-p150 pumped plus the change of the
+      water held in the pumping bands of the two sumps, which the next pump runs send up. While
+      the station can pump it equals the inflow less what floods the mine; while ps-p150 is
+      failed it is 0. The outfall discharge is the overflow of the full ponds with the same
+      levelling (0 while the ponds have room), so the 300 / 600 m3/h steps of the pumps do not
+      reach the permit state; that state has a deadband of ``water.permit_deadband_pct``.
+      ``pump_station.pumped_m3h`` and ``pumps_running`` stay instantaneous. Site water is drawn
+      at the 24-hour hoisting rate, not per truck. Storage keeps its physical delays: after
+      ``flood`` the outfall carries water only once the ponds are full, which takes up to about
+      7 h from the baseline (the ponds are drawn down by up to 1000 m3, and while one pump runs
+      the sumps keep part of the surplus); the permit state follows within the hour of the water
+      window. After ``pump_station_fail`` the plant becomes ``water_limited`` in the minute the
+      ponds run dry (about 20 h from the baseline).
+    * ``..._today`` values (``mine.ore_hoisted_today_t``, ``level.ore_today_t``,
+      ``decline.loaded_trips_today``, ``decline.ore_today_t``, ``haul_truck.trips_today``,
+      ``tonnes_today``, ``plant_line.milled_today_t``) are totals since the start of shift A
+      (08:00) and are not restarted by a scenario change.
     * ``mine.air_demand_m3s`` is the demand of the units in service that are not held;
       ``diesel_kw_active`` is the engine power running at this moment.
     * ``haul_truck.decline`` is the decline the truck works through (``none`` when parked);

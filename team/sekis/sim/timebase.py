@@ -118,15 +118,28 @@ def parse_epoch(value: object) -> datetime:
     return datetime.fromisoformat(str(value))
 
 
+def bucket_for(window_s: float, buckets: int = 48, tick_s: float = 60.0) -> float:
+    """Bucket length for a rolling window: about ``window_s / buckets``, a whole number of ticks
+    (the processes that feed the windows tick once per simulated minute)."""
+    return max(tick_s, round(window_s / buckets / tick_s) * tick_s)
+
+
 class Rolling:
     """Rolling sum over a time window, kept in buckets.
 
     ``add(amount)`` books an amount now, ``tick(dt_s)`` moves time on. ``per_hour()`` is the mean
     rate over the window, ``total()`` the amount over a full window at that rate. ``prefill``
     (amount per hour) starts the window as if that rate had held before the epoch.
+
+    ``restart(prior, span_s)`` forgets everything booked so far (a new regime begins). Until
+    ``span_s`` has passed, the part of the span not yet measured counts at the rate ``prior``;
+    after it the rate is what was measured since the restart, extrapolated to the window, until
+    the window is full again. ``span_s`` equal to the window starts the window from ``prior`` and
+    lets the measured minutes replace it one by one; a span of one tick extrapolates from the
+    first measured minute on.
     """
 
-    __slots__ = ("bucket_s", "window_s", "_full", "_sum", "_cur", "_elapsed")
+    __slots__ = ("bucket_s", "window_s", "_full", "_sum", "_cur", "_elapsed", "_prior", "_span_s")
 
     def __init__(self, window_s: float, bucket_s: float, prefill: Optional[float] = None):
         self.bucket_s = float(bucket_s)
@@ -136,6 +149,8 @@ class Rolling:
         self._sum = 0.0
         self._cur = 0.0
         self._elapsed = 0.0
+        self._prior: Optional[float] = None
+        self._span_s = 0.0
         if prefill is not None:
             amount = prefill * self.bucket_s / SECONDS_PER_HOUR
             for _ in range(size):
@@ -147,17 +162,36 @@ class Rolling:
 
     def tick(self, dt_s: float) -> None:
         self._elapsed += dt_s
-        if self._elapsed >= self.bucket_s:
+        while self._elapsed >= self.bucket_s:
             if len(self._full) == self._full.maxlen:
                 self._sum -= self._full[0]
             self._full.append(self._cur)
             self._sum += self._cur
             self._cur = 0.0
-            self._elapsed = 0.0
+            self._elapsed -= self.bucket_s
+
+    def restart(self, prior: Optional[float], span_s: Optional[float] = None) -> None:
+        """Forget the window; see the class docstring for ``prior`` (per hour) and ``span_s``."""
+        self._full.clear()
+        self._sum = 0.0
+        self._cur = 0.0
+        self._elapsed = 0.0
+        self._prior = prior
+        self._span_s = self.window_s if span_s is None else min(float(span_s), self.window_s)
+
+    def covered_s(self) -> float:
+        """Seconds of measurement in the window (less than the window after a restart)."""
+        return len(self._full) * self.bucket_s + self._elapsed
 
     def per_hour(self) -> float:
-        covered = len(self._full) * self.bucket_s + self._elapsed
-        value = (self._sum + self._cur) / max(covered, self.bucket_s) * SECONDS_PER_HOUR
+        covered = self.covered_s()
+        amount = self._sum + self._cur
+        if self._prior is not None and covered < self._span_s and len(self._full) < self._full.maxlen:
+            amount += self._prior * (self._span_s - covered) / SECONDS_PER_HOUR
+            covered = self._span_s
+        if covered <= 0.0:
+            return 0.0
+        value = amount / max(covered, min(self.bucket_s, self._span_s or self.bucket_s)) * SECONDS_PER_HOUR
         return value if value > 0.0 else 0.0
 
     def total(self) -> float:
