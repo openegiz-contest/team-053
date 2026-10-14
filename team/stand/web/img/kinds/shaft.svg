@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140" role="img" aria-label="shaft">
+<rect width="240" height="140" fill="#121921"/>
+<circle cx="120" cy="70" r="58" fill="#18212b" stroke="#273341" stroke-width="1.5"/>
+<g transform="translate(72 22)" fill="none" stroke="#a8b5c3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+<path d="M4,52 L40,52 M56,52 L92,52"/>
+<path d="M32,52 L46,16 M64,52 L50,16 M37,40 L59,40 M41,28 L55,28"/>
+<path d="M40,52 L40,92 M56,52 L56,92"/>
+<path d="M48,14 L48,66" stroke-width="2"/>
+<rect x="43" y="66" width="10" height="14" rx="1.5" fill="#ff8a24" stroke="#ff8a24" stroke-width="2"/>
+<circle cx="48" cy="14" r="8" fill="#ff8a24" stroke="#ff8a24"/>
+<circle cx="48" cy="14" r="2.5" fill="#0b1016" stroke="none"/>
+</g>
+</svg>

@@ -16,6 +16,11 @@ compiled bundles and the running platform depend on them.
 Editing a lazy-loaded chunk requires updating the Subresource Integrity digest
 that ``module.js`` pins for it, otherwise Grafana refuses to load the chunk and
 the plugin renders blank. That recompute is handled here.
+
+The app archive also gets the anonymous-viewer fix of ``patch-anonymous.py``
+(a functional patch, kept in its own file so that this one stays about
+branding); it is applied here, before the SRI recompute, so this script is
+still the one command that rebuilds the shipped zips.
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import importlib.util
 import re
 import shutil
 import sys
@@ -37,6 +43,10 @@ REPO_ROOT = HERE.parent.parent
 # tightened to the ink bounds (160 632 1282 336) -- no transform needed here.
 LOGO_SRC = REPO_ROOT / "openegiz_logo_dark.svg"
 LOGO_EXPECT = b'viewBox="160 632 1282 336"'
+
+_spec = importlib.util.spec_from_file_location("patch_anonymous", HERE / "patch-anonymous.py")
+ANON = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(ANON)
 
 APP_ZIP = "ertis-opentwins-app.zip"
 UNITY_ZIP = "ertis-unity-panel.zip"
@@ -139,6 +149,10 @@ def patch_app(entries: dict[str, bytes], logo: bytes) -> None:
     js396 = sub_once(js396, b'n.appName},"OpenTwins")', b'n.appName},"OpenEgiz")',
                      "396.js header <h1>")
     entries[P + "396.js"] = js396
+
+    # -- functional: no /api/user/orgs request (and no "Unauthorized" toast) for
+    #    an anonymous viewer. See patch-anonymous.py.
+    ANON.patch_app(entries)
 
     # -- and now the reason this script exists.
     entries[P + "module.js"] = rewrite_sri(
@@ -307,6 +321,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except PatchError as exc:
+    except (PatchError, ANON.PatchError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(2)

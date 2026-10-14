@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140" role="img" aria-label="LHD loader">
+<rect width="240" height="140" fill="#121921"/>
+<circle cx="120" cy="70" r="58" fill="#18212b" stroke="#273341" stroke-width="1.5"/>
+<g transform="translate(72 22)" fill="none" stroke="#a8b5c3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+<path d="M4,42 L22,36 L28,60 L8,60 Z" fill="#ff8a24" stroke="#ff8a24"/>
+<path d="M24,46 L44,36"/>
+<rect x="42" y="38" width="48" height="20" rx="3"/>
+<path d="M58,38 L58,22 L76,22 L76,38"/>
+<rect x="62" y="26" width="10" height="7" rx="1.5" fill="#a8b5c3" stroke="none"/>
+<circle cx="50" cy="66" r="10" fill="#121921"/><circle cx="50" cy="66" r="3" fill="#a8b5c3" stroke="none"/>
+<circle cx="80" cy="66" r="10" fill="#121921"/><circle cx="80" cy="66" r="3" fill="#a8b5c3" stroke="none"/>
+</g>
+</svg>

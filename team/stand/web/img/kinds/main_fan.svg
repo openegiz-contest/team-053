@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="140" viewBox="0 0 240 140" role="img" aria-label="main fan">
+<rect width="240" height="140" fill="#121921"/>
+<circle cx="120" cy="70" r="58" fill="#18212b" stroke="#273341" stroke-width="1.5"/>
+<g transform="translate(72 22)" fill="none" stroke="#a8b5c3" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="48" cy="48" r="38"/>
+<path transform="rotate(0 48 48)" d="M48,48 C52,32 64,22 74,28 C76,38 64,46 48,48 Z" fill="#ff8a24" stroke="#ff8a24" stroke-width="2"/><path transform="rotate(120 48 48)" d="M48,48 C52,32 64,22 74,28 C76,38 64,46 48,48 Z" fill="#ff8a24" stroke="#ff8a24" stroke-width="2"/><path transform="rotate(240 48 48)" d="M48,48 C52,32 64,22 74,28 C76,38 64,46 48,48 Z" fill="#ff8a24" stroke="#ff8a24" stroke-width="2"/>
+<circle cx="48" cy="48" r="7" fill="#a8b5c3" stroke="none"/>
+<circle cx="48" cy="48" r="2.5" fill="#0b1016" stroke="none"/>
+</g>
+</svg>

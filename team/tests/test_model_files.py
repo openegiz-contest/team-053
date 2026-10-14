@@ -231,6 +231,38 @@ class TestRegistryStructure(RegistryCase):
             self.assertEqual(f"{NS}:decline-tu2" in a["link_declines"], 0 <= elev <= 300, t["thingId"])
 
 
+class TestCardImages(RegistryCase):
+    """attributes.image: the card picture of the OpenEgiz app, one per kind, served by the Stand."""
+
+    KINDS_DIR = TEAM / "stand" / "web" / "img" / "kinds"
+    URL = "http://localhost:8088/img/kinds/{}.svg"
+
+    def test_every_type_and_thing_has_the_picture_of_its_kind(self):
+        for t in self.types:
+            kind = t["thingId"].split(":", 1)[1]
+            self.assertEqual(t["attributes"].get("image"), self.URL.format(kind), t["thingId"])
+        for t in self.things:
+            self.assertEqual(t["attributes"].get("image"), self.URL.format(t["attributes"]["kind"]), t["thingId"])
+
+    def test_every_referenced_picture_exists_and_is_self_contained(self):
+        referenced = {t["attributes"]["image"] for t in self.types + self.things}
+        self.assertEqual(len(referenced), len(KINDS))
+        for url in referenced:
+            name = url.rsplit("/", 1)[1]
+            path = self.KINDS_DIR / name
+            self.assertTrue(path.is_file(), f"{url} -> {path}")
+            raw = path.read_bytes()
+            self.assertFalse(raw.startswith(b"\xef\xbb\xbf"), name)
+            self.assertNotIn(b"\r", raw, name)
+            text = raw.decode("utf-8")
+            self.assertTrue(text.startswith('<svg xmlns="http://www.w3.org/2000/svg"'), name)
+            self.assertIn('viewBox="0 0 240 140"', text, name)
+            # no external assets: the only URL is the SVG namespace, no href, url() or script
+            self.assertEqual(re.findall(r"https?://[^\s\"']+", text), ["http://www.w3.org/2000/svg"], name)
+            self.assertNotRegex(text, r"href|url\(|<script|<image|@import", name)
+        self.assertEqual(sorted(p.name for p in self.KINDS_DIR.iterdir()), sorted(f"{k}.svg" for k in KINDS))
+
+
 class TestDescriptionsAndTypeDefaults(RegistryCase):
     def test_every_thing_has_a_russian_description(self):
         cyr = re.compile("[Ѐ-ӿ]")
