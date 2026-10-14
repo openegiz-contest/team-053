@@ -231,6 +231,44 @@ class TestRegistryStructure(RegistryCase):
             self.assertEqual(f"{NS}:decline-tu2" in a["link_declines"], 0 <= elev <= 300, t["thingId"])
 
 
+class TestDescriptionsAndTypeDefaults(RegistryCase):
+    def test_every_thing_has_a_russian_description(self):
+        cyr = re.compile("[Ѐ-ӿ]")
+        for t in self.things:
+            text = t["attributes"].get("description", "")
+            self.assertTrue(cyr.search(text), t["thingId"])
+            self.assertTrue(text.endswith("."), t["thingId"])
+            if t["attributes"].get("role") == "planned" or t["thingId"].endswith(("-m100-1", "-m100-2", "-m100-3")):
+                self.assertTrue(text.startswith("Планируется:"), t["thingId"])
+
+    def test_type_features_are_the_defaults_of_a_representative_instance(self):
+        for ty in self.types:
+            kind = ty["thingId"].split(":", 1)[1]
+            if kind in ("scenario_control", "advisor"):
+                continue
+            inst = self.things_of(kind)
+            first = next((t for t in inst if value_of(t, "state") not in ("planned", "parked")), inst[0])                 if "state" in inst[0]["features"] else inst[0]
+            self.assertEqual({f: v["properties"]["value"] for f, v in ty["features"].items()},
+                             {f: v["properties"]["value"] for f, v in first["features"].items()}, ty["thingId"])
+
+    def test_scenario_and_advisor_type_defaults(self):
+        scen = self.type_by_id[f"{TNS}:scenario_control"]
+        self.assertEqual(value_of(scen, "target_ktpa"), 1000.0)
+        self.assertEqual(value_of(scen, "inflow_factor"), 1.0)
+        self.assertEqual(value_of(scen, "grade_gpt"), 2.05)
+        self.assertEqual(value_of(scen, "label"), "Базовый режим")
+        adv = self.type_by_id[f"{TNS}:advisor"]
+        self.assertEqual(value_of(adv, "binding_link"), "haulage")
+        self.assertEqual([value_of(adv, f) for f in ("target_ktpa", "achievable_ktpa", "cap_haulage_ktpa",
+                                                      "cap_ventilation_ktpa", "cap_stopes_ktpa", "cap_development_ktpa",
+                                                      "cap_dewatering_ktpa", "cap_plant_ktpa", "cap_water_ktpa",
+                                                      "cap_tailings_ktpa")],
+                         [1000.0, 926.0, 926.0, 958.0, 1024.0, 1750.0, 0.0, 1000.0, 1000.0, 1057.0])
+        self.assertEqual(value_of(adv, "gold_koz_year"), 51.87)
+        self.assertEqual(value_of(adv, "dewatering_margin"), 2.54)
+        self.assertEqual(value_of(adv, "tailings_years_left"), 3.4)
+
+
 class TestFeatures(RegistryCase):
     def test_every_thing_has_exactly_its_type_features(self):
         for t in self.things:

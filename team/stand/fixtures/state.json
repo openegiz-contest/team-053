@@ -9,6 +9,7 @@
    "parent": null,
    "attrs": {
     "name": "Предприятие «Секисовское»",
+    "description": "Предприятие «Секисовское»: подземный золотодобывающий рудник и обогатительная фабрика мощностью 1 млн т руды в год; оператор — ДТОО «ГРП BAURGOLD» (AltynGold PLC), село Секисовка, Глубоковский район, Восточно-Казахстанская область.",
     "_isType": false,
     "kind": "enterprise",
     "type": "kz.sekis.type:enterprise",
@@ -45,6 +46,7 @@
    "parent": "kz.sekis:enterprise",
    "attrs": {
     "name": "Подземный рудник",
+    "description": "Подземный рудник предприятия «Секисовское»: добыча золотой руды мощностью 1000 тыс. т в год, 360 рабочих дней в году, 2 смены по 11 ч.",
     "_isType": false,
     "kind": "mine",
     "type": "kz.sekis.type:mine",
@@ -91,6 +93,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт +320 м (вентиляционный)",
+    "description": "Вентиляционный горизонт +320 м: связан с уклоном ТУ-1, воздух поступает по стволу ВС-1 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на главную водоотливную станцию горизонта +150 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -129,6 +132,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт +250 м",
+    "description": "Отработанный горизонт +250 м: связан с уклонами ТУ-1 и ТУ-2, воздух поступает по стволу ВС-1 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на главную водоотливную станцию горизонта +150 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -168,6 +172,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт +200 м",
+    "description": "Отработанный горизонт +200 м: связан с уклонами ТУ-1 и ТУ-2, воздух поступает по стволу ВС-1 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на главную водоотливную станцию горизонта +150 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -207,6 +212,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт +150 м",
+    "description": "Добычной горизонт +150 м с 3 очистными блоками: связан с уклонами ТУ-1 и ТУ-2, воздух поступает по стволу ВС-1 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на главную водоотливную станцию горизонта +150 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -246,6 +252,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт +100 м",
+    "description": "Добычной горизонт +100 м с 3 очистными блоками: связан с уклонами ТУ-1 и ТУ-2, воздух поступает по стволу ВС-2 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на участковую насосную горизонта −50 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -285,6 +292,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт +50 м",
+    "description": "Добычной горизонт +50 м с 3 очистными блоками: связан с уклонами ТУ-1 и ТУ-2, воздух поступает по стволу ВС-2 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на участковую насосную горизонта −50 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -324,6 +332,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт 0 м",
+    "description": "Добычной горизонт 0 м с 3 очистными блоками: связан с уклонами ТУ-1 и ТУ-2, воздух поступает по стволу ВС-2 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на участковую насосную горизонта −50 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -363,6 +372,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт −50 м",
+    "description": "Горизонт −50 м в подготовке с 3 очистными блоками: связан с уклоном ТУ-1, воздух поступает по стволу ВС-2 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на участковую насосную горизонта −50 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -401,6 +411,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт −100 м (проект)",
+    "description": "Планируется: горизонт −100 м (проект) с 3 очистными блоками: связь с уклоном ТУ-1, воздух поступает по стволу ВС-2 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на участковую насосную горизонта −50 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -439,6 +450,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт −150 м (проект)",
+    "description": "Планируется: горизонт −150 м (проект): связь с уклоном ТУ-1, воздух поступает по стволу ВС-2 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на участковую насосную горизонта −50 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -477,6 +489,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт −200 м (проект)",
+    "description": "Планируется: горизонт −200 м (проект): связь с уклоном ТУ-1, воздух поступает по стволу ВС-2 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на участковую насосную горизонта −50 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -515,6 +528,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Горизонт −300 м (проект)",
+    "description": "Планируется: горизонт −300 м (проект): связь с уклоном ТУ-1, воздух поступает по стволу ВС-2 и уходит по вытяжным восстающим ВХВ 7, 8, 10, вода стекает на участковую насосную горизонта −50 м.",
     "_isType": false,
     "kind": "level",
     "type": "kz.sekis.type:level",
@@ -553,6 +567,7 @@
    "parent": "kz.sekis:lvl-p150",
    "attrs": {
     "name": "Блок 150-1",
+    "description": "Очистной блок 150-1 на горизонте +150 м: запас руды 90 тыс. т при содержании золота 1,75 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -597,6 +612,7 @@
    "parent": "kz.sekis:lvl-p150",
    "attrs": {
     "name": "Блок 150-2",
+    "description": "Очистной блок 150-2 на горизонте +150 м: запас руды 90 тыс. т при содержании золота 1,75 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -641,6 +657,7 @@
    "parent": "kz.sekis:lvl-p150",
    "attrs": {
     "name": "Блок 150-3",
+    "description": "Очистной блок 150-3 на горизонте +150 м: запас руды 90 тыс. т при содержании золота 1,75 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -685,6 +702,7 @@
    "parent": "kz.sekis:lvl-p100",
    "attrs": {
     "name": "Блок 100-1",
+    "description": "Очистной блок 100-1 на горизонте +100 м: запас руды 90 тыс. т при содержании золота 1,95 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -729,6 +747,7 @@
    "parent": "kz.sekis:lvl-p100",
    "attrs": {
     "name": "Блок 100-2",
+    "description": "Очистной блок 100-2 на горизонте +100 м: запас руды 90 тыс. т при содержании золота 1,95 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -773,6 +792,7 @@
    "parent": "kz.sekis:lvl-p100",
    "attrs": {
     "name": "Блок 100-3",
+    "description": "Очистной блок 100-3 на горизонте +100 м: запас руды 90 тыс. т при содержании золота 1,95 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -817,6 +837,7 @@
    "parent": "kz.sekis:lvl-p050",
    "attrs": {
     "name": "Блок 50-1",
+    "description": "Очистной блок 50-1 на горизонте +50 м: запас руды 90 тыс. т при содержании золота 2,15 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -861,6 +882,7 @@
    "parent": "kz.sekis:lvl-p050",
    "attrs": {
     "name": "Блок 50-2",
+    "description": "Очистной блок 50-2 на горизонте +50 м: запас руды 90 тыс. т при содержании золота 2,15 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -905,6 +927,7 @@
    "parent": "kz.sekis:lvl-p050",
    "attrs": {
     "name": "Блок 50-3",
+    "description": "Очистной блок 50-3 на горизонте +50 м: запас руды 90 тыс. т при содержании золота 2,15 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -949,6 +972,7 @@
    "parent": "kz.sekis:lvl-000",
    "attrs": {
     "name": "Блок 0-1",
+    "description": "Очистной блок 0-1 на горизонте 0 м: запас руды 90 тыс. т при содержании золота 2,35 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -993,6 +1017,7 @@
    "parent": "kz.sekis:lvl-000",
    "attrs": {
     "name": "Блок 0-2",
+    "description": "Очистной блок 0-2 на горизонте 0 м: запас руды 90 тыс. т при содержании золота 2,35 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -1037,6 +1062,7 @@
    "parent": "kz.sekis:lvl-000",
    "attrs": {
     "name": "Блок 0-3",
+    "description": "Очистной блок 0-3 на горизонте 0 м: запас руды 90 тыс. т при содержании золота 2,35 г/т, высота подэтажа 13–16 м, руда вывозится по уклонам ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -1081,6 +1107,7 @@
    "parent": "kz.sekis:lvl-m050",
    "attrs": {
     "name": "Блок −50-1",
+    "description": "Очистной блок −50-1 на горизонте −50 м: запас руды 90 тыс. т при содержании золота 2,45 г/т, высота подэтажа 13–16 м, руда вывозится по уклону ТУ-1.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -1124,6 +1151,7 @@
    "parent": "kz.sekis:lvl-m050",
    "attrs": {
     "name": "Блок −50-2",
+    "description": "Очистной блок −50-2 на горизонте −50 м: запас руды 90 тыс. т при содержании золота 2,45 г/т, высота подэтажа 13–16 м, руда вывозится по уклону ТУ-1.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -1167,6 +1195,7 @@
    "parent": "kz.sekis:lvl-m050",
    "attrs": {
     "name": "Блок −50-3",
+    "description": "Очистной блок −50-3 на горизонте −50 м: запас руды 90 тыс. т при содержании золота 2,45 г/т, высота подэтажа 13–16 м, руда вывозится по уклону ТУ-1.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -1210,6 +1239,7 @@
    "parent": "kz.sekis:lvl-m100",
    "attrs": {
     "name": "Блок −100-1",
+    "description": "Планируется: очистной блок −100-1 на горизонте −100 м: запас руды 90 тыс. т при содержании золота 2,55 г/т, высота подэтажа 13–16 м, руда вывозится по уклону ТУ-1.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -1253,6 +1283,7 @@
    "parent": "kz.sekis:lvl-m100",
    "attrs": {
     "name": "Блок −100-2",
+    "description": "Планируется: очистной блок −100-2 на горизонте −100 м: запас руды 90 тыс. т при содержании золота 2,55 г/т, высота подэтажа 13–16 м, руда вывозится по уклону ТУ-1.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -1296,6 +1327,7 @@
    "parent": "kz.sekis:lvl-m100",
    "attrs": {
     "name": "Блок −100-3",
+    "description": "Планируется: очистной блок −100-3 на горизонте −100 м: запас руды 90 тыс. т при содержании золота 2,55 г/т, высота подэтажа 13–16 м, руда вывозится по уклону ТУ-1.",
     "_isType": false,
     "kind": "stope",
     "type": "kz.sekis.type:stope",
@@ -1339,6 +1371,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Транспортный уклон ТУ-1",
+    "description": "Транспортный уклон ТУ-1: портал на отметке +430 м, глубина по проекту до −300 м, наклон 8°, сечение 18 м², расчётная длина 3966 м; обслуживает горизонты от +250 м до −50 м и выдаёт руду на рудный склад.",
     "_isType": false,
     "kind": "decline",
     "type": "kz.sekis.type:decline",
@@ -1384,6 +1417,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Транспортный уклон ТУ-2",
+    "description": "Транспортный уклон ТУ-2: портал на отметке +320 м, глубина по проекту до −200 м, наклон 8°, сечение 18 м², расчётная длина 2925 м; обслуживает горизонты от +250 м до 0 м и выдаёт руду на рудный склад.",
     "_isType": false,
     "kind": "decline",
     "type": "kz.sekis.type:decline",
@@ -1428,6 +1462,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Вентиляционный ствол ВС-1 (ствол «Секисовская»)",
+    "description": "Вентиляционный ствол ВС-1 (ствол «Секисовская»): подаёт свежий воздух, сечение 10,86 м², от +430 м до +325 м, вентилятор ВОД-16П.",
     "_isType": false,
     "kind": "shaft",
     "type": "kz.sekis.type:shaft",
@@ -1455,6 +1490,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Вентиляционный ствол ВС-2",
+    "description": "Вентиляционный ствол ВС-2: подаёт свежий воздух, сечение 10,8 м², от +430 м до +340 м, вентилятор Korfmann AL17-2000.",
     "_isType": false,
     "kind": "shaft",
     "type": "kz.sekis.type:shaft",
@@ -1482,6 +1518,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Вентиляционный ствол ВС-3 (мера В2, допущение)",
+    "description": "Планируется: вентиляционный ствол ВС-3 (мера В2, допущение модели): подача свежего воздуха, сечение 16 м², от +430 м до −200 м, вентилятор ВС-3.",
     "_isType": false,
     "kind": "shaft",
     "type": "kz.sekis.type:shaft",
@@ -1509,6 +1546,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Восстающий ВПВ",
+    "description": "Планируется: вентиляционный восстающий ВПВ (мера В1): подача свежего воздуха, сечение 7 м², от +324 м до −200 м, вентилятор ВПВ.",
     "_isType": false,
     "kind": "raise",
     "type": "kz.sekis.type:raise",
@@ -1536,6 +1574,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Восстающий ВХВ ТУ-1",
+    "description": "Вентиляционный восстающий ВХВ ТУ-1: сечение 5,6 м², от +200 м до −300 м.",
     "_isType": false,
     "kind": "raise",
     "type": "kz.sekis.type:raise",
@@ -1562,6 +1601,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Восстающий ВХВ ТУ-2",
+    "description": "Вентиляционный восстающий ВХВ ТУ-2: сечение 5,6 м², от +250 м до −200 м.",
     "_isType": false,
     "kind": "raise",
     "type": "kz.sekis.type:raise",
@@ -1588,6 +1628,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Вытяжные восстающие ВХВ 7, 8, 10",
+    "description": "Вытяжные восстающие ВХВ 7, 8, 10: отвод отработанного воздуха с горизонтов, суммарное сечение 10,75 м².",
     "_isType": false,
     "kind": "raise",
     "type": "kz.sekis.type:raise",
@@ -1612,6 +1653,7 @@
    "parent": "kz.sekis:shaft-vs1",
    "attrs": {
     "name": "Вентилятор ВОД-16П (ВС-1)",
+    "description": "Главный вентилятор ВОД-16П на стволе ВС-1: расход 150 м³/с, давление 2500 Па.",
     "_isType": false,
     "kind": "main_fan",
     "type": "kz.sekis.type:main_fan",
@@ -1641,6 +1683,7 @@
    "parent": "kz.sekis:lvl-p320",
    "attrs": {
     "name": "Подземная вентиляторная установка AL18-4500V",
+    "description": "Подземная вентиляторная установка AL18-4500V на горизонте +320 м: расход 102 м³/с, давление 2500 Па, подаёт воздух в уклоны ТУ-1 и ТУ-2.",
     "_isType": false,
     "kind": "main_fan",
     "type": "kz.sekis.type:main_fan",
@@ -1673,6 +1716,7 @@
    "parent": "kz.sekis:shaft-vs2",
    "attrs": {
     "name": "Вентилятор Korfmann AL17-2000 (ВС-2)",
+    "description": "Главный вентилятор Korfmann AL17-2000 на стволе ВС-2: расход 70 м³/с, давление 3000 Па (регулируется до 88 м³/с).",
     "_isType": false,
     "kind": "main_fan",
     "type": "kz.sekis.type:main_fan",
@@ -1702,6 +1746,7 @@
    "parent": "kz.sekis:raise-vpv",
    "attrs": {
     "name": "Вентилятор ВПВ (мера В1)",
+    "description": "Планируется: вентилятор на восстающем ВПВ (мера В1): расход 105 м³/с, давление 2500 Па, модель не определена.",
     "_isType": false,
     "kind": "main_fan",
     "type": "kz.sekis.type:main_fan",
@@ -1731,6 +1776,7 @@
    "parent": "kz.sekis:shaft-vs3",
    "attrs": {
     "name": "Вентилятор ВС-3 (мера В2)",
+    "description": "Планируется: вентилятор на стволе ВС-3 (мера В2, допущение модели): расход 240 м³/с, давление 2500 Па, модель не определена.",
     "_isType": false,
     "kind": "main_fan",
     "type": "kz.sekis.type:main_fan",
@@ -1760,6 +1806,7 @@
    "parent": "kz.sekis:lvl-p150",
    "attrs": {
     "name": "Главная водоотливная станция, гор. +150 м",
+    "description": "Главная водоотливная насосная на горизонте +150 м: 3 насоса по 300 м³/ч (2 рабочих, 1 резервный), зумпф 1800 м³, откачка в верхний илоотстойник.",
     "_isType": false,
     "kind": "pump_station",
     "type": "kz.sekis.type:pump_station",
@@ -1798,6 +1845,7 @@
    "parent": "kz.sekis:lvl-m050",
    "attrs": {
     "name": "Участковая насосная, гор. −50 м",
+    "description": "Участковая насосная на горизонте −50 м: 2 насоса по 150 м³/ч (1 рабочий, 1 резервный), зумпф 600 м³, откачка на главную водоотливную станцию горизонта +150 м.",
     "_isType": false,
     "kind": "pump_station",
     "type": "kz.sekis.type:pump_station",
@@ -1836,6 +1884,7 @@
    "parent": "kz.sekis:lvl-m200",
    "attrs": {
     "name": "Главная водоотливная станция, гор. −200 м (проект)",
+    "description": "Планируется: главная водоотливная насосная на горизонте −200 м (проект): 3 насоса по 300 м³/ч (2 рабочих, 1 резервный), зумпф 1800 м³, откачка на главную водоотливную станцию горизонта +150 м.",
     "_isType": false,
     "kind": "pump_station",
     "type": "kz.sekis.type:pump_station",
@@ -1874,6 +1923,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD30 № 1",
+    "description": "Подземный самосвал CAT AD30 № 1, грузоподъёмность 30 т, двигатель 304 кВт, приписан к уклону ТУ-2.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -1918,6 +1968,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD30 № 2",
+    "description": "Подземный самосвал CAT AD30 № 2, грузоподъёмность 30 т, двигатель 304 кВт, приписан к уклону ТУ-2.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -1962,6 +2013,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD30 № 3",
+    "description": "Подземный самосвал CAT AD30 № 3, грузоподъёмность 30 т, двигатель 304 кВт, приписан к уклону ТУ-2.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2006,6 +2058,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD30 № 4",
+    "description": "Подземный самосвал CAT AD30 № 4, грузоподъёмность 30 т, двигатель 304 кВт, приписан к уклону ТУ-2.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2050,6 +2103,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD45 № 5",
+    "description": "Подземный самосвал CAT AD45 № 5, грузоподъёмность 45 т, двигатель 439 кВт, приписан к уклону ТУ-1.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2094,6 +2148,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD45 № 6",
+    "description": "Подземный самосвал CAT AD45 № 6, грузоподъёмность 45 т, двигатель 439 кВт, приписан к уклону ТУ-1.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2138,6 +2193,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD45 № 7",
+    "description": "Подземный самосвал CAT AD45 № 7, грузоподъёмность 45 т, двигатель 439 кВт, приписан к уклону ТУ-1.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2182,6 +2238,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD45 № 8",
+    "description": "Подземный самосвал CAT AD45 № 8, грузоподъёмность 45 т, двигатель 439 кВт, приписан к уклону ТУ-1.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2226,6 +2283,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD45 № 9",
+    "description": "Подземный самосвал CAT AD45 № 9, грузоподъёмность 45 т, двигатель 439 кВт, приписан к уклону ТУ-2.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2270,6 +2328,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD45 № 10",
+    "description": "Подземный самосвал CAT AD45 № 10, грузоподъёмность 45 т, двигатель 439 кВт, приписан к уклону ТУ-2.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2314,6 +2373,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD45 № 11",
+    "description": "Подземный самосвал CAT AD45 № 11, грузоподъёмность 45 т, двигатель 439 кВт, приписан к уклону ТУ-1.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2358,6 +2418,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Самосвал CAT AD45 № 12",
+    "description": "Подземный самосвал CAT AD45 № 12, грузоподъёмность 45 т, двигатель 439 кВт, приписан к уклону ТУ-2.",
     "_isType": false,
     "kind": "haul_truck",
     "type": "kz.sekis.type:haul_truck",
@@ -2402,6 +2463,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1300 № 1",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1300 № 1, ковш 6,8 т, двигатель 123 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2433,6 +2495,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1300 № 2",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1300 № 2, ковш 6,8 т, двигатель 123 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2464,6 +2527,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1300 № 3",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1300 № 3, ковш 6,8 т, двигатель 123 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2495,6 +2559,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1700 № 4",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1700 № 4, ковш 15 т, двигатель 263 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2526,6 +2591,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1700 № 5",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1700 № 5, ковш 15 т, двигатель 263 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2557,6 +2623,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1700 № 6",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1700 № 6, ковш 15 т, двигатель 263 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2588,6 +2655,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1700 № 7",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1700 № 7, ковш 15 т, двигатель 263 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2619,6 +2687,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1700 № 8",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1700 № 8, ковш 15 т, двигатель 263 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2650,6 +2719,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1700 № 9",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1700 № 9, ковш 15 т, двигатель 263 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2681,6 +2751,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "ПДМ CAT R1700 № 10",
+    "description": "Погрузочно-доставочная машина (ПДМ) CAT R1700 № 10, ковш 15 т, двигатель 263 кВт: выпуск руды в очистных блоках и погрузка самосвалов.",
     "_isType": false,
     "kind": "lhd",
     "type": "kz.sekis.type:lhd",
@@ -2712,6 +2783,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Буровая установка Boomer S1D № 1",
+    "description": "Буровая установка Boomer S1D № 1: бурение в очистных блоках и переезды между блоками.",
     "_isType": false,
     "kind": "drill_rig",
     "type": "kz.sekis.type:drill_rig",
@@ -2741,6 +2813,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Буровая установка Boomer T1D № 2",
+    "description": "Буровая установка Boomer T1D № 2: бурение в очистных блоках и переезды между блоками.",
     "_isType": false,
     "kind": "drill_rig",
     "type": "kz.sekis.type:drill_rig",
@@ -2770,6 +2843,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Буровая установка Boomer S1D № 3",
+    "description": "Буровая установка Boomer S1D № 3: бурение в очистных блоках и переезды между блоками.",
     "_isType": false,
     "kind": "drill_rig",
     "type": "kz.sekis.type:drill_rig",
@@ -2799,6 +2873,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Буровая установка Boomer S1D № 4",
+    "description": "Буровая установка Boomer S1D № 4: бурение в очистных блоках и переезды между блоками.",
     "_isType": false,
     "kind": "drill_rig",
     "type": "kz.sekis.type:drill_rig",
@@ -2828,6 +2903,7 @@
    "parent": "kz.sekis:mine",
    "attrs": {
     "name": "Буровая установка Boomer S1D № 5",
+    "description": "Буровая установка Boomer S1D № 5: бурение в очистных блоках и переезды между блоками.",
     "_isType": false,
     "kind": "drill_rig",
     "type": "kz.sekis.type:drill_rig",
@@ -2857,6 +2933,7 @@
    "parent": "kz.sekis:enterprise",
    "attrs": {
     "name": "Водное хозяйство",
+    "description": "Водное хозяйство площадки: шахтная вода, потребление, оборотная вода и сброс; включает верхний и нижний илоотстойники и два поста мониторинга (выпуск в ручей Волчевка и пост на реке Секисовка).",
     "_isType": false,
     "kind": "water_system",
     "type": "kz.sekis.type:water_system",
@@ -2897,6 +2974,7 @@
    "parent": "kz.sekis:water",
    "attrs": {
     "name": "Илоотстойник верхний",
+    "description": "Верхний илоотстойник шахтной воды: объём 2265 м³, площадь 377,5 м², глубина 3 м, перелив в нижний илоотстойник.",
     "_isType": false,
     "kind": "settling_pond",
     "type": "kz.sekis.type:settling_pond",
@@ -2929,6 +3007,7 @@
    "parent": "kz.sekis:water",
    "attrs": {
     "name": "Илоотстойник нижний",
+    "description": "Нижний илоотстойник шахтной воды: объём 2265 м³, площадь 377,5 м², глубина 3 м, после него вода идёт в водное хозяйство площадки.",
     "_isType": false,
     "kind": "settling_pond",
     "type": "kz.sekis.type:settling_pond",
@@ -2961,6 +3040,7 @@
    "parent": "kz.sekis:water",
    "attrs": {
     "name": "Выпуск № 1 в ручей Волчевка",
+    "description": "Выпуск № 1 в ручей Волчевка: разрешённый сброс 218,8 м³/ч по эмиссионному разрешению 2020 г.",
     "_isType": false,
     "kind": "monitoring_point",
     "type": "kz.sekis.type:monitoring_point",
@@ -2990,6 +3070,7 @@
    "parent": "kz.sekis:water",
    "attrs": {
     "name": "Пост на реке Секисовка",
+    "description": "Пост мониторинга на реке Секисовка: учёт расхода воды, забираемой из реки; лимит в реестре не задан.",
     "_isType": false,
     "kind": "monitoring_point",
     "type": "kz.sekis.type:monitoring_point",
@@ -3017,6 +3098,7 @@
    "parent": "kz.sekis:enterprise",
    "attrs": {
     "name": "Обогатительная фабрика",
+    "description": "Обогатительная фабрика мощностью 1000 тыс. т руды в год на 3 действующих технологических линиях: принимает руду с рудного склада, получает воду из водного хозяйства, хвосты отправляет в хвостовое хозяйство.",
     "_isType": false,
     "kind": "plant",
     "type": "kz.sekis.type:plant",
@@ -3054,6 +3136,7 @@
    "parent": "kz.sekis:plant",
    "attrs": {
     "name": "Рудный склад",
+    "description": "Рудный склад перед фабрикой: принимает руду с уклонов ТУ-1 и ТУ-2 и питает технологические линии; запас на начало моделирования 94 264 т при содержании золота 2,05 г/т.",
     "_isType": false,
     "kind": "rom_stockpile",
     "type": "kz.sekis.type:rom_stockpile",
@@ -3090,6 +3173,7 @@
    "parent": "kz.sekis:plant",
    "attrs": {
     "name": "Технологическая линия № 1",
+    "description": "Технологическая линия № 1 обогатительной фабрики, производительность 41,36 т/ч, действующая.",
     "_isType": false,
     "kind": "plant_line",
     "type": "kz.sekis.type:plant_line",
@@ -3116,6 +3200,7 @@
    "parent": "kz.sekis:plant",
    "attrs": {
     "name": "Технологическая линия № 2",
+    "description": "Технологическая линия № 2 обогатительной фабрики, производительность 41,36 т/ч, действующая.",
     "_isType": false,
     "kind": "plant_line",
     "type": "kz.sekis.type:plant_line",
@@ -3142,6 +3227,7 @@
    "parent": "kz.sekis:plant",
    "attrs": {
     "name": "Технологическая линия № 3",
+    "description": "Технологическая линия № 3 обогатительной фабрики, производительность 41,36 т/ч, введена в декабре 2024 г.",
     "_isType": false,
     "kind": "plant_line",
     "type": "kz.sekis.type:plant_line",
@@ -3168,6 +3254,7 @@
    "parent": "kz.sekis:plant",
    "attrs": {
     "name": "Технологическая линия № 4 (проект)",
+    "description": "Планируется: технологическая линия № 4 обогатительной фабрики, производительность 49,63 т/ч.",
     "_isType": false,
     "kind": "plant_line",
     "type": "kz.sekis.type:plant_line",
@@ -3194,6 +3281,7 @@
    "parent": "kz.sekis:plant",
    "attrs": {
     "name": "Технологическая линия № 5 (проект)",
+    "description": "Планируется: технологическая линия № 5 обогатительной фабрики, производительность 49,63 т/ч.",
     "_isType": false,
     "kind": "plant_line",
     "type": "kz.sekis.type:plant_line",
@@ -3220,6 +3308,7 @@
    "parent": "kz.sekis:plant",
    "attrs": {
     "name": "Технологическая линия № 6 (проект)",
+    "description": "Планируется: технологическая линия № 6 обогатительной фабрики, производительность 62,04 т/ч.",
     "_isType": false,
     "kind": "plant_line",
     "type": "kz.sekis.type:plant_line",
@@ -3246,6 +3335,7 @@
    "parent": "kz.sekis:enterprise",
    "attrs": {
     "name": "Хвостовое хозяйство",
+    "description": "Хвостовое хозяйство фабрики площадью 1,53 км² (50°20'24\" с. ш., 82°36'30\" в. д.): действующая дамба № 4, дамбы № 2 и № 3 в резерве и планируемая новая карта (мера Х1, допущение модели).",
     "_isType": false,
     "kind": "tailings_facility",
     "type": "kz.sekis.type:tailings_facility",
@@ -3277,6 +3367,7 @@
    "parent": "kz.sekis:tailings",
    "attrs": {
     "name": "Хвостохранилище, дамба № 4",
+    "description": "Хвостохранилище, дамба № 4: действующая, ёмкость 3 181 950 т (2 357 000 м³), плотность хвостов 1,35 т/м³; ёмкость указана после реконструкции.",
     "_isType": false,
     "kind": "tailings_dam",
     "type": "kz.sekis.type:tailings_dam",
@@ -3306,6 +3397,7 @@
    "parent": "kz.sekis:tailings",
    "attrs": {
     "name": "Хвостохранилище, дамба № 2",
+    "description": "Хвостохранилище, дамба № 2: резервная, ёмкость 1 426 950 т (1 057 000 м³), плотность хвостов 1,35 т/м³.",
     "_isType": false,
     "kind": "tailings_dam",
     "type": "kz.sekis.type:tailings_dam",
@@ -3335,6 +3427,7 @@
    "parent": "kz.sekis:tailings",
    "attrs": {
     "name": "Хвостохранилище, дамба № 3",
+    "description": "Хвостохранилище, дамба № 3: резервная, ёмкость 1 426 950 т (1 057 000 м³), плотность хвостов 1,35 т/м³.",
     "_isType": false,
     "kind": "tailings_dam",
     "type": "kz.sekis.type:tailings_dam",
@@ -3364,6 +3457,7 @@
    "parent": "kz.sekis:tailings",
    "attrs": {
     "name": "Новая карта хвостохранилища (мера Х1, допущение)",
+    "description": "Планируется: новая карта хвостохранилища (мера Х1, допущение модели): ёмкость 6 000 000 т (4 444 444 м³), плотность хвостов 1,35 т/м³.",
     "_isType": false,
     "kind": "tailings_dam",
     "type": "kz.sekis.type:tailings_dam",
@@ -3393,6 +3487,7 @@
    "parent": "kz.sekis:enterprise",
    "attrs": {
     "name": "Сценарий (управляющий двойник)",
+    "description": "Управляющий двойник сценариев: ручки цели добычи (по умолчанию 1000 тыс. т в год), мер расширения и нарушений режима; их значения читают симулятор и советник.",
     "_isType": false,
     "kind": "scenario_control",
     "type": "kz.sekis.type:scenario_control",
@@ -3443,6 +3538,7 @@
    "parent": "kz.sekis:enterprise",
    "attrs": {
     "name": "Советник по расширению",
+    "description": "Советник по расширению предприятия «Секисовское»: находит самое узкое звено цепочки (откатка, вентиляция, очистные блоки, проходка, водоотлив, фабрика, водоснабжение, хвосты), следующую меру и достижимую добычу при выбранной цели.",
     "_isType": false,
     "kind": "advisor",
     "type": "kz.sekis.type:advisor",
