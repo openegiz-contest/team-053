@@ -1,43 +1,111 @@
-# <Team name>: a digital mine on OpenEgiz
+# Секисовское: цифровой двойник рудника на OpenEgiz
 
-> Team Repository of the contest “Digital Mine on OpenEgiz”. **Replace the contents of this file with the instructions for your Submission.** The AI Jury runs the Submission strictly by these instructions, from scratch, in the Judge Environment. Accepted languages: English, Kazakh, Russian.
+Цифровой двойник действующего подземного золотого рудника Секисовское (Восточно-Казахстанская область) на платформе OpenEgiz v1.0.4: забои, откатка по двум транспортным уклонам, вентиляция, водоотлив, рудный склад, обогатительная фабрика, вода и хвостохранилище — 96 двойников 22 типов в Eclipse Ditto. Имитатор процесса двигает двойников в сжатом времени, модуль «Советник по расширению» находит звено, которое первым ограничит выпуск при переработке 1,0 / 1,2 / 2,0 / 2,5 млн т руды в год, а веб-стенд показывает рудник в 3D и в продольном разрезе. Описание модели, сценариев и допущений — в [SUBMISSION.md](SUBMISSION.md).
 
-> **Start with the Concept**, the first section of [SUBMISSION.md](SUBMISSION.md): the Team writes it before any code. What AI agents build from this Template without a Concept is the Default Solution, published on the [contest site](https://openegiz-contest.github.io/) as the low bar: a Submission that does not go beyond it gets low levels in the Rubric. AI agents read [AGENTS.md](AGENTS.md).
+## Запуск
 
-## Running
-
-Requirements (Docker, `make`, Windows/WSL2 setup) are in [OPENEGIZ.md](OPENEGIZ.md) / [OPENEGIZ.ru.md](OPENEGIZ.ru.md).
+Чистая машина Ubuntu 24.04 с Docker Engine и Docker Compose v2 (2.20 или новее), пользователь в группе `docker`, доступ в интернет. Команды выполняются из корня репозитория:
 
 ```bash
-sudo apt install -y make   # if make is missing (clean Ubuntu)
-make up            # the OpenEgiz platform
-make example-mine  # the Example Mine: twins, simulator, dashboard
+sudo apt-get update && sudo apt-get install -y make
+make stand
+make stand-smoke
 ```
 
-Replace these commands with the commands of your Submission. The Submission must start by following these instructions without manual intervention (Rules, clause 6.4); downloading datasets and models and building are also listed here.
+Больше ничего не требуется: `bash`, `curl` и `python3`, которые нужны скриптам, в Ubuntu 24.04 уже есть.
 
-## What to open
+Что делает `make stand`:
 
-- Grafana: the address and login are printed by `make up`.
-- <where to see the mine visualization, which dashboards>
+1. Создаёт пароли и токены в `deploy/compose/.env` (`scripts/compose-env.sh`); существующий файл не трогает.
+2. Проверяет Docker, версию Compose, память и свободные порты (`scripts/compose-preflight.sh`).
+3. Запускает платформу OpenEgiz: Eclipse Ditto, MongoDB, InfluxDB, Telegraf, Mosquitto, Grafana. Если платформа не поднялась с первого раза, делает вторую попытку.
+4. Собирает образ команды `team053/sekis:local` (`team/Dockerfile`) и запускает контейнеры из `team/compose.yml`: `sekis-setup` создаёт в Ditto 22 типа и 96 двойников и сбрасывает сценарий, затем стартуют имитатор `sekis-sim`, советник `sekis-advisor` и стенд `sekis-stand`.
+5. Ждёт, пока стенд действительно работает (`scripts/stand-wait.sh`: `/api/state` отдаёт 96 двойников, часы имитации идут, советник отвечает; предел 300 с), и печатает адреса и вход администратора Grafana (`scripts/stand-urls.sh`).
 
-## Repository contents
+`make stand-twins` запускает только платформу и создаёт двойников, без имитатора, советника и стенда.
 
-| Path | Contents |
+Что скачивается при первом запуске:
+
+| Что | Откуда |
 |---|---|
-| `team/` | Directory for the Team's code. Using it is optional: any part may be changed, including the platform core |
-| `SUBMISSION.md` | Description of the Submission: **required** |
-| `presentation.pdf` | Presentation: **required**, in the repository root |
-| `AGENTS.md`, `CLAUDE.md` | Instructions for your AI agents (Codex, Claude Code and others read them automatically) |
-| `examples/mine/` | The Example Mine: shows how a digital mine is built on OpenEgiz. It is not a basis for the Submission |
-| `OPENEGIZ.md`, `OPENEGIZ.ru.md` | Documentation of the OpenEgiz platform v1.0.4 |
+| Образы платформы: `eclipse/ditto-*` 3.3.7, `mongo` 6.0, `influxdb` 2.7.4, `telegraf` 1.37, `eclipse-mosquitto` 2.0.18, `grafana` 12.3.0, `nginx` 1.25, `curlimages/curl`, `busybox`; базовый образ `python:3.12-slim` | Docker Hub |
+| Исходный код Ditto extended API (зафиксированный коммит), собирается локально | GitHub, `ertis-research/extended-api-for-eclipse-ditto` |
+| `paho-mqtt==2.1.0` | PyPI |
 
-The Submission is the `main` branch at the moment of the Freeze; other branches are not evaluated.
+Наборы данных не скачиваются: все параметры модели лежат в репозитории (`team/model/`).
 
-## License
+Время и память на машине разработки (Windows 11, WSL2, Docker Engine):
 
-The Submission is distributed under the MIT license, see [LICENSE](LICENSE). Copyright belongs to the Team: add the line `Copyright (c) 2026 <Team members>` to `LICENSE`.
+| Шаг | Время |
+|---|---|
+| Холодный старт платформы (`make up`) | 184 с, около 3 мин |
+| `make stand` при уже запущенной платформе | 55 с |
+| `make stand` с нуля на 8 vCPU | ещё не измерено |
+| `make stand-smoke` | около 25 с |
+
+<!-- время холодного старта: заполнить после прогона -->
+
+Все контейнеры вместе занимают около 3,7–3,9 ГБ памяти (часовой прогон: 3 740–3 880 МиБ); пределы памяти контейнеров в сумме 6,8 ГиБ.
+
+## Что открыть
+
+**Стенд: http://localhost:8088** — основной интерфейс.
+
+| Раздел стенда | Что в нём |
+|---|---|
+| Шапка | время имитации и смена, выдача руды, питание фабрики и золото за 24 ч, запас по воздуху, рудный склад, текущее узкое место |
+| «Рудник» | 3D-сцена и продольный разрез (переключатель «Сцена и разрез» / «3D-сцена» / «Продольный разрез»), ракурсы «Рудник», «Уклоны», «Вентиляция», «Водоотлив», «Фабрика и хвосты»; щелчок по объекту открывает карточку двойника |
+| «Сценарии» | цели переработки, «Снять узкое место», «Применить все меры», меры расширения с кнопками − / +, нарушения, «Шаг назад», «Сброс» |
+| «Советник по расширению», «Что изменилось» | мощности восьми звеньев против цели, следующий шаг, показатели; последствия последнего изменения |
+| «Советник по расширению: лестница мер и прогноз на десять лет» | меры и экономика для 1,0 / 1,2 / 2,0 / 2,5 млн т/год, прогноз 2027–2036 |
+| «Двойники» | дерево всех 96 двойников с признаками, атрибутами и связями |
+| «Проверка калибровки» | модель против отчётных цифр, проверки C1–C16 |
+| «Данные и допущения» | все 250 параметров модели со значением и источником |
+
+**Grafana: http://localhost:3000** — открывается без входа (роль Viewer) на дашборде «Секисовское — обзор». Три дашборда лежат в папке «Sekisovskoye»: «Секисовское — обзор», «Секисовское — подземный рудник», «Секисовское — вода и хвосты». Двойники и типы видны в приложении OpenEgiz, разделы Twins и Types: http://localhost:3000/a/ertis-opentwins-app/twins. Логин и пароль администратора (`admin / …`) печатает `make stand`; пароль хранится в `deploy/compose/.env` (`GRAFANA_ADMIN_PASSWORD`).
+
+**Время модели.** Одна секунда реального времени — одна минута работы рудника: смена 11 ч длится 11 минут, сутки — 24 минуты. Имитация начинается 1 января 2027 г. в 09:30, в первую смену (смена А 08:00–19:00, смена Б 20:00–07:00, между ними окна взрывных работ).
+
+## Остановка и очистка
+
+| Команда | Что делает |
+|---|---|
+| `make down` | останавливает платформу и стенд, данные сохраняются; снова запустить — `make stand` |
+| `make clean` | удаляет контейнеры, тома с данными, `deploy/compose/.env` и метку стенда; следующий `make stand` начинает с нуля |
+
+## Проверки
+
+| Команда | Что проверяет |
+|---|---|
+| `make stand-smoke` | работу стенда целиком, около 25 с (проверка движения самосвалов ждёт до 2 мин, если они стоят на пересменке); код возврата 0, только если всё в порядке |
+| `bash scripts/stand-soak.sh [минут]` | длительную работу, по умолчанию 60 мин (`make stand-soak` — то же на 60 мин) |
+| `cd team && python3 -m unittest discover -s tests` | 484 модульных теста модели, имитатора, советника, стенда и представлений, около 100 с |
+
+`make stand-smoke` проверяет: четыре контейнера команды работают (`sekis-setup` завершился с кодом 0); в Ditto 96 двойников `kz.sekis` и 22 типа `kz.sekis.type`; стенд отвечает на `/healthz` в режиме live; часы имитации идут; значение имитатора доходит до InfluxDB через Telegraf; советник называет узкое звено; сценарий «закрыть уклон ТУ-2» закрывает `kz.sekis:decline-tu2` и снижает мощность откатки, «Шаг назад» возвращает и то и другое, «Сброс» возвращает базовый режим; страница стенда не обращается к внешним адресам; Grafana отвечает, список двойников в приложении OpenEgiz виден без входа; в движении не меньше трёх самосвалов. В конце сценарий остаётся базовым.
+
+`scripts/stand-soak.sh` ставит цель 2,5 млн т/год со всеми мерами советника, раз в минуту снимает показания и отмечает отставание часов имитации, память контейнеров выше 90 % предела, перезапуски, ошибки в журналах, состояние Ditto и поток MQTT выше 20 сообщений в секунду; в конце возвращает базовый режим.
+
+Модульным тестам на хосте нужен только Python 3 (в Ubuntu 24.04 — 3.12); без пакета `paho-mqtt` два теста службы советника пропускаются. `make stand-test` запускает все тесты внутри образа команды.
+
+## Устройство репозитория
+
+| Путь | Содержимое |
+|---|---|
+| `team/model/` | `params.json` (250 параметров с источником `FACT` или `ASSUMPTION`), `registry.json` (22 типа и 96 двойников), `geometry.json` (геометрия сцены, создаётся `team/sekis/geometry.py`) |
+| `team/sekis/` | библиотека мощностей звеньев `capacity.py`, имитатор `sim/` и его служба `sim_service.py`, советник `advisor/`, создание двойников `setup_twins.py` |
+| `team/stand/` | сервер стенда `server.py` и страница `web/` (3D-сцена `js/scene3d/`, разрез `js/section2d/`, панели `js/panels/`, three.js в `web/vendor/three/`) |
+| `team/tests/` | модульные тесты |
+| `team/compose.yml`, `team/Dockerfile` | службы команды поверх платформы |
+| `team/research/` | выписки из открытых источников с адресами |
+| `deploy/compose/grafana/dashboards/Sekisovskoye/` | три дашборда Grafana |
+| `scripts/stand-*.sh` | ожидание запуска, адреса, проверки `stand-smoke` и `stand-soak` |
+| `Makefile` | цели `stand`, `stand-twins`, `stand-test`, `stand-smoke`, `stand-soak` |
+| остальное | шаблон платформы OpenEgiz v1.0.4: службы платформы не изменены (из файлов шаблона изменены только `Makefile`, `.gitignore`, `LICENSE`, `README.md`, `SUBMISSION.md`; добавлен `.gitattributes`); вход в Grafana без пароля включает `team/compose.yml`; `examples/mine` не используется |
+
+## Лицензия
+
+Код распространяется по лицензии MIT, см. [LICENSE](LICENSE). Части платформы, взятые из OpenTwins, остаются под Apache License 2.0, подробности — в [NOTICE](NOTICE). В `team/stand/web/vendor/three/` лежит three.js r160 (лицензия MIT, файл `LICENSE` в той же папке).
 
 ---
 
-Platform: [aleka07/openegiz](https://github.com/aleka07/openegiz). If the platform was useful to you, support the project with a star on GitHub.
+Платформа: [aleka07/openegiz](https://github.com/aleka07/openegiz).
