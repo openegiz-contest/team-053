@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Секисовское: цифровой двойник рудника на OpenEgiz</title>
+<style>
+@page { size: 1600px 900px; margin: 0 }
+:root {
+  --bg: #0b1016; --surface: #121921; --surface-2: #18212b; --surface-3: #202b37;
+  --line: #273341; --line-strong: #3a4959;
+  --text: #e9eef4; --text-2: #a8b5c3; --text-3: #73839a;
+  --accent: #ff8a24; --accent-soft: rgba(255, 138, 36, 0.14);
+  --ok: #3ec79a; --warn: #f2dc5c; --fail: #dc4046; --fail-text: #f2777c;
+  --flood: #58a6e6; --bar: #6f8399;
+  --font: "Segoe UI", Arial, sans-serif;
+  --mono: Consolas, "Cascadia Mono", "Courier New", monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.slide { width: 1600px; height: 900px; position: relative; overflow: hidden; background: var(--bg);
+  padding: 46px 72px 78px; display: flex; flex-direction: column; break-after: page; page-break-after: always; }
+.slide:last-child { break-after: auto; page-break-after: auto; }
+.kicker { font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); margin: 0 0 10px; }
+.kicker b { color: var(--text-2); font-weight: 600; }
+h1 { font-size: 38px; line-height: 1.2; font-weight: 650; margin: 0 0 26px; max-width: 1440px; letter-spacing: -0.005em; }
+h1 .acc { color: var(--accent); }
+h2 { font-size: 21px; font-weight: 600; margin: 0 0 10px; color: var(--text); }
+p { margin: 0 0 10px; }
+.body { flex: 1; min-height: 0; display: flex; gap: 28px; }
+.foot { position: absolute; left: 72px; right: 72px; bottom: 22px; display: flex; justify-content: space-between;
+  align-items: flex-end; font-size: 15px; color: var(--text-3); gap: 30px; }
+.foot .where b { color: var(--text-2); font-weight: 600; }
+.foot .pg { white-space: nowrap; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; }
+.muted { color: var(--text-2); }
+.dim { color: var(--text-3); }
+.num { font-variant-numeric: tabular-nums; }
+.shot { display: block; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.cap { font-size: 14px; color: var(--text-3); margin-top: 7px; line-height: 1.35; }
+.cap b { color: var(--text-2); font-weight: 600; }
+.acc { color: var(--accent); }
+.ok { color: var(--ok); }
+.fail { color: var(--fail-text); }
+ul.clean { list-style: none; padding: 0; margin: 0; }
+ul.clean li { position: relative; padding-left: 20px; margin: 0 0 11px; line-height: 1.38; }
+ul.clean li::before { content: ""; position: absolute; left: 2px; top: 0.62em; width: 7px; height: 7px; border-radius: 2px; background: var(--line-strong); }
+.tag { display: inline-block; font-size: 13px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--text-2); white-space: nowrap; }
+.mono { font-family: var(--mono); }
+
+/* 1 title */
+.title-slide { padding: 0; }
+.title-slide .bgimg { position: absolute; right: -60px; top: 60px; width: 940px; opacity: 0.55;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 38%); mask-image: linear-gradient(90deg, transparent 0%, #000 38%); }
+.title-slide .inner { position: absolute; left: 84px; top: 150px; width: 820px; }
+.title-slide .over { font-size: 18px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); margin-bottom: 22px; }
+.title-slide h1 { font-size: 60px; line-height: 1.1; margin-bottom: 26px; font-weight: 700; }
+.title-slide .sub { font-size: 24px; line-height: 1.4; color: var(--text-2); margin-bottom: 70px; max-width: 700px; }
+.title-slide .meta { font-size: 21px; line-height: 1.75; color: var(--text); border-left: 3px solid var(--accent); padding-left: 20px; }
+.title-slide .meta span { color: var(--text-3); }
+
+/* KPI tiles */
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 22px 22px 20px; }
+.kpi .l { font-size: 17px; color: var(--text-2); margin-bottom: 6px; }
+.kpi .v { font-size: 54px; font-weight: 650; line-height: 1.05; letter-spacing: -0.01em; }
+.kpi .v small { font-size: 20px; font-weight: 500; color: var(--text-2); margin-left: 4px; letter-spacing: 0; }
+.kpi .s { font-size: 15px; color: var(--text-3); margin-top: 6px; }
+
+/* flow lanes */
+.lane { display: flex; align-items: center; gap: 0; margin-bottom: 6px; }
+.lane .lbl { width: 92px; font-size: 17px; font-weight: 600; flex: none; }
+.chip { background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: 6px; padding: 7px 11px; font-size: 15.5px; line-height: 1.2; white-space: nowrap; }
+.chip small { color: var(--text-3); font-size: 13px; margin-left: 4px; }
+.arr { color: var(--text-3); font-size: 18px; padding: 0 7px; flex: none; }
+.links { font-family: var(--mono); font-size: 12.5px; color: var(--text-3); margin: 0 0 16px 92px; }
+
+/* tree */
+.tree { font-size: 16.5px; line-height: 1.5; }
+.tree .row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgba(39, 51, 65, 0.6); padding: 2.5px 0; }
+.tree .row .n { font-weight: 650; min-width: 30px; text-align: right; }
+.tree .row .k { font-family: var(--mono); font-size: 12.5px; color: var(--text-3); align-self: center; }
+.tree .l0 { font-weight: 650; }
+.tree .l1 { padding-left: 18px; }
+.tree .l2 { padding-left: 38px; }
+.tree .row > span:first-child { flex: 1; }
+
+/* tables */
+table.t { border-collapse: collapse; width: 100%; font-size: 15.5px; }
+table.t th { text-align: left; font-weight: 600; color: var(--text-2); font-size: 14px; padding: 6px 8px; border-bottom: 1px solid var(--line-strong); }
+table.t td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.28; }
+table.t td.r, table.t th.r { text-align: right; white-space: nowrap; }
+table.t tr.hl td { background: rgba(220, 64, 70, 0.10); }
+table.t tr.ref td { background: rgba(159, 179, 200, 0.07); }
+.basis { font-size: 13.5px; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+.b-fit { background: #202b37; color: var(--text-2); }
+.b-ind { background: rgba(62, 199, 154, 0.16); color: #7fe0bd; }
+.b-id { background: transparent; border: 1px solid var(--line-strong); color: var(--text-2); }
+.res-ok { color: var(--ok); white-space: nowrap; }
+.res-ref { color: var(--text-2); white-space: nowrap; }
+.res-fail { color: var(--fail-text); white-space: nowrap; font-weight: 600; }
+
+/* step chips (ladder) */
+.steps { display: grid; grid-template-columns: repeat(15, 1fr); gap: 5px; }
+.st { background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; padding: 5px 4px 6px; font-size: 13.5px; line-height: 1.2; text-align: center; min-height: 58px; }
+.st b { display: block; font-size: 13px; color: var(--text-3); font-weight: 600; margin-bottom: 2px; }
+.st.zero { border-color: var(--warn); border-style: dashed; }
+.grp { display: grid; grid-template-columns: 2fr 4fr 6fr 3fr; gap: 5px; margin-top: 6px; font-size: 14px; color: var(--text-2); text-align: center; }
+.grp div { border-top: 2px solid var(--line-strong); padding-top: 4px; }
+
+.callout { border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 8px 8px 0; padding: 14px 18px; }
+.callout.cwarn { border-left-color: var(--warn); }
+.callout.cfail { border-left-color: var(--fail); }
+.callout.cok { border-left-color: var(--ok); }
+.bignum { font-size: 120px; font-weight: 700; line-height: 0.95; color: var(--accent); letter-spacing: -0.02em; }
+.bignum small { font-size: 30px; color: var(--text-2); font-weight: 500; letter-spacing: 0; }
+.stephead { font-size: 15px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 8px; }
+.stephead b { color: var(--text); letter-spacing: 0.02em; }
+.badge { position: absolute; z-index: 2; left: 10px; bottom: 10px; background: rgba(11, 16, 22, 0.88); border: 1px solid var(--line-strong); border-radius: 5px; padding: 5px 10px; font-size: 15px; line-height: 1.3; color: var(--text); }
+.badge.r { border-left: 3px solid var(--fail); }
+.badge.y { border-left: 3px solid var(--warn); }
+.badge.b { border-left: 3px solid var(--flood); }
+pre.cmd { font-family: var(--mono); font-size: 21px; line-height: 1.6; background: #070a0e; border: 1px solid var(--line); border-radius: 8px; padding: 18px 22px; margin: 0; color: #d6e2ee; }
+pre.cmd .c { color: var(--text-3); }
+</style>
+</head>
+<body>
+
+<!-- 1 -->
+<section class="slide title-slide">
+  <img class="bgimg" src="img/s01_section.jpg" alt="">
+  <div class="inner">
+    <div class="over">Цифровой двойник подземного рудника</div>
+    <h1>Секисовское: цифровой двойник рудника на OpenEgiz</h1>
+    <div class="sub">Золотой рудник в Восточно-Казахстанской области — от забоя до хвостохранилища — и вопрос, который предприятие ещё не решило: расширять ли переработку до 2,0–2,5&nbsp;млн&nbsp;т руды в год.</div>
+    <div class="meta">
+      Команда: Tomiyato<br>
+      Конкурс «Цифровой рудник на OpenEgiz», октябрь 2026<br>
+      Платформа OpenEgiz v1.0.4
+    </div>
+  </div>
+  <div class="foot" style="left:84px"><span class="where">Фон — продольный разрез рудника на стенде (<b>Стенд → «Рудник» → «Продольный разрез»</b>)</span><span class="pg">1 / 14</span></div>
+</section>
+
+<!-- 2 -->
+<section class="slide">
+  <div class="kicker"><b>Объект</b> · подземный золотой рудник AltynGold PLC (оператор — ДТОО «ГРП BAURGOLD»), 40&nbsp;км от Усть-Каменогорска</div>
+  <h1>Секисовское добывает 926&nbsp;тыс.&nbsp;т руды в год, а решение о расширении до 2,0–2,5&nbsp;млн&nbsp;т ещё не принято</h1>
+  <div class="body">
+    <div style="flex: 1.25">
+      <div class="dim" style="font-size:16px; margin-bottom:10px">2025 год, годовой отчёт компании</div>
+      <div class="kpis">
+        <div class="kpi"><div class="l">Добыто руды</div><div class="v num">926<small>тыс. т</small></div><div class="s">926&nbsp;422 т</div></div>
+        <div class="kpi"><div class="l">Переработано</div><div class="v num">967<small>тыс. т</small></div><div class="s">966&nbsp;592 т — больше добычи, со склада</div></div>
+        <div class="kpi"><div class="l">Содержание золота</div><div class="v num">2,05<small>г/т</small></div><div class="s">в переработанной руде</div></div>
+        <div class="kpi"><div class="l">Извлечение</div><div class="v num">85,07<small>%</small></div><div class="s">золота на фабрике</div></div>
+        <div class="kpi"><div class="l">Золото</div><div class="v num">53,9<small>тыс. унц.</small></div><div class="s">53&nbsp;852 унц.</div></div>
+        <div class="kpi"><div class="l">Фабрика</div><div class="v num">1,0<small>млн т/год</small></div><div class="s">паспортная мощность, три линии</div></div>
+      </div>
+      <div class="dim" style="font-size:16px; margin:22px 0 10px">I полугодие 2026 г., полугодовой отчёт</div>
+      <div class="kpis" style="grid-template-columns: repeat(3, 1fr)">
+        <div class="kpi" style="padding:14px 20px"><div class="l">Добыча × 2</div><div class="v num" style="font-size:36px">916<small>тыс. т/год</small></div></div>
+        <div class="kpi" style="padding:14px 20px"><div class="l">Переработка × 2</div><div class="v num" style="font-size:36px">997<small>тыс. т/год</small></div></div>
+        <div class="kpi" style="padding:14px 20px"><div class="l">Содержание</div><div class="v num" style="font-size:36px">1,76<small>г/т</small></div></div>
+      </div>
+      <p class="muted" style="font-size:18px; margin-top:16px; line-height:1.45">Рудник подземный: горизонты от +320 до −300&nbsp;м, руда поднимается самосвалами по двум транспортным уклонам ТУ-1 и ТУ-2.</p>
+    </div>
+    <div style="flex: 1">
+      <div class="card" style="height: 100%; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;">
+        <h2 style="font-size:23px">Открытый вопрос предприятия</h2>
+        <p class="dim" style="font-size:15px; margin-bottom:16px">Полугодовой отчёт AltynGold за I полугодие 2026 г., 29 сентября 2026 г.</p>
+        <ul class="clean" style="font-size:21px; line-height:1.45">
+          <li>Технические аспекты расширения переработки до <b>2,0–2,5&nbsp;млн&nbsp;т</b> в год изучаются; <b>инвестиционное решение ещё не принято</b>, обновление обещано до конца 2026&nbsp;г.</li>
+          <li>Ближайшая ступень — около <b>+200&nbsp;тыс.&nbsp;т</b> в год на действующей фабрике; новое дробильное и мельничное оборудование заказано.</li>
+          <li>Расчётная стоимость расширения до 2–2,5&nbsp;млн&nbsp;т в год — около <b>125&nbsp;млн&nbsp;долл.</b> (отчёт за 3-й квартал 2025&nbsp;г.).</li>
+          <li>В I полугодии 2026&nbsp;г. фабрика работала на паспортных 1&nbsp;млн&nbsp;т в год, а добыча отставала: переработка превысила её на 40&nbsp;130&nbsp;т.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">На стенде: <b>«Проверка калибровки»</b> (C1, C3, C5, C13, C16) и <b>«Данные и допущения»</b> — эти цифры с источниками</span><span class="pg">2 / 14</span></div>
+</section>
+
+<!-- 3 -->
+<section class="slide">
+  <div class="kicker"><b>Концепция</b> · пользователи и решение</div>
+  <h1>Двойник помогает главному инженеру выбрать ступени расширения: какое звено первым ограничит выпуск и сколько золота даст каждая ступень</h1>
+  <div class="body" style="flex-direction:column; gap:20px">
+  <div style="display:flex; gap:22px; flex:1; min-height:0">
+    <div class="card" style="flex:1">
+      <div class="stephead">Кто пользуется</div>
+      <p style="font-size:21px; line-height:1.45"><b>Главный инженер рудника и отдел планирования горных работ</b> — они отвечают за то, сколько руды рудник поднимет и переработает.</p>
+      <p style="font-size:21px; line-height:1.45"><b>Эколог предприятия</b> — ему важны вода и хвосты: сброс в ручей Волчевка против разрешения, оборотная вода, ёмкость хвостохранилища.</p>
+    </div>
+    <div class="card" style="flex:1.15; border-color: var(--line-strong)">
+      <div class="stephead">Какое решение</div>
+      <p style="font-size:21px; line-height:1.45">Наращивать ли переработку с 1 до <b>2,0–2,5&nbsp;млн&nbsp;т</b> руды в год и какими ступенями.</p>
+      <p style="font-size:19px; line-height:1.45" class="muted">Двойник показывает, какое звено ограничит выпуск на каждой ступени, и сколько золота ступень добавит.</p>
+      <p style="font-size:19px; line-height:1.45" class="muted">Цели на стенде: 1,0 / 1,2 / 2,0 / 2,5&nbsp;млн&nbsp;т в год; 1,2 — та самая ступень +200&nbsp;тыс.&nbsp;т на действующей фабрике.</p>
+    </div>
+    <div class="card" style="flex:1.05">
+      <div class="stephead">Почему этот объект</div>
+      <ul class="clean" style="font-size:18.5px">
+        <li>Настоящее решение, которое предприятие ещё не приняло, и публичные цифры, по которым модель можно проверить.</li>
+        <li>Секисовское — площадка казахстанско-японского проекта SATREPS «Smart Mining+» (Университет Хоккайдо и Назарбаев Университет, 2025–2030): поэтому каждый сценарий показывает не только золото, но и воду и хвосты.</li>
+        <li>Узкие места подземного рудника — уклоны, воздух, вода — не видны на обычном дашборде и требуют пространственной модели.</li>
+      </ul>
+    </div>
+  </div>
+  <div>
+    <div class="stephead" style="margin-bottom:10px">Восемь звеньев цепочки, которые советник сравнивает с целью</div>
+    <div style="display:flex; gap:10px; flex-wrap:nowrap">
+      <span class="chip" style="font-size:18px; padding:10px 16px">Очистные блоки</span><span class="chip" style="font-size:18px; padding:10px 16px">Проходка уклонов</span><span class="chip" style="font-size:18px; padding:10px 16px; border-color:var(--accent); color:var(--accent)">Откатка по уклонам</span><span class="chip" style="font-size:18px; padding:10px 16px">Вентиляция</span><span class="chip" style="font-size:18px; padding:10px 16px">Водоотлив</span><span class="chip" style="font-size:18px; padding:10px 16px">Фабрика</span><span class="chip" style="font-size:18px; padding:10px 16px">Водоснабжение</span><span class="chip" style="font-size:18px; padding:10px 16px">Хвостохранилище</span>
+    </div>
+    <div class="dim" style="font-size:15px; margin-top:8px">Оранжевым — узкое звено сегодня; так же стенд выделяет его на полосах советника.</div>
+  </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Советник по расширению»</b> и <b>«Сценарии» → цели переработки</b></span><span class="pg">3 / 14</span></div>
+</section>
+
+<!-- 4 -->
+<section class="slide">
+  <div class="kicker"><b>Модель двойника</b> · Eclipse Ditto в составе OpenEgiz</div>
+  <h1>96 двойников 22 типов повторяют цепочку рудника: от очистного блока до дамбы хвостохранилища</h1>
+  <div class="body" style="gap:34px">
+    <div style="width:520px; flex:none">
+      <div class="stephead">Иерархия <span class="mono" style="text-transform:none">_parents</span> · двойников</div>
+      <div class="tree">
+        <div class="row l0"><span>Предприятие «Секисовское»</span><span class="n">1</span></div>
+        <div class="row l1"><span>Подземный рудник</span><span class="n">1</span></div>
+        <div class="row l2"><span>Горизонты +320 … −300 м</span><span class="n">12</span></div>
+        <div class="row l2"><span>Очистные блоки</span><span class="n">18</span></div>
+        <div class="row l2"><span>Уклоны ТУ-1, ТУ-2</span><span class="n">2</span></div>
+        <div class="row l2"><span>Стволы ВС-1, ВС-2, ВС-3 · восстающие</span><span class="n">3 · 4</span></div>
+        <div class="row l2"><span>Главные вентиляторы · насосные станции</span><span class="n">5 · 3</span></div>
+        <div class="row l2"><span>Самосвалы · ПДМ · буровые установки</span><span class="n">12 · 10 · 5</span></div>
+        <div class="row l1"><span>Обогатительная фабрика · рудный склад · линии</span><span class="n">1 · 1 · 6</span></div>
+        <div class="row l1"><span>Хвостовое хозяйство · дамбы</span><span class="n">1 · 4</span></div>
+        <div class="row l1"><span>Водное хозяйство · илоотстойники · посты</span><span class="n">1 · 2 · 2</span></div>
+        <div class="row l1"><span>Сценарий · советник (управляющие)</span><span class="n">1 · 1</span></div>
+      </div>
+      <p class="dim" style="font-size:15px; margin-top:12px; line-height:1.4">Типы — <span class="mono">kz.sekis.type:&lt;kind&gt;</span>, двойники — <span class="mono">kz.sekis:&lt;name&gt;</span>; признаки обновляет имитатор, единицы записаны в атрибуте <span class="mono">units</span>.</p>
+    </div>
+    <div style="flex:1; min-width:0">
+      <div class="stephead">Технологические связи <span class="mono" style="text-transform:none">link_*</span></div>
+      <div class="lane"><span class="lbl" style="color:#e8b04a">Руда</span><span class="chip">Очистные блоки</span><span class="arr">→</span><span class="chip">Уклоны ТУ-1 / ТУ-2</span><span class="arr">→</span><span class="chip">Рудный склад</span><span class="arr">→</span><span class="chip">Линии фабрики</span><span class="arr">→</span><span class="chip">Дамба № 4</span></div>
+      <div class="links">link_ore_route · link_portal_to · link_feeds · link_tailings_to · link_active_dam</div>
+      <div class="lane"><span class="lbl" style="color:#9fd3ff">Воздух</span><span class="chip">Вентиляторы</span><span class="arr">⇄</span><span class="chip">Стволы ВС-1…3, ВПВ</span><span class="arr">→</span><span class="chip">Горизонты</span><span class="arr">→</span><span class="chip">Вытяжные ВХВ 7, 8, 10</span></div>
+      <div class="links">link_fan / link_airway · link_air_intake · link_air_exhaust</div>
+      <div class="lane"><span class="lbl" style="color:var(--flood)">Вода</span><span class="chip">Горизонты</span><span class="arr">→</span><span class="chip">Насосные −50, −200</span><span class="arr">→</span><span class="chip">Насосная +150</span><span class="arr">→</span><span class="chip">Илоотстойники</span><span class="arr">→</span><span class="chip">Фабрика · Волчевка</span></div>
+      <div class="links">link_drains_to · link_discharges_to · link_overflows_to · link_water_from · link_points</div>
+      <img class="shot" src="img/s04_openegiz_children.jpg" style="width:100%; margin-top:2px" alt="OpenEgiz: дочерние двойники предприятия">
+      <div class="cap"><b>Grafana → OpenEgiz → Twins</b>: корневой двойник <span class="mono">kz.sekis:enterprise</span> и его шесть дочерних — рудник, фабрика, хвосты, вода, сценарий, советник.</div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Двойники»</b> (дерево с признаками и связями) · <b>Grafana → OpenEgiz → Twins / Types</b></span><span class="pg">4 / 14</span></div>
+</section>
+
+<!-- 5 -->
+<section class="slide">
+  <div class="kicker"><b>Как это работает</b> · платформа OpenEgiz и три службы команды</div>
+  <h1>Имитатор, советник и стенд работают поверх OpenEgiz: телеметрия идёт через MQTT в Eclipse Ditto, история — в InfluxDB и Grafana</h1>
+  <div class="body" style="flex-direction:column; gap:14px">
+    <svg viewBox="0 0 1456 318" width="1456" height="318" style="display:block">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a8b5c3"/></marker>
+      </defs>
+      <style>
+        .bx { fill: #18212b; stroke: #3a4959; stroke-width: 1.5; }
+        .bt { fill: #121921; stroke: #3ec79a; stroke-width: 1.5; }
+        .t1 { font: 600 18px "Segoe UI", Arial, sans-serif; fill: #e9eef4; }
+        .t2 { font: 14px "Segoe UI", Arial, sans-serif; fill: #a8b5c3; }
+        .t3 { font: 13px Consolas, monospace; fill: #8b9bb0; }
+        .ln { stroke: #a8b5c3; stroke-width: 1.6; fill: none; marker-end: url(#ah); }
+        .grp { fill: none; stroke: #273341; stroke-width: 1.2; stroke-dasharray: 5 4; }
+        .gl { font: 600 13px "Segoe UI", Arial, sans-serif; fill: #73839a; letter-spacing: 0.08em; }
+      </style>
+      <rect class="grp" x="262" y="4" width="1192" height="140" rx="10"/>
+      <text class="gl" x="278" y="24">ПЛАТФОРМА OPENEGIZ v1.0.4 — СЛУЖБЫ НЕ ИЗМЕНЕНЫ</text>
+      <!-- row 1 -->
+      <rect class="bt" x="0" y="44" width="210" height="80" rx="7"/>
+      <text class="t1" x="16" y="74">Имитатор</text><text class="t2" x="16" y="96">sekis-sim, 1 с = 1 мин</text><text class="t2" x="16" y="114">сценарий — из Ditto</text>
+      <rect class="bx" x="300" y="44" width="180" height="80" rx="7"/>
+      <text class="t1" x="316" y="74">Mosquitto</text><text class="t2" x="316" y="96">MQTT, не больше</text><text class="t2" x="316" y="114">20 сообщений/с</text>
+      <rect class="bx" x="570" y="44" width="230" height="80" rx="7" style="stroke:#a8b5c3"/>
+      <text class="t1" x="586" y="74">Eclipse Ditto</text><text class="t2" x="586" y="96">96 двойников, 22 типа</text><text class="t2" x="586" y="114">MongoDB</text>
+      <rect class="bx" x="880" y="44" width="150" height="80" rx="7"/>
+      <text class="t1" x="896" y="74">Telegraf</text><text class="t2" x="896" y="96">события</text><text class="t3" x="896" y="114">opentwins/#</text>
+      <rect class="bx" x="1100" y="44" width="150" height="80" rx="7"/>
+      <text class="t1" x="1116" y="74">InfluxDB</text><text class="t2" x="1116" y="96">история</text><text class="t2" x="1116" y="114">признаков</text>
+      <rect class="bx" x="1300" y="44" width="146" height="80" rx="7"/>
+      <text class="t1" x="1316" y="74">Grafana</text><text class="t2" x="1316" y="96">3 дашборда,</text><text class="t2" x="1316" y="114">OpenEgiz Twins</text>
+      <path class="ln" d="M210,84 L298,84"/>
+      <path class="ln" d="M480,84 L568,84"/>
+      <path class="ln" d="M800,84 L878,84"/>
+      <path class="ln" d="M1030,84 L1098,84"/>
+      <path class="ln" d="M1250,84 L1298,84"/>
+      <text class="t3" x="214" y="140">telemetry/sekis/&lt;name&gt;</text>
+      <text class="t2" x="486" y="140">команда modify</text>
+      <!-- row 2 -->
+      <rect class="bt" x="300" y="210" width="290" height="96" rx="7"/>
+      <text class="t1" x="316" y="240">Советник по расширению</text><text class="t2" x="316" y="262">sekis-advisor: 8 звеньев, узкое место,</text><text class="t2" x="316" y="282">лестница мер, прогноз на 10 лет</text>
+      <rect class="bt" x="760" y="210" width="330" height="96" rx="7"/>
+      <text class="t1" x="776" y="240">Стенд · порт 8088</text><text class="t2" x="776" y="262">sekis-stand: 3D-сцена, разрез, сценарии,</text><text class="t2" x="776" y="282">советник, калибровка, допущения</text>
+      <rect class="bt" x="1150" y="210" width="296" height="96" rx="7" style="stroke:#3a4959; fill:#0f151c"/>
+      <text class="t2" x="1166" y="238" style="fill:#e9eef4; font-weight:600">Службы команды</text><text class="t2" x="1166" y="260">образ team053/sekis:local,</text><text class="t2" x="1166" y="280">Python 3.12 + paho-mqtt; three.js</text>
+      <!-- advisor publishes to MQTT, reads Ditto -->
+      <path class="ln" d="M390,210 L390,126"/>
+      <text class="t3" x="398" y="176">kz.sekis:advisor</text>
+      <path class="ln" d="M610,126 L530,208"/>
+      <text class="t2" x="560" y="186">читает каждую 1 с</text>
+      <!-- stand <-> ditto -->
+      <path class="ln" d="M720,126 L800,208"/>
+      <path class="ln" d="M850,208 L770,126"/>
+      <text class="t2" x="868" y="160">PUT kz.sekis:scenario</text>
+      <text class="t2" x="868" y="180">GET состояния каждую 1 с</text>
+      <!-- stand -> advisor -->
+      <path class="ln" d="M760,272 L592,272"/>
+      <text class="t3" x="610" y="296">POST /apply</text>
+    </svg>
+    <div style="display:flex; gap:26px; flex:1; min-height:0">
+      <div style="flex:1">
+        <ul class="clean" style="font-size:17.5px">
+          <li>Кнопки стенда пишут ступени мер и нарушения в двойник <span class="mono">kz.sekis:scenario</span>; имитатор и советник подхватывают новую ревизию — без изменения кода и контейнеров.</li>
+          <li>Советник считает по тем же формулам, что и имитатор, и через <span class="mono">POST /apply</span> сам вводит меры: так модуль меняет работу рудника.</li>
+          <li>Стенд читает двойников из Ditto каждую секунду, страница обновляется каждые 2&nbsp;с.</li>
+        </ul>
+      </div>
+      <div style="width:500px; flex:none">
+        <img class="shot" src="img/s05_grafana_overview.jpg" style="width:100%" alt="Grafana: Секисовское — обзор">
+        <div class="cap"><b>Grafana → «Секисовское — обзор»</b>: 3D-сцена стенда, руда, золото, узкое место, звенья против цели, история сценариев.</div>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд — http://localhost:8088</b> · <b>Grafana → папка «Sekisovskoye»</b></span><span class="pg">5 / 14</span></div>
+</section>
+
+<!-- 6 -->
+<section class="slide">
+  <div class="kicker"><b>Визуализация рудника</b> · three.js и SVG на стенде, без внешних запросов</div>
+  <h1>Рудник в 3D и в разрезе: отметки — по документам, план — схема</h1>
+  <div class="body" style="flex-direction:column; gap:12px">
+    <div style="display:flex; gap:24px">
+      <div style="flex:none">
+        <img class="shot" src="img/s06_scene3d.jpg" style="height:555px" alt="3D-сцена рудника">
+        <div class="cap" style="width:603px"><b>3D-сцена</b>: блоки по стадии цикла, самосвалы на уклонах, стрелки воздуха, насосные с уровнем в водосборнике.</div>
+      </div>
+      <div style="flex:none">
+        <img class="shot" src="img/s06_section.jpg" style="height:555px" alt="Продольный разрез рудника">
+        <div class="cap" style="width:819px"><b>Продольный разрез</b>: та же геометрия на плоскости X–Y, линейка отметок; все подписи и значения — текст страницы.</div>
+      </div>
+    </div>
+    <div style="display:flex; gap:18px">
+      <div class="callout cok" style="flex:1; font-size:16px; line-height:1.4; padding:10px 14px"><b>По источникам:</b> порталы уклонов +430 и +320&nbsp;м, уклон 8°, сечение 18&nbsp;м², горизонты через 50&nbsp;м, забои уклонов −50 и −34&nbsp;м, проектный низ −300 и −200&nbsp;м.</div>
+      <div class="callout cwarn" style="flex:1; font-size:16px; line-height:1.4; padding:10px 14px"><b>Схема:</b> положения выработок в плане — план горных работ не опубликован; на стенде это подписано под сценой.</div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Рудник»</b>: «3D-сцена», «Продольный разрез», ракурсы «Уклоны», «Вентиляция», «Водоотлив»; щелчок по объекту — карточка двойника</span><span class="pg">6 / 14</span></div>
+</section>
+
+<!-- 7 -->
+<section class="slide">
+  <div class="kicker"><b>Калибровка</b> · модель против отчётов компании</div>
+  <h1>Модель сверена с отчётами компании: 14 проверок из 16 в допуске, одна справочная, одна вне допуска — с понятной причиной</h1>
+  <div class="body" style="gap:24px">
+    <div style="flex:1; min-width:0">
+      <table class="t">
+        <thead><tr><th>№</th><th>Показатель</th><th>Основа</th><th class="r">Отчёт</th><th class="r">Модель</th><th class="r">Откл.</th><th class="r">Допуск</th><th>Результат</th></tr></thead>
+        <tbody>
+          <tr><td>C1</td><td>золото 2025 г., унц.</td><td><span class="basis b-fit">подгонка</span></td><td class="r">53&nbsp;852</td><td class="r">54&nbsp;133</td><td class="r">+0,52&nbsp;%</td><td class="r">±1,5&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C2</td><td>золото 2024 г., унц.</td><td><span class="basis b-fit">подгонка</span></td><td class="r">37&nbsp;279</td><td class="r">37&nbsp;308</td><td class="r">+0,08&nbsp;%</td><td class="r">±1,5&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C3</td><td>добыча руды, прогон имитатора, т/год</td><td><span class="basis b-fit">подгонка</span></td><td class="r">926&nbsp;422</td><td class="r">931&nbsp;410</td><td class="r">+0,54&nbsp;%</td><td class="r">±3&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C4</td><td>золото I пол. 2026 и 2025 гг., унц.</td><td><span class="basis b-fit">подгонка</span></td><td class="r">23&nbsp;906; 25&nbsp;081</td><td class="r">23&nbsp;827; 25&nbsp;219</td><td class="r">−0,33; +0,55&nbsp;%</td><td class="r">±1,5&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C5</td><td>извлечение при 2,29 / 2,05 / 2,04 / 1,76 г/т</td><td><span class="basis b-fit">подгонка</span></td><td class="r" colspan="2" style="text-align:center">отклонения от −0,10 до +0,21 п.п.</td><td class="r"></td><td class="r">±0,25 п.п.</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C6</td><td>потребность в воздухе базового парка, м³/с</td><td><span class="basis b-fit">подгонка</span></td><td class="r">322</td><td class="r">317,2</td><td class="r">−1,48&nbsp;%</td><td class="r">95–100&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C7</td><td>воздух при половине мощности парка, м³/с</td><td><span class="basis b-fit">подгонка</span></td><td class="r">252</td><td class="r">248,6</td><td class="r">−1,35&nbsp;%</td><td class="r">±3&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C8</td><td>переработка, прогон имитатора, т/год</td><td><span class="basis b-fit">подгонка</span></td><td class="r">1&nbsp;000&nbsp;000</td><td class="r">1&nbsp;002&nbsp;415</td><td class="r">+0,24&nbsp;%</td><td class="r">±3&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C9</td><td>осадок илоотстойников, т/год</td><td><span class="basis b-ind">независимая</span></td><td class="r">64,3</td><td class="r">64,8</td><td class="r">+0,77&nbsp;%</td><td class="r">±2&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C10</td><td>вода на площадку и фабрику, тыс. м³/год</td><td><span class="basis b-fit">подгонка</span></td><td class="r">1&nbsp;725,72</td><td class="r">1&nbsp;726,0</td><td class="r">+0,02&nbsp;%</td><td class="r">±0,5&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C11</td><td>баланс массы за прогон, т</td><td><span class="basis b-id">тождество</span></td><td class="r">—</td><td class="r">—</td><td class="r">0,00&nbsp;%</td><td class="r">±0,1&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C12</td><td>золото при 2&nbsp;000 тыс. т/год и 2,05 г/т, унц.</td><td><span class="basis b-ind">независимая</span></td><td class="r">более 100&nbsp;000</td><td class="r">112&nbsp;008</td><td class="r">—</td><td class="r">выше отч.</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C13</td><td>добыча I пол. 2026 г. × 2, т/год</td><td><span class="basis b-ind">независимая</span></td><td class="r">916&nbsp;402</td><td class="r">926&nbsp;110</td><td class="r">+1,06&nbsp;%</td><td class="r">±3&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+          <tr class="ref"><td>C14</td><td>прогноз компании на 2026 г. против модели при 1,76 г/т, унц.</td><td><span class="basis b-ind">независимая</span></td><td class="r">52&nbsp;000–55&nbsp;000</td><td class="r">47&nbsp;813</td><td class="r">−8,05&nbsp;%</td><td class="r">нет</td><td class="res-ref">справочно</td></tr>
+          <tr class="hl"><td>C15</td><td>переработка 2024 г. против мощности двух линий, т/год</td><td><span class="basis b-ind">независимая</span></td><td class="r">593&nbsp;612</td><td class="r">666&nbsp;667</td><td class="r">+12,31&nbsp;%</td><td class="r">±5&nbsp;%</td><td class="res-fail">вне допуска</td></tr>
+          <tr><td>C16</td><td>переработка I пол. 2026 г. × 2, т/год</td><td><span class="basis b-ind">независимая</span></td><td class="r">996&nbsp;662</td><td class="r">1&nbsp;000&nbsp;000</td><td class="r">+0,33&nbsp;%</td><td class="r">±3&nbsp;%</td><td class="res-ok">в допуске</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div style="width:330px; flex:none; display:flex; flex-direction:column; gap:14px">
+      <div class="card" style="padding:16px 18px; font-size:15.5px; line-height:1.42">
+        <b>Основа строки</b><br>
+        <span class="basis b-fit">подгонка</span> параметр подобран по этой цифре — 9 строк;<br>
+        <span class="basis b-ind">независимая</span> цифра ни для чего не подбиралась — 6;<br>
+        <span class="basis b-id">тождество</span> выполняется по построению — 1.
+      </div>
+      <div class="callout cfail" style="font-size:15.5px; line-height:1.42">
+        <b>C15 вне допуска.</b> В 2024&nbsp;г. добыто 750&nbsp;045&nbsp;т, а переработано 593&nbsp;612&nbsp;т: руды хватало, но фабрика работала ниже паспортной мощности двух линий, которую принимает модель.
+      </div>
+      <div class="callout" style="border-left-color:#9fb3c8; font-size:15.5px; line-height:1.42">
+        <b>C14 справочно:</b> модель сравнивается с прогнозом компании, а не с фактом. Прогноз 52–55&nbsp;тыс.&nbsp;унц. отвечает содержанию 1,91–2,01&nbsp;г/т — выше 1,76&nbsp;г/т I&nbsp;полугодия.
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Проверка калибровки»</b> — у каждой строки основа, источник и адрес отчёта; C3, C8, C11 — прогон имитатора 60 сут</span><span class="pg">7 / 14</span></div>
+</section>
+
+<!-- 8 -->
+<section class="slide">
+  <div class="kicker"><b>Узкое место сегодня</b> · базовый режим, цель 1&nbsp;000 тыс. т/год</div>
+  <h1>Сегодня выпуск ограничивает откатка по уклонам: <span class="acc">926&nbsp;тыс.&nbsp;т</span> руды в год при фабрике на 1&nbsp;000</h1>
+  <div class="body" style="gap:40px">
+    <div style="flex:none">
+      <img class="shot" src="img/s08_advisor.jpg" style="height:630px" alt="Советник по расширению, базовый режим">
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:22px">
+      <div style="display:flex; align-items:flex-end; gap:26px">
+        <div class="bignum num">926<small> тыс. т/год</small></div>
+        <div class="muted" style="font-size:19px; line-height:1.4; padding-bottom:8px">устойчивая база: 51,9&nbsp;тыс.&nbsp;унц. золота в год<br>при содержании 2,05&nbsp;г/т</div>
+      </div>
+      <ul class="clean" style="font-size:21px; line-height:1.45">
+        <li>Советник считает мощность восьми звеньев в тыс.&nbsp;т в год: <b class="acc">откатка 926</b>, вентиляция 958, очистные блоки 1&nbsp;024, проходка 1&nbsp;750, водоотлив не ограничивает (запас насосов ×2,54), фабрика 1&nbsp;000, водоснабжение 1&nbsp;000, хвостохранилище 1&nbsp;057.</li>
+        <li>Откатку делают пять самосвалов на двух однополосных уклонах с разминовками: один на ТУ-1, четыре на ТУ-2. Гружёные имеют приоритет, встречные ждут в разминовках.</li>
+        <li>Фабрика перерабатывает 1&nbsp;000&nbsp;тыс.&nbsp;т в год, пока не кончится рудный склад: 94,3&nbsp;тыс.&nbsp;т на начало, расход 167&nbsp;т в сутки — хватит на 564&nbsp;сут.</li>
+        <li>Следующая мера советника — самосвалы № 6–7, и он сразу предупреждает: воздуха на весь парк не хватит.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Советник по расширению»</b> (полосы звеньев против цели) · шапка → <b>«Узкое место»</b> · Grafana «Секисовское — обзор»</span><span class="pg">8 / 14</span></div>
+</section>
+
+<!-- 9 -->
+<section class="slide">
+  <div class="kicker"><b>Что если</b> · кнопка «Снять узкое место», нажатая дважды</div>
+  <h1>Самосвалы без воздуха руды не прибавляют: два новых ждут у портала, пока не запущен вентилятор ВПВ</h1>
+  <div class="body" style="gap:22px">
+    <div style="flex:0 0 700px">
+      <div class="stephead"><b>Шаг 1</b> · самосвалы № 6–7 на ТУ-1</div>
+      <div style="position:relative"><img class="shot" src="img/s09_scene_held.jpg" style="width:700px" alt="3D-сцена: самосвал № 6 ждёт воздуха"><span class="badge y" style="left:auto; right:10px; top:10px; bottom:auto">Самосвал № 6: «простой: нехватка воздуха»</span></div>
+      <div class="cap">Ракурс «Уклоны»: самосвал № 6 — «простой: нехватка воздуха» (жёлтое кольцо), горизонты подкрашены жёлтым — не хватает воздуха.</div>
+    </div>
+    <div style="flex:0 0 326px">
+      <div class="stephead">«Что изменилось» после шага 1</div>
+      <img class="shot" src="img/s09_changes.jpg" style="width:326px" alt="Что изменилось">
+      <div class="callout cwarn" style="margin-top:14px; font-size:16px; line-height:1.42">Откатка выросла до 1&nbsp;388, но выпуск остался 926: потребность всего парка 369,9&nbsp;м³/с при подаче 322. Узким стала вентиляция.</div>
+    </div>
+    <div style="flex:0 0 340px">
+      <div class="stephead"><b>Шаг 2</b> · вентилятор ВПВ</div>
+      <img class="shot" src="img/s09_advisor_vpv.jpg" style="width:340px" alt="Советник после шага 2">
+      <div class="cap">Подача 322 → 427&nbsp;м³/с, самосвалы в работе, вентиляция 1&nbsp;805; узким стала фабрика — цель 1&nbsp;000 достигнута, золото 56,0&nbsp;тыс.&nbsp;унц. (+4,1).</div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Сценарии» → «Снять узкое место»</b>, затем «Советник», «Что изменилось», «Рудник» → ракурсы «Уклоны» и «Вентиляция»; отмена — «Шаг назад»</span><span class="pg">9 / 14</span></div>
+</section>
+
+<!-- 10 -->
+<section class="slide">
+  <div class="kicker"><b>Решение</b> · лестница мер от базового режима к 1,0 / 1,2 / 2,0 / 2,5 млн т/год</div>
+  <h1>До 2,0&nbsp;млн&nbsp;т нужно 12 мер, и первые шесть — это ступень +200&nbsp;тыс.&nbsp;т: золото растёт с 51,9 до 112&nbsp;тыс.&nbsp;унц. в год</h1>
+  <div class="body" style="flex-direction:column; gap:14px">
+    <img class="shot" src="img/s10_ladder.jpg" style="height:388px; align-self:center" alt="Лестница мер по четырём целям">
+    <div>
+      <div class="steps">
+        <div class="st zero"><b>1</b>откатка: самосвалы № 6–7</div>
+        <div class="st"><b>2</b>вентиляция: ВПВ, 427 м³/с</div>
+        <div class="st"><b>3</b>фабрика: линии 1–3 на 1&nbsp;200</div>
+        <div class="st"><b>4</b>вода: оборот 0,6 м³/т</div>
+        <div class="st"><b>5</b>блоки: 4 → 5</div>
+        <div class="st"><b>6</b>хвосты: новая карта</div>
+        <div class="st"><b>7</b>фабрика: линии 4–5</div>
+        <div class="st zero"><b>8</b>блоки: 5 → 8</div>
+        <div class="st"><b>9</b>вентиляция: ВС-3, 667 м³/с</div>
+        <div class="st"><b>10</b>откатка: самосвалы № 8–10</div>
+        <div class="st"><b>11</b>вода: водозабор 150 м³/ч</div>
+        <div class="st"><b>12</b>проходка: 34 → 50 м/год</div>
+        <div class="st"><b>13</b>фабрика: линия 6</div>
+        <div class="st"><b>14</b>блоки: 8 → 10</div>
+        <div class="st"><b>15</b>откатка: № 11–12</div>
+      </div>
+      <div class="grp"><div>до 1,0 млн т</div><div>до 1,2 млн т</div><div>до 2,0 млн т</div><div>до 2,5 млн т</div></div>
+    </div>
+    <div style="display:flex; gap:18px">
+      <div class="callout cwarn" style="flex:1; font-size:15.5px; line-height:1.4; padding:10px 14px">Шаги 1 и 8 (пунктир) сами выпуск не поднимают: новым машинам не хватает воздуха до следующей меры по вентиляции. На шаге 8 цепочка даже падает с 1&nbsp;279 до 1&nbsp;161&nbsp;тыс.&nbsp;т — до ствола ВС-3.</div>
+      <div class="callout" style="flex:1.35; border-left-color:#9fb3c8; font-size:15.5px; line-height:1.4; padding:10px 14px">Экономика по ценам I&nbsp;полугодия 2026&nbsp;г.: золото 4&nbsp;615, AISC 1&nbsp;995&nbsp;долл./унц. (принят неизменным). 125&nbsp;млн&nbsp;долл. — расчётная стоимость всего расширения до 2–2,5&nbsp;млн&nbsp;т, без разбивки по ступеням; для 1,0 и 1,2 капзатраты не раскрыты. Окупаемость — капзатраты / годовая маржа, без освоения мощности, налогов и финансирования.</div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Советник по расширению: лестница мер и прогноз на десять лет»</b>; ввести меры — «Сценарии» → цель → «Применить все меры»</span><span class="pg">10 / 14</span></div>
+</section>
+
+<!-- 11 -->
+<section class="slide">
+  <div class="kicker"><b>Скрытое ограничение</b> · прогноз 2027–2036 для базового набора мер</div>
+  <h1>Скрытое ограничение — хвостохранилище: при нынешних дамбах ёмкость кончится в 2030&nbsp;г., и с 2031&nbsp;г. фабрика стоит</h1>
+  <div class="body" style="gap:28px">
+    <div style="flex:0 0 640px; display:flex; flex-direction:column; gap:12px">
+      <div class="stephead">Достижимый выпуск по годам, тыс. т (базовый режим)</div>
+      <svg viewBox="0 0 640 330" width="640" height="330" style="display:block">
+        <style>
+          .ax { stroke: #273341; stroke-width: 1; }
+          .yl { font: 13px "Segoe UI", Arial, sans-serif; fill: #73839a; }
+          .xl { font: 15px "Segoe UI", Arial, sans-serif; fill: #a8b5c3; }
+          .vl { font: 600 16px "Segoe UI", Arial, sans-serif; fill: #e9eef4; }
+          .tg { stroke: #e9eef4; stroke-width: 1.5; stroke-dasharray: 6 5; }
+        </style>
+        <!-- scale: 0..1100 kt -> y 290..20 ; 1 kt = 0.24545 px -->
+        <line class="ax" x1="44" y1="290" x2="636" y2="290"/>
+        <line class="ax" x1="44" y1="167.3" x2="636" y2="167.3" style="stroke-dasharray:2 4"/>
+        <text class="yl" x="38" y="294" text-anchor="end">0</text>
+        <text class="yl" x="38" y="171" text-anchor="end">500</text>
+        <line class="tg" x1="44" y1="44.5" x2="636" y2="44.5"/>
+        <text class="yl" x="38" y="48" text-anchor="end" style="fill:#e9eef4">1 000</text>
+        <text class="yl" x="634" y="38" text-anchor="end" style="fill:#e9eef4">цель 1 000</text>
+        <!-- bars: x start 56, step 58, width 40 -->
+        <rect x="56" y="62.7" width="40" height="227.3" fill="#6f8399"/><text class="vl" x="76" y="56" text-anchor="middle">926</text>
+        <rect x="114" y="70.8" width="40" height="219.2" fill="#6f8399"/><text class="vl" x="134" y="64" text-anchor="middle">893</text>
+        <rect x="172" y="77.9" width="40" height="212.1" fill="#6f8399"/><text class="vl" x="192" y="71" text-anchor="middle">864</text>
+        <rect x="230" y="170.2" width="40" height="119.8" fill="#dc4046"/><text class="vl" x="250" y="163" text-anchor="middle">488</text>
+        <g fill="#dc4046">
+          <rect x="288" y="286" width="40" height="4"/><rect x="346" y="286" width="40" height="4"/><rect x="404" y="286" width="40" height="4"/>
+          <rect x="462" y="286" width="40" height="4"/><rect x="520" y="286" width="40" height="4"/><rect x="578" y="286" width="40" height="4"/>
+        </g>
+        <text class="vl" x="453" y="268" text-anchor="middle" style="fill:#f2777c">0 — фабрика стоит: нет ёмкости</text>
+        <g class="xl" text-anchor="middle">
+          <text x="76" y="312">2027</text><text x="134" y="312">2028</text><text x="192" y="312">2029</text><text x="250" y="312">2030</text>
+          <text x="308" y="312">2031</text><text x="366" y="312">2032</text><text x="424" y="312">2033</text><text x="482" y="312">2034</text>
+          <text x="540" y="312">2035</text><text x="598" y="312">2036</text>
+        </g>
+        <rect x="56" y="326" width="0" height="0"/>
+      </svg>
+      <div style="display:flex; gap:18px; font-size:14.5px; color:var(--text-2)">
+        <span><i style="display:inline-block;width:12px;height:12px;background:#6f8399;border-radius:2px;margin-right:6px;vertical-align:-1px"></i>ограничивает откатка (работы уходят вглубь)</span>
+        <span><i style="display:inline-block;width:12px;height:12px;background:#dc4046;border-radius:2px;margin-right:6px;vertical-align:-1px"></i>ограничивает хвостохранилище</span>
+      </div>
+      <div class="callout cok" style="font-size:16px; line-height:1.42; padding:11px 16px">Мера советника — новая карта хвостохранилища (свободная ёмкость 3&nbsp;172 → 9&nbsp;172&nbsp;тыс.&nbsp;т): с ней ёмкости хватает до конца прогноза, 2036&nbsp;г.</div>
+    </div>
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:14px">
+      <img class="shot" src="img/s11_projection.jpg" style="width:100%" alt="Прогноз на 2027–2036 годы">
+      <ul class="clean" style="font-size:16.5px">
+        <li><b>Хвосты — часть каждой ступени.</b> Даже с новой картой запас хвостохранилища — 7,6 года на 1,2&nbsp;млн&nbsp;т, 4,6 на 2,0 и 3,7 на 2,5.</li>
+        <li><b>Вода — тоже.</b> На 1,2&nbsp;млн&nbsp;т нужна оборотная вода из хвостохранилища (0,6&nbsp;м³/т; звено 1&nbsp;000 → 1&nbsp;533), на 2,0 — ещё водозабор до 150&nbsp;м³/ч.</li>
+        <li class="dim" style="font-size:15px">Заполнение дамбы № 4 (90&nbsp;%) не опубликовано — это допущение; от него зависит год, когда ёмкость кончится.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Советник по расширению: лестница мер и прогноз на десять лет»</b> → «Прогноз на 2027–2036 годы» · Grafana «Секисовское — вода и хвосты»</span><span class="pg">11 / 14</span></div>
+</section>
+
+<!-- 12 -->
+<section class="slide">
+  <div class="kicker"><b>Нарушения</b> · кнопки раздела «Сценарии» → «Нарушения»</div>
+  <h1>При отказе двойник показывает последствия, а советник первым шагом предлагает ремонт и только потом меры расширения</h1>
+  <div class="body" style="gap:20px">
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:10px">
+      <div class="stephead"><b>Закрыт уклон ТУ-2</b></div>
+      <div style="height:330px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge r">ТУ-2: «закрыт · на уклоне: 0»</span><img src="img/s12_tu2_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="ТУ-2 закрыт"></div>
+      <img class="shot" src="img/s12_tu2_next.jpg" style="width:100%" alt="Советник: открыть уклон ТУ-2">
+      <div style="font-size:16px; line-height:1.4">ТУ-2 красный, самосвалы № 1–4 переходят на ТУ-1. Откатка <b>926 → 834</b>, золото <b>51,9 → 46,7</b>&nbsp;тыс.&nbsp;унц./год.</div>
+    </div>
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:10px">
+      <div class="stephead"><b>Отказ вентилятора ВС-2</b></div>
+      <div style="height:330px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge y">ВС-2: «отказ · 0 м³/с»; самосвал № 3 ждёт воздуха</span><img src="img/s12_vs2_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="Вентилятор ВС-2 отказал"></div>
+      <img class="shot" src="img/s12_vs2_next.jpg" style="width:100%" alt="Советник: восстановить вентилятор ВС-2">
+      <div style="font-size:16px; line-height:1.4">Подача <b>322 → 252</b>&nbsp;м³/с; самосвалы № 3–5 и ПДМ № 4 ждут воздуха. Вентиляция — <b>374</b>&nbsp;тыс.&nbsp;т/год, узкое звено.</div>
+    </div>
+    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:10px">
+      <div class="stephead"><b>Обесточена насосная +150</b></div>
+      <div style="height:330px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge b">гор. −50 м: «затопление»; водосборники 100&nbsp;%</span><img src="img/s12_ps_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="Насосная +150 обесточена"></div>
+      <img class="shot" src="img/s12_ps_next.jpg" style="width:100%" alt="Советник: восстановить насосную">
+      <div style="font-size:16px; line-height:1.4">Вода на поверхность не идёт: примерно через 9,5&nbsp;мин гор. −50&nbsp;м затоплен (снимок — через 12&nbsp;мин после отказа). Дефицит воды фабрики — <b>182,5</b>&nbsp;м³/ч.</div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Сценарии» → «Нарушения»</b>; «Рудник» → ракурсы «Уклоны» и «Водоотлив»; отмена — та же кнопка, «Шаг назад» или «Сброс»</span><span class="pg">12 / 14</span></div>
+</section>
+
+<!-- 13 -->
+<section class="slide">
+  <div class="kicker"><b>Данные и допущения</b> · что взято из источников, что принято и чего модель не знает</div>
+  <h1>Все исходные цифры — из открытых источников; 177 из 250 параметров — допущения, и у каждого есть обоснование</h1>
+  <div class="body" style="gap:22px">
+    <div class="card" style="flex:1">
+      <div class="stephead"><b>Источники</b> · 73 параметра</div>
+      <ul class="clean" style="font-size:18px">
+        <li>AltynGold: годовые отчёты за 2024 и 2025&nbsp;гг., полугодовой за I&nbsp;пол. 2026&nbsp;г., квартальные за 3-й кв. 2025 и 1-й кв. 2026&nbsp;г., итоги 2021 и I&nbsp;пол. 2022&nbsp;г.</li>
+        <li>Отчёт компетентного лица по JORC (EY, 2019): запасы до −400&nbsp;м.</li>
+        <li>Природоохранные документы рудника на ecoportal.kz: заключение скрининга 2022&nbsp;г. и отчёт о возможных воздействиях 2023&nbsp;г. — отметки, сечения, воздух 252 → 322&nbsp;м³/с, приток, водный баланс, хвостохранилище.</li>
+        <li>Проект SATREPS «Smart Mining+» (страницы JICA и JST).</li>
+        <li>Онтарио, Reg. 854 s.183.1(1): 0,06&nbsp;м³/с воздуха на кВт дизеля; спецификации дилеров Cat.</li>
+      </ul>
+    </div>
+    <div class="card" style="flex:1.05">
+      <div class="stephead"><b>Несущие допущения</b> · 177 параметров</div>
+      <ul class="clean" style="font-size:18px">
+        <li>Воздух: 180&nbsp;м³/с + 0,06&nbsp;м³/с на кВт дизеля в работе — воспроизводит 252 и 322&nbsp;м³/с (C6, C7).</li>
+        <li>Рудный склад 94&nbsp;264&nbsp;т на 1.01.2027 — сумма «добыто минус переработано» с 2020&nbsp;г.; нижняя граница.</li>
+        <li>Дамба № 4 заполнена на 90&nbsp;%, дамбы № 2 и 3 — по 1&nbsp;426&nbsp;950&nbsp;т; новая карта 6,0&nbsp;млн&nbsp;т — мера-допущение.</li>
+        <li>Вентилятор ВПВ +105&nbsp;м³/с, ствол ВС-3 +240&nbsp;м³/с; линии № 4–6.</li>
+        <li>Готовность самосвалов 0,80; коэффициент откатки 0,811 подобран под добычу 2025&nbsp;г.</li>
+        <li>Вода фабрики и площадки 1,123 и 0,603&nbsp;м³/т — из водного баланса ОВОС.</li>
+      </ul>
+    </div>
+    <div class="card" style="flex:1">
+      <div class="stephead"><b>Ограничения</b></div>
+      <ul class="clean" style="font-size:18px">
+        <li>Данных с рудника нет: всё, что движется на стенде, — выход имитатора (зерно 53).</li>
+        <li>План горных работ не опубликован: положения в плане — схема.</li>
+        <li>Центр откатки в формуле — +75&nbsp;м; при пяти блоках имитатор выдаёт на 4,5–6,3&nbsp;% больше.</li>
+        <li>Ожидание воздуха решается целыми машинами — мера по парку даёт ступенчатый результат.</li>
+        <li>Капзатраты известны только для расширения до 2–2,5&nbsp;млн&nbsp;т в целом; AISC при росте выпуска принят неизменным.</li>
+        <li>Работа независимая и не согласована с AltynGold или участниками SATREPS.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Данные и допущения»</b> (все 250 параметров, фильтр «факт / допущение») · выписки с цитатами — <span class="mono">team/research/</span></span><span class="pg">13 / 14</span></div>
+</section>
+
+<!-- 14 -->
+<section class="slide">
+  <div class="kicker"><b>Запуск</b> · чистая Ubuntu 24.04 с Docker Engine и Compose v2</div>
+  <h1>Три команды — и стенд работает: запуск с нуля занял около 7 минут</h1>
+  <div class="body" style="gap:34px">
+    <div style="flex:0 0 700px; display:flex; flex-direction:column; gap:18px">
+      <pre class="cmd"><span class="c"># из корня репозитория</span>
+sudo apt-get update &amp;&amp; sudo apt-get install -y make
+make stand
+make stand-smoke</pre>
+      <div class="kpis" style="grid-template-columns: repeat(3, 1fr)">
+        <div class="kpi"><div class="l">make stand с нуля</div><div class="v num">429<small>с</small></div><div class="s">образы удалены, свежий клон, WSL2: 8 ядер, 16 ГБ</div></div>
+        <div class="kpi"><div class="l">make stand-smoke</div><div class="v num">25<small>с</small></div><div class="s">стенд, Ditto, InfluxDB, советник, сценарий</div></div>
+        <div class="kpi"><div class="l">Память</div><div class="v num">≈4<small>ГБ</small></div><div class="s">пик при запуске 3&nbsp;989 МиБ</div></div>
+      </div>
+      <p class="dim" style="font-size:15.5px; line-height:1.45; margin:0">Ещё: 484 модульных теста; 60-минутный прогон на промежуточной сборке — ноль перезапусков и ошибок в журналах. Остановить — <span class="mono">make down</span>, очистить — <span class="mono">make clean</span>.</p>
+      <div class="card" style="padding:16px 20px">
+        <div class="stephead" style="margin-bottom:8px"><b>Разделы стенда</b></div>
+        <table class="t" style="font-size:16px">
+          <tr><td style="width:250px"><b>Рудник</b></td><td class="muted">3D-сцена, продольный разрез, ракурсы</td></tr>
+          <tr><td><b>Сценарии</b></td><td class="muted">цели, меры − / +, нарушения, «Шаг назад»</td></tr>
+          <tr><td><b>Советник</b>, «Что изменилось»</td><td class="muted">восемь звеньев против цели, следующая мера</td></tr>
+          <tr><td><b>Лестница мер и прогноз</b></td><td class="muted">1,0 / 1,2 / 2,0 / 2,5 млн т, 2027–2036</td></tr>
+          <tr><td><b>Двойники</b>, <b>Калибровка</b>, <b>Данные</b></td><td class="muted">96 двойников, C1–C16, 250 параметров</td></tr>
+        </table>
+      </div>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; gap:16px">
+      <div class="card" style="padding:18px 22px">
+        <div style="font-size:16px; color:var(--text-2)">Стенд</div>
+        <div class="mono" style="font-size:30px; margin:4px 0 8px">http://localhost:8088</div>
+        <div style="font-size:16px; color:var(--text-2)">Grafana — без входа: «Секисовское — обзор», «— подземный рудник», «— вода и хвосты»; OpenEgiz → Twins</div>
+        <div class="mono" style="font-size:30px; margin-top:4px">http://localhost:3000</div>
+      </div>
+      <div class="card" style="padding:18px 22px">
+        <div class="stephead" style="margin-bottom:10px"><b>С чего начать на стенде</b></div>
+        <ul class="clean" style="font-size:19px">
+          <li>«Сценарии» → <b>«Снять узкое место»</b> два раза: самосвалы ждут воздуха, затем вентилятор ВПВ.</li>
+          <li><b>«Цель 2,0 млн т/год»</b> → «Применить все меры»: ствол ВС-3, линии № 4–5, новая карта хвостохранилища.</li>
+          <li><b>«Закрыть уклон ТУ-2»</b>, затем «Шаг назад»; «Базовый режим» возвращает исходное состояние.</li>
+          <li>«Проверка калибровки», «Данные и допущения», «Двойники».</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="foot"><span class="where">Подробности запуска и проверки — <span class="mono">README.md</span>; модель, сценарии и допущения — <span class="mono">SUBMISSION.md</span></span><span class="pg">14 / 14</span></div>
+</section>
+
+</body>
+</html>
