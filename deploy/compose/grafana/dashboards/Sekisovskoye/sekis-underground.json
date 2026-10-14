@@ -1,0 +1,2152 @@
+{
+  "uid": "sekis-underground",
+  "title": "Секисовское — подземный рудник",
+  "description": "Движение самосвалов по уклонам ТУ-1 и ТУ-2, очистные блоки, проветривание и водоотлив подземного рудника. Симулятор работает в 60 раз быстрее реального времени, поэтому 30 минут на шкале — это 30 часов работы рудника.",
+  "tags": [
+    "sekisovskoye",
+    "рудник"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "weekStart": "monday",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "name": "Смена сценария",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "opentwins-influxdb"
+        },
+        "enable": true,
+        "hide": false,
+        "iconColor": "#ff8a24",
+        "target": {
+          "refId": "Anno",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "from(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\" and r.thingId == \"kz.sekis:scenario\"\n      and (r._field == \"value_revision_properties_value\" or r._field == \"value_label_properties_value\"))\n  |> keep(columns: [\"_time\", \"_field\", \"_value\"])\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> filter(fn: (r) => exists r.value_revision_properties_value and exists r.value_label_properties_value)\n  |> group()\n  |> sort(columns: [\"_time\"])\n  |> map(fn: (r) => ({_time: r._time, _field: \"Сценарий\",\n      _value: \"№ \" + string(v: int(v: r.value_revision_properties_value)) + \" · \" + r.value_label_properties_value}))\n  |> map(fn: (r) => ({_time: r._time, text: \"Сценарий \" + r._value}))"
+        }
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Дашборды «Секисовское»",
+      "type": "dashboards",
+      "tags": [
+        "sekisovskoye"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true,
+      "targetBlank": false,
+      "icon": "external link"
+    },
+    {
+      "title": "Стенд (3D и разрез)",
+      "type": "link",
+      "url": "http://localhost:8088/",
+      "targetBlank": true,
+      "icon": "external link",
+      "tooltip": "Веб-стенд двойника"
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Состояние рудника",
+      "description": "mine.state: добыча, взрывные работы, ограничение по воздуху или эвакуация.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_state_properties_value\": \"Состояние\"\n]\norder = [\"kz.sekis:mine/value_state_properties_value\": 1]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_state_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9fb3c8"
+          },
+          "displayName": "${__field.name}",
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "production": {
+                  "text": "добыча",
+                  "index": 0,
+                  "color": "#3ec79a"
+                },
+                "blast_window": {
+                  "text": "взрывные работы",
+                  "index": 1,
+                  "color": "#9fb3c8"
+                },
+                "restricted_air": {
+                  "text": "ограничение по воздуху",
+                  "index": 2,
+                  "color": "#f2dc5c"
+                },
+                "evacuation": {
+                  "text": "эвакуация",
+                  "index": 3,
+                  "color": "#dc4046"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^(?!Time$).+$/",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 32
+        }
+      },
+      "id": 1,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Самосвалов в работе",
+      "description": "mine.trucks_active",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_trucks_active_properties_value\": \"В работе\"\n]\norder = [\"kz.sekis:mine/value_trucks_active_properties_value\": 1]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_trucks_active_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9fb3c8"
+          },
+          "displayName": "${__field.name}",
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 32
+        }
+      },
+      "id": 2,
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Выдача руды на поверхность",
+      "description": "mine.ore_hoisted_tph: скорость выдачи руды по обоим уклонам.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_ore_hoisted_tph_properties_value\": \"Выдача\"\n]\norder = [\"kz.sekis:mine/value_ore_hoisted_tph_properties_value\": 1]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_ore_hoisted_tph_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9fb3c8"
+          },
+          "displayName": "${__field.name}",
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "unit": "suffix: т/ч"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 32
+        }
+      },
+      "id": 3,
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Запас по воздуху",
+      "description": "(подача − потребность) / подача, mine.air_margin_pct.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_air_margin_pct_properties_value\": \"Запас\"\n]\norder = [\"kz.sekis:mine/value_air_margin_pct_properties_value\": 1]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_air_margin_pct_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9fb3c8"
+          },
+          "displayName": "${__field.name}",
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 32
+        }
+      },
+      "id": 4,
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Машин в простое по воздуху",
+      "description": "Самосвалы и ПДМ, остановленные правилом проветривания (mine.units_held_vent).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_units_held_vent_properties_value\": \"В простое\"\n]\norder = [\"kz.sekis:mine/value_units_held_vent_properties_value\": 1]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_units_held_vent_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9fb3c8"
+          },
+          "displayName": "${__field.name}",
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 32
+        }
+      },
+      "id": 5,
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Объём затопления",
+      "description": "Вода, не откачанная насосными станциями (mine.flood_volume_m3).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_flood_volume_m3_properties_value\": \"Затопление\"\n]\norder = [\"kz.sekis:mine/value_flood_volume_m3_properties_value\": 1]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_flood_volume_m3_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#9fb3c8"
+          },
+          "displayName": "${__field.name}",
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "unit": "suffix: м³"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "area",
+        "textMode": "value",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 32
+        }
+      },
+      "id": 6,
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Движение на уклонах",
+      "description": "Среднее за минуту число самосвалов на однополосном уклоне и ждущих встречного в разминовках (decline.trucks_on_ramp, decline.trucks_waiting_in_bays).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:decline-tu1/value_trucks_on_ramp_properties_value\": \"ТУ-1: на уклоне\",\n  \"kz.sekis:decline-tu1/value_trucks_waiting_in_bays_properties_value\": \"ТУ-1: ждут в разминовках\",\n  \"kz.sekis:decline-tu2/value_trucks_on_ramp_properties_value\": \"ТУ-2: на уклоне\",\n  \"kz.sekis:decline-tu2/value_trucks_waiting_in_bays_properties_value\": \"ТУ-2: ждут в разминовках\"\n]\norder = [\"kz.sekis:decline-tu1/value_trucks_on_ramp_properties_value\": 1, \"kz.sekis:decline-tu1/value_trucks_waiting_in_bays_properties_value\": 2, \"kz.sekis:decline-tu2/value_trucks_on_ramp_properties_value\": 3, \"kz.sekis:decline-tu2/value_trucks_waiting_in_bays_properties_value\": 4]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_trucks_on_ramp_properties_value\" or r._field == \"value_trucks_waiting_in_bays_properties_value\")\n      and (r.thingId == \"kz.sekis:decline-tu1\" or r.thingId == \"kz.sekis:decline-tu2\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: 1m, fn: mean, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisSoftMax": 3
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ТУ-1: ждут в разминовках"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    4
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ТУ-2: ждут в разминовках"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    4
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ТУ-1: на уклоне"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ТУ-1: ждут в разминовках"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#86b6ef"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ТУ-2: на уклоне"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ТУ-2: ждут в разминовках"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#f0a37f"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "id": 7,
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Самосвалы ТУ-1: отметка",
+      "description": "Отметка самосвалов, закреплённых за уклоном: спуск и подъём видны как зубцы, стоянка — ровная линия у портала (haul_truck.elevation).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:truck-05/value_elevation_properties_value\": \"№ 5\",\n  \"kz.sekis:truck-06/value_elevation_properties_value\": \"№ 6\",\n  \"kz.sekis:truck-07/value_elevation_properties_value\": \"№ 7\",\n  \"kz.sekis:truck-08/value_elevation_properties_value\": \"№ 8\",\n  \"kz.sekis:truck-11/value_elevation_properties_value\": \"№ 11\"\n]\norder = [\"kz.sekis:truck-05/value_elevation_properties_value\": 1, \"kz.sekis:truck-06/value_elevation_properties_value\": 2, \"kz.sekis:truck-07/value_elevation_properties_value\": 3, \"kz.sekis:truck-08/value_elevation_properties_value\": 4, \"kz.sekis:truck-11/value_elevation_properties_value\": 5]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_elevation_properties_value\")\n      and (r.thingId == \"kz.sekis:truck-05\" or r.thingId == \"kz.sekis:truck-06\" or r.thingId == \"kz.sekis:truck-07\" or r.thingId == \"kz.sekis:truck-08\" or r.thingId == \"kz.sekis:truck-11\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: м",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 5"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 6"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 7"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#199e70"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 8"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 11"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d55181"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "interval": "4s",
+      "id": 8,
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Самосвалы ТУ-2: отметка",
+      "description": "Отметка самосвалов, закреплённых за уклоном: спуск и подъём видны как зубцы, стоянка — ровная линия у портала (haul_truck.elevation).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:truck-01/value_elevation_properties_value\": \"№ 1\",\n  \"kz.sekis:truck-02/value_elevation_properties_value\": \"№ 2\",\n  \"kz.sekis:truck-03/value_elevation_properties_value\": \"№ 3\",\n  \"kz.sekis:truck-04/value_elevation_properties_value\": \"№ 4\",\n  \"kz.sekis:truck-09/value_elevation_properties_value\": \"№ 9\",\n  \"kz.sekis:truck-10/value_elevation_properties_value\": \"№ 10\",\n  \"kz.sekis:truck-12/value_elevation_properties_value\": \"№ 12\"\n]\norder = [\"kz.sekis:truck-01/value_elevation_properties_value\": 1, \"kz.sekis:truck-02/value_elevation_properties_value\": 2, \"kz.sekis:truck-03/value_elevation_properties_value\": 3, \"kz.sekis:truck-04/value_elevation_properties_value\": 4, \"kz.sekis:truck-09/value_elevation_properties_value\": 5, \"kz.sekis:truck-10/value_elevation_properties_value\": 6, \"kz.sekis:truck-12/value_elevation_properties_value\": 7]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_elevation_properties_value\")\n      and (r.thingId == \"kz.sekis:truck-01\" or r.thingId == \"kz.sekis:truck-02\" or r.thingId == \"kz.sekis:truck-03\" or r.thingId == \"kz.sekis:truck-04\" or r.thingId == \"kz.sekis:truck-09\" or r.thingId == \"kz.sekis:truck-10\" or r.thingId == \"kz.sekis:truck-12\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: м",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 1"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 2"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 3"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#199e70"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 4"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#c98500"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 9"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d55181"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 10"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#008300"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "№ 12"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#9085e9"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "interval": "4s",
+      "id": 9,
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Состояния самосвалов",
+      "description": "Цикл каждого самосвала: спуск, погрузка, подъём с рудой, разгрузка, ожидания в разминовках и простои (haul_truck.state).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:truck-01/value_state_properties_value\": \"Самосвал № 01\",\n  \"kz.sekis:truck-02/value_state_properties_value\": \"Самосвал № 02\",\n  \"kz.sekis:truck-03/value_state_properties_value\": \"Самосвал № 03\",\n  \"kz.sekis:truck-04/value_state_properties_value\": \"Самосвал № 04\",\n  \"kz.sekis:truck-05/value_state_properties_value\": \"Самосвал № 05\",\n  \"kz.sekis:truck-06/value_state_properties_value\": \"Самосвал № 06\",\n  \"kz.sekis:truck-07/value_state_properties_value\": \"Самосвал № 07\",\n  \"kz.sekis:truck-08/value_state_properties_value\": \"Самосвал № 08\",\n  \"kz.sekis:truck-09/value_state_properties_value\": \"Самосвал № 09\",\n  \"kz.sekis:truck-10/value_state_properties_value\": \"Самосвал № 10\",\n  \"kz.sekis:truck-11/value_state_properties_value\": \"Самосвал № 11\",\n  \"kz.sekis:truck-12/value_state_properties_value\": \"Самосвал № 12\"\n]\norder = [\"kz.sekis:truck-01/value_state_properties_value\": 1, \"kz.sekis:truck-02/value_state_properties_value\": 2, \"kz.sekis:truck-03/value_state_properties_value\": 3, \"kz.sekis:truck-04/value_state_properties_value\": 4, \"kz.sekis:truck-05/value_state_properties_value\": 5, \"kz.sekis:truck-06/value_state_properties_value\": 6, \"kz.sekis:truck-07/value_state_properties_value\": 7, \"kz.sekis:truck-08/value_state_properties_value\": 8, \"kz.sekis:truck-09/value_state_properties_value\": 9, \"kz.sekis:truck-10/value_state_properties_value\": 10, \"kz.sekis:truck-11/value_state_properties_value\": 11, \"kz.sekis:truck-12/value_state_properties_value\": 12]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_state_properties_value\")\n      and (r.thingId == \"kz.sekis:truck-01\" or r.thingId == \"kz.sekis:truck-02\" or r.thingId == \"kz.sekis:truck-03\" or r.thingId == \"kz.sekis:truck-04\" or r.thingId == \"kz.sekis:truck-05\" or r.thingId == \"kz.sekis:truck-06\" or r.thingId == \"kz.sekis:truck-07\" or r.thingId == \"kz.sekis:truck-08\" or r.thingId == \"kz.sekis:truck-09\" or r.thingId == \"kz.sekis:truck-10\" or r.thingId == \"kz.sekis:truck-11\" or r.thingId == \"kz.sekis:truck-12\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "surface_haul": {
+                  "text": "на поверхности",
+                  "index": 0,
+                  "color": "#5fb7c9"
+                },
+                "descending": {
+                  "text": "спуск порожняком",
+                  "index": 1,
+                  "color": "#7ea2cf"
+                },
+                "tram_level": {
+                  "text": "движение по горизонту",
+                  "index": 2,
+                  "color": "#5f86b8"
+                },
+                "queue_load": {
+                  "text": "очередь на погрузку",
+                  "index": 3,
+                  "color": "#a493dc"
+                },
+                "loading": {
+                  "text": "погрузка",
+                  "index": 4,
+                  "color": "#7d62c9"
+                },
+                "hauling_up": {
+                  "text": "подъём с рудой",
+                  "index": 5,
+                  "color": "#d9a53a"
+                },
+                "dumping": {
+                  "text": "разгрузка",
+                  "index": 6,
+                  "color": "#3ec79a"
+                },
+                "waiting_bay": {
+                  "text": "ждёт в разминовке",
+                  "index": 7,
+                  "color": "#f2dc5c"
+                },
+                "held_vent": {
+                  "text": "простой: нехватка воздуха",
+                  "index": 8,
+                  "color": "#f29b5c"
+                },
+                "maintenance": {
+                  "text": "ремонт",
+                  "index": 9,
+                  "color": "#dc4046"
+                },
+                "shift_break": {
+                  "text": "пересменка",
+                  "index": 10,
+                  "color": "#5d6c80"
+                },
+                "parked": {
+                  "text": "на стоянке",
+                  "index": 11,
+                  "color": "#3a4656"
+                }
+              }
+            }
+          ],
+          "displayName": "${__field.name}",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5d6c80",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 1,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "left",
+        "rowHeight": 0.85,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "interval": "4s",
+      "id": 10,
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 13
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Состояния очистных блоков",
+      "description": "Цикл блока: бурение, заряжание, взрыв, проветривание, отгрузка руды, закладка (stope.state).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:stp-p150-1/value_state_properties_value\": \"Блок 150-1\",\n  \"kz.sekis:stp-p150-2/value_state_properties_value\": \"Блок 150-2\",\n  \"kz.sekis:stp-p150-3/value_state_properties_value\": \"Блок 150-3\",\n  \"kz.sekis:stp-p100-1/value_state_properties_value\": \"Блок 100-1\",\n  \"kz.sekis:stp-p100-2/value_state_properties_value\": \"Блок 100-2\",\n  \"kz.sekis:stp-p100-3/value_state_properties_value\": \"Блок 100-3\",\n  \"kz.sekis:stp-p050-1/value_state_properties_value\": \"Блок 50-1\",\n  \"kz.sekis:stp-p050-2/value_state_properties_value\": \"Блок 50-2\",\n  \"kz.sekis:stp-p050-3/value_state_properties_value\": \"Блок 50-3\",\n  \"kz.sekis:stp-000-1/value_state_properties_value\": \"Блок 0-1\",\n  \"kz.sekis:stp-000-2/value_state_properties_value\": \"Блок 0-2\",\n  \"kz.sekis:stp-000-3/value_state_properties_value\": \"Блок 0-3\",\n  \"kz.sekis:stp-m050-1/value_state_properties_value\": \"Блок −50-1\",\n  \"kz.sekis:stp-m050-2/value_state_properties_value\": \"Блок −50-2\",\n  \"kz.sekis:stp-m050-3/value_state_properties_value\": \"Блок −50-3\",\n  \"kz.sekis:stp-m100-1/value_state_properties_value\": \"Блок −100-1\",\n  \"kz.sekis:stp-m100-2/value_state_properties_value\": \"Блок −100-2\",\n  \"kz.sekis:stp-m100-3/value_state_properties_value\": \"Блок −100-3\"\n]\norder = [\"kz.sekis:stp-p150-1/value_state_properties_value\": 1, \"kz.sekis:stp-p150-2/value_state_properties_value\": 2, \"kz.sekis:stp-p150-3/value_state_properties_value\": 3, \"kz.sekis:stp-p100-1/value_state_properties_value\": 4, \"kz.sekis:stp-p100-2/value_state_properties_value\": 5, \"kz.sekis:stp-p100-3/value_state_properties_value\": 6, \"kz.sekis:stp-p050-1/value_state_properties_value\": 7, \"kz.sekis:stp-p050-2/value_state_properties_value\": 8, \"kz.sekis:stp-p050-3/value_state_properties_value\": 9, \"kz.sekis:stp-000-1/value_state_properties_value\": 10, \"kz.sekis:stp-000-2/value_state_properties_value\": 11, \"kz.sekis:stp-000-3/value_state_properties_value\": 12, \"kz.sekis:stp-m050-1/value_state_properties_value\": 13, \"kz.sekis:stp-m050-2/value_state_properties_value\": 14, \"kz.sekis:stp-m050-3/value_state_properties_value\": 15, \"kz.sekis:stp-m100-1/value_state_properties_value\": 16, \"kz.sekis:stp-m100-2/value_state_properties_value\": 17, \"kz.sekis:stp-m100-3/value_state_properties_value\": 18]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_state_properties_value\")\n      and (r.thingId == \"kz.sekis:stp-000-1\" or r.thingId == \"kz.sekis:stp-000-2\" or r.thingId == \"kz.sekis:stp-000-3\" or r.thingId == \"kz.sekis:stp-m050-1\" or r.thingId == \"kz.sekis:stp-m050-2\" or r.thingId == \"kz.sekis:stp-m050-3\" or r.thingId == \"kz.sekis:stp-m100-1\" or r.thingId == \"kz.sekis:stp-m100-2\" or r.thingId == \"kz.sekis:stp-m100-3\" or r.thingId == \"kz.sekis:stp-p050-1\" or r.thingId == \"kz.sekis:stp-p050-2\" or r.thingId == \"kz.sekis:stp-p050-3\" or r.thingId == \"kz.sekis:stp-p100-1\" or r.thingId == \"kz.sekis:stp-p100-2\" or r.thingId == \"kz.sekis:stp-p100-3\" or r.thingId == \"kz.sekis:stp-p150-1\" or r.thingId == \"kz.sekis:stp-p150-2\" or r.thingId == \"kz.sekis:stp-p150-3\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "drilling": {
+                  "text": "бурение",
+                  "index": 0,
+                  "color": "#7ea2cf"
+                },
+                "charging": {
+                  "text": "заряжание",
+                  "index": 1,
+                  "color": "#a493dc"
+                },
+                "awaiting_blast": {
+                  "text": "ожидает взрыва",
+                  "index": 2,
+                  "color": "#f2dc5c"
+                },
+                "ventilating": {
+                  "text": "проветривание",
+                  "index": 3,
+                  "color": "#c9d2dc"
+                },
+                "mucking": {
+                  "text": "отгрузка руды",
+                  "index": 4,
+                  "color": "#d9a53a"
+                },
+                "backfilling": {
+                  "text": "закладка",
+                  "index": 5,
+                  "color": "#a87650"
+                },
+                "standby": {
+                  "text": "в резерве",
+                  "index": 6,
+                  "color": "#5d6c80"
+                },
+                "preparation": {
+                  "text": "подготовка",
+                  "index": 7,
+                  "color": "#8698b0"
+                },
+                "flooded": {
+                  "text": "затопление",
+                  "index": 8,
+                  "color": "#58a6e6"
+                },
+                "planned": {
+                  "text": "проект",
+                  "index": 9,
+                  "color": "#3a4656"
+                }
+              }
+            }
+          ],
+          "displayName": "${__field.name}",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5d6c80",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 1,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "left",
+        "rowHeight": 0.85,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "interval": "6s",
+      "id": 11,
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 13
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Воздух: подача и потребность",
+      "description": "Подача — сумма производительности работающих главных вентиляторов; потребность — 180 м³/с плюс 0,06 м³/с на 1 кВт дизельной техники в работе.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_air_supply_m3s_properties_value\": \"Подача вентиляторов\",\n  \"kz.sekis:mine/value_air_demand_m3s_properties_value\": \"Потребность работающих машин\"\n]\norder = [\"kz.sekis:mine/value_air_supply_m3s_properties_value\": 1, \"kz.sekis:mine/value_air_demand_m3s_properties_value\": 2]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_air_demand_m3s_properties_value\" or r._field == \"value_air_supply_m3s_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: м³/с",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "lineInterpolation": "stepAfter",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Подача вентиляторов"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Потребность работающих машин"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "id": 12,
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 9,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Машин в простое по воздуху",
+      "description": "Самосвалы и ПДМ, которые ждут воздуха (mine.units_held_vent).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_units_held_vent_properties_value\": \"В простое\"\n]\norder = [\"kz.sekis:mine/value_units_held_vent_properties_value\": 1]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_units_held_vent_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "lineInterpolation": "stepAfter",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisSoftMax": 4
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "В простое"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#f29b5c"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "id": 13,
+      "gridPos": {
+        "x": 9,
+        "y": 25,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Главные вентиляторы",
+      "description": "main_fan.state: в работе, отказ или проект.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:fan-vs1/value_state_properties_value\": \"ВОД-16П, ВС-1\",\n  \"kz.sekis:fan-ug-p320/value_state_properties_value\": \"AL18, гор. +320\",\n  \"kz.sekis:fan-vs2/value_state_properties_value\": \"AL17, ВС-2\",\n  \"kz.sekis:fan-vpv/value_state_properties_value\": \"ВПВ (мера В1)\",\n  \"kz.sekis:fan-vs3/value_state_properties_value\": \"ВС-3 (мера В2)\"\n]\norder = [\"kz.sekis:fan-vs1/value_state_properties_value\": 1, \"kz.sekis:fan-ug-p320/value_state_properties_value\": 2, \"kz.sekis:fan-vs2/value_state_properties_value\": 3, \"kz.sekis:fan-vpv/value_state_properties_value\": 4, \"kz.sekis:fan-vs3/value_state_properties_value\": 5]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_state_properties_value\")\n      and (r.thingId == \"kz.sekis:fan-ug-p320\" or r.thingId == \"kz.sekis:fan-vpv\" or r.thingId == \"kz.sekis:fan-vs1\" or r.thingId == \"kz.sekis:fan-vs2\" or r.thingId == \"kz.sekis:fan-vs3\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "running": {
+                  "text": "в работе",
+                  "index": 0,
+                  "color": "#3ec79a"
+                },
+                "failed": {
+                  "text": "отказ",
+                  "index": 1,
+                  "color": "#dc4046"
+                },
+                "planned": {
+                  "text": "проект",
+                  "index": 2,
+                  "color": "#3a4656"
+                }
+              }
+            }
+          ],
+          "displayName": "${__field.name}",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5d6c80",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 1,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "alignValue": "left",
+        "rowHeight": 0.85,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "interval": "6s",
+      "id": 14,
+      "gridPos": {
+        "x": 15,
+        "y": 25,
+        "w": 9,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Уровень в водосборниках",
+      "description": "Насосы включаются по уровню, поэтому уровень ходит пилой; при отказе станции он растёт до переполнения (pump_station.sump_level_pct).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:ps-p150/value_sump_level_pct_properties_value\": \"Насосная +150 м\",\n  \"kz.sekis:ps-m050/value_sump_level_pct_properties_value\": \"Насосная −50 м\",\n  \"kz.sekis:ps-m200/value_sump_level_pct_properties_value\": \"Насосная −200 м (проект)\"\n]\norder = [\"kz.sekis:ps-p150/value_sump_level_pct_properties_value\": 1, \"kz.sekis:ps-m050/value_sump_level_pct_properties_value\": 2, \"kz.sekis:ps-m200/value_sump_level_pct_properties_value\": 3]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_sump_level_pct_properties_value\")\n      and (r.thingId == \"kz.sekis:ps-m050\" or r.thingId == \"kz.sekis:ps-m200\" or r.thingId == \"kz.sekis:ps-p150\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0,
+          "max": 100
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Насосная +150 м"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Насосная −50 м"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Насосная −200 м (проект)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#199e70"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "id": 15,
+      "gridPos": {
+        "x": 0,
+        "y": 33,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Откачка насосных станций",
+      "description": "Расход откачки каждой станции (pump_station.pumped_m3h); станция −50 м перекачивает воду на +150 м.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:ps-p150/value_pumped_m3h_properties_value\": \"Насосная +150 м\",\n  \"kz.sekis:ps-m050/value_pumped_m3h_properties_value\": \"Насосная −50 м\",\n  \"kz.sekis:ps-m200/value_pumped_m3h_properties_value\": \"Насосная −200 м (проект)\"\n]\norder = [\"kz.sekis:ps-p150/value_pumped_m3h_properties_value\": 1, \"kz.sekis:ps-m050/value_pumped_m3h_properties_value\": 2, \"kz.sekis:ps-m200/value_pumped_m3h_properties_value\": 3]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_pumped_m3h_properties_value\")\n      and (r.thingId == \"kz.sekis:ps-m050\" or r.thingId == \"kz.sekis:ps-m200\" or r.thingId == \"kz.sekis:ps-p150\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: м³/ч",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "lineInterpolation": "stepAfter",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Насосная +150 м"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Насосная −50 м"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Насосная −200 м (проект)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#199e70"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "id": 16,
+      "gridPos": {
+        "x": 8,
+        "y": 33,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Приток и откачка рудника",
+      "description": "Приток подземных вод и откачка на поверхность (mine.inflow_m3h, mine.pumped_m3h).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_inflow_m3h_properties_value\": \"Приток воды\",\n  \"kz.sekis:mine/value_pumped_m3h_properties_value\": \"Откачка на поверхность\"\n]\norder = [\"kz.sekis:mine/value_inflow_m3h_properties_value\": 1, \"kz.sekis:mine/value_pumped_m3h_properties_value\": 2]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_inflow_m3h_properties_value\" or r._field == \"value_pumped_m3h_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: м³/ч",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Приток воды"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Откачка на поверхность"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#199e70"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "id": 17,
+      "gridPos": {
+        "x": 16,
+        "y": 33,
+        "w": 8,
+        "h": 8
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Насосные станции",
+      "description": "pump_station.state: насосы ждут уровня, откачка, высокий уровень, отказ, проект.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:ps-p150/value_state_properties_value\": \"Насосная +150 м\",\n  \"kz.sekis:ps-m050/value_state_properties_value\": \"Насосная −50 м\",\n  \"kz.sekis:ps-m200/value_state_properties_value\": \"Насосная −200 м (проект)\"\n]\norder = [\"kz.sekis:ps-p150/value_state_properties_value\": 1, \"kz.sekis:ps-m050/value_state_properties_value\": 2, \"kz.sekis:ps-m200/value_state_properties_value\": 3]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_state_properties_value\")\n      and (r.thingId == \"kz.sekis:ps-m050\" or r.thingId == \"kz.sekis:ps-m200\" or r.thingId == \"kz.sekis:ps-p150\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "idle": {
+                  "text": "насосы ждут уровня",
+                  "index": 0,
+                  "color": "#2c6e8f"
+                },
+                "pumping": {
+                  "text": "откачка",
+                  "index": 1,
+                  "color": "#3ec79a"
+                },
+                "alarm_high": {
+                  "text": "высокий уровень воды",
+                  "index": 2,
+                  "color": "#f2dc5c"
+                },
+                "failed": {
+                  "text": "отказ",
+                  "index": 3,
+                  "color": "#dc4046"
+                },
+                "planned": {
+                  "text": "проект",
+                  "index": 4,
+                  "color": "#3a4656"
+                }
+              }
+            }
+          ],
+          "displayName": "${__field.name}",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5d6c80",
+                "value": null
+              }
+            ]
+          },
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 1,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "alignValue": "left",
+        "rowHeight": 0.85,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "interval": "6s",
+      "id": 18,
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 12,
+        "h": 6
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Объём затопления",
+      "description": "Вода, которую не успели откачать: растёт при отказе главной насосной (mine.flood_volume_m3).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "opentwins-influxdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "opentwins-influxdb"
+          },
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_flood_volume_m3_properties_value\": \"Затоплено\"\n]\norder = [\"kz.sekis:mine/value_flood_volume_m3_properties_value\": 1]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_flood_volume_m3_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: м³",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 25,
+            "lineInterpolation": "linear",
+            "showPoints": "never",
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "gradientMode": "none",
+            "pointSize": 4,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "axisSoftMax": 1000
+          },
+          "displayName": "${__field.name}",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#9fb3c8",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [],
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Затоплено"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#58a6e6"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": []
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "id": 19,
+      "gridPos": {
+        "x": 12,
+        "y": 41,
+        "w": 12,
+        "h": 6
+      }
+    }
+  ]
+}
