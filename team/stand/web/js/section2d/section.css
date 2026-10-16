@@ -73,9 +73,13 @@
 
 /* ------------------------------------------------------------ ground, rows */
 
-.sx-ground { stroke: #77889b; stroke-width: calc(var(--u) * 1.5px); }
+.sx-ground { fill: none; stroke: #8f9a8a; stroke-width: calc(var(--u) * 1.5px); stroke-linejoin: round; }
+.sx-ground.stub { stroke-width: calc(var(--u) * 1.2px); }
+.sx-soil { fill: #8a7457; stroke: none; pointer-events: none; }
 .sx-guide { stroke: var(--line); stroke-width: 1; }
-.sx-pit { fill: rgba(255, 255, 255, 0.022); stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 5 3; }
+.sx-pit-cut { fill: #0d1218; stroke: none; pointer-events: none; }
+.sx-pit { fill: none; stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 5 3; }
+.sx-bench { fill: none; stroke: var(--text-3); stroke-width: 1; opacity: 0.8; }
 .sx-road { fill: none; stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 1 3; }
 .sx-break { fill: none; stroke: #77889b; stroke-width: 1.3; }
 .sx-break-gap { fill: var(--sx-bg); }

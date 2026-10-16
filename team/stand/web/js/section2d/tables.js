@@ -41,13 +41,13 @@ export function buildTables(ctx) {
       ruler.append(text(rx - 7, y + F * 0.34 + drop, fmt(elevation, 0, { sign: true }), { 'text-anchor': 'end' }));
     }
   };
-  // The surface mark is written just under the ground line; a round mark too close to it is not numbered.
-  for (let e = Math.ceil(M.bottom / 50) * 50; e < M.top; e += 50) {
-    mark(e, e % 100 === 0 && (M.top - e) * s > F * 2.1);
+  // Every 100 m is numbered, and every 50 m over the reference surface (the ground
+  // line runs there); a mark too close to the top of the ruler is not numbered.
+  for (let e = Math.ceil(M.bottom / 50) * 50; e <= M.top; e += 50) {
+    mark(e, (e % 100 === 0 || e >= M.surfaceY) && (M.top - e) * s > F * 0.5);
   }
-  mark(M.top, true, F * 0.62);
   if (s >= 0.8) {
-    for (let e = Math.ceil(M.bottom / 10) * 10; e < M.top; e += 10) {
+    for (let e = Math.ceil(M.bottom / 10) * 10; e <= M.top; e += 10) {
       if (e % 50 !== 0) ruler.append(line(rx - 1.5, py(e), rx, py(e)));
     }
   }
@@ -111,7 +111,7 @@ export function buildTables(ctx) {
     if (!L.inbox) break;
     // Large boxes carry their own text: name and ore left, the state under them.
     const x = px(stope.x0) + 5;
-    const y = py(stope.y1) + F * 1.05;
+    const y = py(stope.y1) + L.stopeInset + F * 1.05;
     const value = text(x + m(stope.short, 600) + R.gap, y, '', { class: 'sx-value halo' });
     const state = text(x, y + lineH, '', { class: 'sx-sub halo' });
     const g = S('g', { class: 'sx-label sx-inbox sx-obj', 'data-thing': stope.id, 'data-kind': 'stope' },
@@ -224,7 +224,8 @@ export function buildTables(ctx) {
   }
 
   // ---------------------------------- declines (first line under the ground)
-  const bandY = L.yg + F * 2.55;
+  // Under the labels of the ponds and monitoring points, which stand under the ground.
+  const bandY = Math.max(L.yg + F * 2.55, ctx.underBottom ? ctx.underBottom + lineH * 1.1 : 0);
   const fanTop = Math.min(...[...fanLevels].map((e) => upper(e) - F), py(M.levels[0] ? M.levels[0].e : M.bottom) - F);
   if (M.declines.length && bandY + 2 < fanTop) {
     const lead = 'Уклоны:';
@@ -382,6 +383,8 @@ export function buildTables(ctx) {
       S('path', { class: 'pipe-flow', d: `M${-half} 0H${half}` })), 'водоотлив'],
     [S('g', { class: 'sx-airway' }, S('path', { class: 'way design', d: `M${-half} 0H${half}` })), 'проект'],
     M.pit ? [S('path', { class: 'sx-pit', d: `M${-half} 0H${half}` }), 'контур карьера, в проекции'] : null,
+    [S('g', {}, S('rect', { class: 'sx-soil', x: -half, y: 0, width: half * 2, height: F * 0.55, 'fill-opacity': 0.25 }),
+      S('path', { class: 'sx-ground', d: `M${-half} 0H${half}` })), 'поверхность'],
   ].filter(Boolean));
   layers.labels.append(legend);
 
@@ -396,7 +399,11 @@ export function buildTables(ctx) {
     text(bx + unit, textY, '100', { 'text-anchor': 'middle' }),
     text(bx + 2 * unit, textY, '200 м', { 'text-anchor': 'middle' }));
   const noteX = bx + 2 * unit + m('200 м') / 2 + F * 1.5;
-  const note = fitting([
+  // East of the workings the surface may be compressed in x (layout.js): the note says so.
+  const squeezed = L.east < 0.98;
+  const note = fitting(squeezed ? [
+    'продольная проекция, вид с юга · масштабы по осям равны; поверхность восточнее рудника сжата по горизонтали',
+    'вид с юга · масштабы равны; поверхность к востоку сжата', 'вид с юга · восток сжат', 'вид с юга', ''] : [
     'продольная проекция, вид с юга · вертикальный и горизонтальный масштабы равны',
     'вид с юга · масштабы по осям равны', 'вид с юга', ''],
   px(M.mineX1) - noteX - F * 2, (content) => measure(content, F * 0.92));

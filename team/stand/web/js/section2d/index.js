@@ -9,7 +9,7 @@
 // their live updates, viewport.js zooms and pans, card.js is the hover card.
 
 import { NS, STOPE_ORDER, stopeColor } from '../panels/dict.js';
-import { el } from '../panels/format.js';
+import { el, fmt } from '../panels/format.js';
 import { S, createMeasure, setText } from './svg.js';
 import { readModel } from './model.js';
 import { computeLayout } from './layout.js';
@@ -44,6 +44,24 @@ function ensureCss() {
   });
 }
 
+/**
+ * Rows of the hover card from the geometry: the collar on the DEM ground and in
+ * the documents, the place of the tailings facility, the block size.
+ */
+function drawnRows(M, thingId) {
+  const info = M.info[thingId];
+  if (!info) return [];
+  const rows = [];
+  if (info.documentedTop !== undefined) {
+    rows.push(['Устье по рельефу', `${fmt(info.top, 1)} м`], ['Устье по документам', `${fmt(info.documentedTop, 0, { sign: true })} м`]);
+  }
+  if (info.distance !== undefined) {
+    rows.push(['От рудника', `${fmt(info.distance / 1000, 2)} км, азимут ${fmt(info.bearing)}°`]);
+  }
+  if (info.size) rows.push(['Блок в разрезе', `${fmt(info.size[0])} × ${fmt(info.size[1])} м, мощность ${fmt(info.size[2])} м`]);
+  return rows;
+}
+
 export async function mount(container, geometry) {
   await ensureCss();
   mounts += 1;
@@ -69,7 +87,7 @@ export async function mount(container, geometry) {
     el('button', { type: 'button', title: 'Показать разрез целиком', text: 'Весь разрез', onclick: () => viewport.reset() }));
   root.append(svg, tools);
   container.append(root);
-  const card = createCard(root);
+  const card = createCard(root, (thingId) => drawnRows(M, thingId));
   const measure = createMeasure(getComputedStyle(root).fontFamily || 'sans-serif');
 
   let L = null;                  // layout of the current build

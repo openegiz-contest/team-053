@@ -20,8 +20,9 @@ IMPORT = re.compile(r"""^\s*(?:import|export)\b[^'"]*?from\s+['"]([^'"]+)['"]"""
 STRING = re.compile(r"""'((?:[^'\\\n]|\\.)*)'|`((?:[^`\\]|\\.)*)`""")
 COMMENT = re.compile(r"/\*.*?\*/|(?<![:\w])//[^\n]*", re.S)
 CYRILLIC = re.compile(r"[А-Яа-яЁё]")
-# Latin words that may appear in a string shown on the sheet: model names only.
-LATIN_ALLOWED = {"AL18", "V"}
+# Latin words that may appear in a string shown on the sheet: model names and the
+# name of the elevation data set (Copernicus DEM) only.
+LATIN_ALLOWED = {"AL18", "V", "Copernicus", "DEM"}
 
 
 def read(path):
@@ -166,6 +167,34 @@ class SectionGeometryTest(unittest.TestCase):
         for _, station in self.kind("pump_station"):
             self.assertGreaterEqual(len(station["pipe"]), 2)
             self.assertIn("elevation", station)
+
+    def test_ground_and_surface_fields(self):
+        """The ground line, the pit cut, the dams on their own ground and the tailings caption."""
+        profile = self.geometry["profile"]
+        xs = [point[0] for point in profile["points"]]
+        self.assertGreater(len(xs), 100)
+        self.assertEqual(xs, sorted(xs))
+        mine_xs = [point[0] for _, level in self.kind("level") for point in level["points"]]
+        self.assertLessEqual(xs[0], min(mine_xs))
+        pit = self.geometry["scenery"]["old-pit"]
+        self.assertEqual(pit["primitive"], "pit")
+        self.assertGreater(len(pit["section"]), 2)
+        self.assertIn("floor", pit)
+        self.assertTrue(all("y" in bench for bench in pit["benches"]))
+        for _, dam in self.kind("tailings_dam"):
+            self.assertLess(dam["bottom"], dam["top"])
+        (_, facility), = self.kind("tailings_facility")
+        self.assertGreater(facility["true_distance"], 0)
+        self.assertIn("bearing_deg", facility)
+        for _, stope in self.kind("stope"):
+            self.assertEqual(stope["size"][1], 50, "a block fills the floor between two levels")
+        self.assertTrue(any("documented_top" in shaft for _, shaft in self.kind("shaft")))
+        text = read(os.path.join(SECTION_DIR, "surface.js"))
+        for field in ("yearsLeft(", "tailings_facility", "sx-break"):
+            self.assertIn(field, text)
+        model = read(os.path.join(SECTION_DIR, "model.js"))
+        for field in ("geometry.profile", "o.section", "true_distance", "bearing_deg", "documented_top"):
+            self.assertIn(field, model)
 
     def test_short_names_point_to_things(self):
         text = read(os.path.join(SECTION_DIR, "model.js"))

@@ -1,7 +1,9 @@
 // Mobile equipment: trucks, loaders and drill rigs as small marks that glide
 // between the 2 s samples of pos_x and pos_y. A truck is filled when loaded and
 // hollow when empty; a ring marks a unit that waits or stands idle for a reason.
-// Parked units stand in a rack on the surface, one tier per parking row.
+// Parked units stand in a rack on the ground line, one tier per parking row. A
+// unit on the surface (above the DEM ground at its position, less a margin)
+// stands on the ground line of the section, or on the pit ramp inside the pit.
 
 import { stateTone } from '../panels/dict.js';
 import { isNum } from '../panels/format.js';
@@ -9,6 +11,7 @@ import { S, set, text } from './svg.js';
 
 const RING_STATES = new Set(['waiting_bay', 'held_vent', 'maintenance', 'standby_vent']);
 const JUMP_M = 170;     // a longer step between two samples is not animated
+const COVER_M = 4;      // a unit this far under the DEM ground at its position is underground
 
 export function buildUnits(ctx) {
   const { L, M, layers } = ctx;
@@ -41,18 +44,22 @@ export function buildUnits(ctx) {
       const f = thing.f;
       const parked = f.state === 'parked';
       const wx = isNum(f.pos_x) ? f.pos_x : unit.x;
-      const wy = isNum(f.pos_y) ? f.pos_y : M.top;
+      const wy = isNum(f.pos_y) ? f.pos_y : M.groundAt(wx);
+      const wz = isNum(f.pos_z) ? f.pos_z : unit.z;
+      const terrain = M.terrainAt(wx, wz);
+      const surface = terrain === null ? wy >= M.groundAt(wx) - COVER_M : wy >= terrain - COVER_M;
       let x = px(wx);
       let y;
       if (parked) {
-        const z = isNum(f.pos_z) ? f.pos_z : unit.z;
         let row = 0;
         M.parkRows.forEach((rowZ, index) => {
-          if (Math.abs(rowZ - z) < Math.abs(M.parkRows[row] - z)) row = index;
+          if (Math.abs(rowZ - wz) < Math.abs(M.parkRows[row] - wz)) row = index;
         });
-        y = L.yg - 2 - tier / 2 - row * (tier + 1.2);
-      } else if (wy >= M.top - 0.5) {
-        y = L.yg - th / 2 - 1.5;                      // on the surface: standing on the ground line
+        y = L.groundY(wx) - 2 - tier / 2 - row * (tier + 1.2);
+      } else if (surface && M.pitAt(wx) !== null && wy < M.groundAt(wx) - 6) {
+        y = py(wy) - th / 2 - 1;                      // on the pit ramp, below the section's ground
+      } else if (surface) {
+        y = L.groundY(wx) - th / 2 - 1.5;             // on the surface: standing on the ground line
       } else if (L.inbox) {
         // The stope boxes carry text: loaders and rigs stand on the drive, beside the truck.
         y = py(wy);

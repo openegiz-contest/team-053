@@ -1,4 +1,4 @@
-// The mine body of the long section: ground line, old pit contour, levels,
+// The mine body of the long section: ground line and soil, the old pit, levels,
 // stopes, declines, airways with their fans, the dewatering cascade.
 // Each builder draws the static shape once and registers a function that
 // applies the twin's features on every update.
@@ -43,6 +43,57 @@ function splitAt(points, elevation) {
   return [upper, []];
 }
 
+/** Ground points [x, y] of the profile from x0 to x1, with both ends interpolated. */
+export function groundLine(M, x0, x1) {
+  const inside = M.profile.filter(([x]) => x > x0 && x < x1);
+  return [[x0, M.groundAt(x0)], ...inside, [x1, M.groundAt(x1)]];
+}
+
+/**
+ * The soil band under a ground line on the sheet: strips of the same depth
+ * that fade downwards, so that the band follows the ground at every x.
+ */
+export function soilBand(points, s) {
+  const depth = Math.max(12, 36 * s);
+  const steps = [0.3, 0.2, 0.12, 0.06];
+  const band = S('g', { class: 'sx-soil' });
+  steps.forEach((opacity, index) => {
+    const a = (depth * index) / steps.length;
+    const b = (depth * (index + 1)) / steps.length;
+    const top = points.map(([x, y]) => [x, y + a]);
+    const bottom = points.slice().reverse().map(([x, y]) => [x, y + b]);
+    band.append(S('path', { d: pathOf([...top, ...bottom], true), 'fill-opacity': opacity }));
+  });
+  return band;
+}
+
+/** x of every crossing of a polyline [[x, y]] with the elevation y, west to east. */
+function crossings(points, y) {
+  const hits = [];
+  for (let i = 1; i < points.length; i += 1) {
+    const [xa, ya] = points[i - 1];
+    const [xb, yb] = points[i];
+    if (ya === yb || (ya - y) * (yb - y) > 0) continue;
+    hits.push(xa + (xb - xa) * (y - ya) / (yb - ya));
+  }
+  return hits.sort((a, b) => a - b);
+}
+
+/** Largest and smallest y of a sheet polyline over the px range [a, b] (its ends interpolated). */
+function rangeOf(points, a, b) {
+  const ys = points.filter(([x]) => x >= a && x <= b).map(([, y]) => y);
+  for (const x of [a, b]) {
+    for (let i = 1; i < points.length; i += 1) {
+      const [xa, ya] = points[i - 1];
+      const [xb, yb] = points[i];
+      if ((x - xa) * (x - xb) <= 0 && xa !== xb) ys.push(ya + (yb - ya) * (x - xa) / (xb - xa));
+    }
+  }
+  return ys;
+}
+export const maxBetween = (points, a, b) => Math.max(...rangeOf(points, a, b));
+export const minBetween = (points, a, b) => Math.min(...rangeOf(points, a, b));
+
 export function fanSymbol(cx, cy, r) {
   const a = r * 0.72;
   const b = r * 0.46;
@@ -63,27 +114,62 @@ export function buildUnderground(ctx) {
   const { px, py, s, F } = L;
   const roomy = L.lines >= 2;
 
-  // ------------------------------------------------------------ ground, pit
-  layers.grid.append(line(L.left.rulerX, L.yg, L.W, L.yg, { class: 'sx-ground' }));
+  // ------------------------------------------------- ground, soil, old pit
+  // The ground line is the terrain profile along the ore zone, from the ruler to
+  // the east end of the surface strip; a soil band under it fades downwards. The
+  // old pit lies off the section plane: its lowest ground (pit.section) is cut
+  // out of the soil band and drawn as a dashed contour with bench ticks.
+  const westX = M.mineX0 - (L.ox - L.left.rulerX) / (s * (L.west || 1));
+  const ground = groundLine(M, westX, M.eastX1).map(([x, y]) => [px(x), py(y)]);
+  if (L.groundEndPx > ground[ground.length - 1][0] + 1) ground.push([L.groundEndPx, ground[ground.length - 1][1]]);
+  layers.grid.append(soilBand(ground, s));
   if (M.pit) {
     const pit = M.pit;
-    const contour = [[pit.cx - pit.rTop, pit.top], [pit.cx - pit.rFloor, pit.floor],
-      [pit.cx + pit.rFloor, pit.floor], [pit.cx + pit.rTop, pit.top]].map(([x, y]) => [px(x), py(y)]);
+    const section = pit.section;
+    const x0 = section[0][0];
+    const x1 = section[section.length - 1][0];
+    const lid = groundLine(M, x0, x1).reverse();
+    const contour = section.map(([x, y]) => [px(x), py(y)]);
+    layers.grid.append(S('path', { class: 'sx-pit-cut', d: pathOf([...contour, ...lid.map(([x, y]) => [px(x), py(y)])], true) }));
     layers.back.append(S('path', { class: 'sx-pit', d: pathOf(contour) }));
+    // A tick at each bench crest on both walls, where the benches are far enough apart to read.
+    const benchStep = pit.benches.length > 1 ? pit.benches[1] - pit.benches[0] : 15;
+    if (benchStep * s >= 7) {
+      const tick = Math.max(3, 7 * s);
+      const ticks = [];
+      for (const y of pit.benches) {
+        const hits = crossings(section, y);
+        if (hits.length < 2) continue;
+        const [left, right] = [hits[0], hits[hits.length - 1]];
+        ticks.push(`M${(px(left) - tick).toFixed(1)} ${py(y).toFixed(1)}h${tick.toFixed(1)}`,
+          `M${px(right).toFixed(1)} ${py(y).toFixed(1)}h${tick.toFixed(1)}`);
+      }
+      if (ticks.length) layers.back.append(S('path', { class: 'sx-bench', d: ticks.join('') }));
+    }
+    // The pit ramp of TU2: the part of its road that runs below the section's ground.
     for (const road of M.roads) {
-      const inside = road.points.filter((p) => p[1] < M.top + 0.1);
-      if (inside.length > 2) {
-        layers.back.append(S('path', { class: 'sx-road', d: pathOf(inside.map(([x, y]) => [px(x), py(y)])) }));
+      const ramp = [];
+      for (const point of road.points) {
+        if (M.pitAt(point[0]) === null || point[1] > M.groundAt(point[0]) - 2) break;
+        ramp.push(point);
+      }
+      if (ramp.length > 2) {
+        layers.back.append(S('path', { class: 'sx-road', d: pathOf(ramp.map(([x, y]) => [px(x), py(y)])) }));
       }
     }
-    // The caption stands in the empty upper corner of the contour, east of the shafts.
-    const inPit = M.airways.map((airway) => airway.x)
-      .filter((x) => x > pit.cx && x < pit.cx + pit.rFloor);
-    const captionX = px(inPit.length ? Math.max(...inPit) : pit.cx) + F * 0.9;
     if (roomy) {
-      layers.labels.append(text(captionX, py(pit.top) + F * 1.25, 'карьер (в проекции)', { class: 'sx-note halo' }));
+      // The caption stands in the upper part of the cut, under the ground line.
+      const caption = 'карьер (в проекции)';
+      const width = measure(caption, F * 0.92);
+      const cx0 = px(x0 + (x1 - x0) * 0.15);
+      const y = maxBetween(ground, cx0, cx0 + width) + F * 1.25;
+      if (y + 3 < minBetween(contour, cx0, cx0 + width)) {
+        layers.labels.append(text(cx0, y, caption, { class: 'sx-note halo' }));
+      }
     }
   }
+  layers.grid.append(S('path', { class: 'sx-ground', d: pathOf(ground) }));
+  ctx.groundPx = ground;
 
   // ----------------------------------------------------------------- levels
   const water = S('g', { class: 'sx-water' },
@@ -144,18 +230,20 @@ export function buildUnderground(ctx) {
   });
 
   // ---------------------------------------------------- backfill and stopes
+  // A block fills the floor between two levels: a small inset keeps the level drive visible between them.
+  const inset = L.stopeInset;
   for (const box of M.backfill) {
     layers.stopes.append(S('rect', {
-      class: 'sx-backfill', x: px(box.x0), y: py(box.y1), width: (box.x1 - box.x0) * s, height: (box.y1 - box.y0) * s,
-      fill: `url(#${ctx.uid}-backfill)`,
+      class: 'sx-backfill', x: px(box.x0), y: py(box.y1) + inset, width: (box.x1 - box.x0) * s,
+      height: Math.max(1, (box.y1 - box.y0) * s - 2 * inset), fill: `url(#${ctx.uid}-backfill)`,
     }));
   }
   const tagW = measure('−100-1', F * 0.92, 600) + 8;
   for (const stope of M.stopes) {
     const x = px(stope.x0);
-    const y = py(stope.y1);
+    const y = py(stope.y1) + inset;
     const w = (stope.x1 - stope.x0) * s;
-    const h = (stope.y1 - stope.y0) * s;
+    const h = Math.max(1, (stope.y1 - stope.y0) * s - 2 * inset);
     const fill = S('rect', { class: 'fill', x: x + 0.5, width: w - 1, y: y + h, height: 0 });
     const g = S('g', { class: 'sx-stope sx-obj', 'data-thing': stope.id, 'data-state': stope.planned ? 'planned' : 'standby' },
       S('rect', { class: 'box', x, y, width: w, height: h }),
@@ -192,9 +280,11 @@ export function buildUnderground(ctx) {
   // ---------------------------------------------------------------- airways
   const fanByAirway = M.fanByAirway;
   const airwayX = {};
+  const airwayTop = {};
   for (const airway of M.airways) {
     const x = px(airway.x);
     airwayX[airway.id] = airway.x;
+    airwayTop[airway.id] = airway.top;
     const solid = S('path', { class: 'way' });
     const design = S('path', { class: 'way design' });
     const flow = S('path', { class: 'flow' });
@@ -251,7 +341,9 @@ export function buildUnderground(ctx) {
   for (const fan of M.fans) {
     const single = fan.airways.length === 1 && airwayX[fan.airways[0]] !== undefined;
     const cx = px(single ? airwayX[fan.airways[0]] : fan.x);
-    const cy = (fan.surface ? L.yg : py(Math.floor(fan.y / 10) * 10)) - fanR - 1.5;
+    // A surface fan stands on the collar of its airway (the DEM ground there), or on the ground line.
+    const collar = single ? airwayTop[fan.airways[0]] : M.groundAt(fan.x);
+    const cy = (fan.surface ? py(collar) : py(Math.floor(fan.y / 10) * 10)) - fanR - 1.5;
     const g = S('g', { class: 'sx-fan sx-obj', 'data-thing': fan.id, 'data-state': fan.planned ? 'planned' : '' },
       S('circle', { class: 'sx-hit-fill', cx, cy, r: fanR + 4 }),
       fanSymbol(cx, cy, fanR));
@@ -336,7 +428,7 @@ export function buildUnderground(ctx) {
     layers.declines.append(g);
     ctx.reg(decline.id, portalX, portalY);
     // A short tag at the portal; the live row of the decline is in the table on the right.
-    const atSurface = decline.points[0][1] >= M.top - 1;
+    const atSurface = decline.points[0][1] >= M.groundAt(decline.points[0][0]) - 8;
     g.append(text(portalX + r * 2.4, atSurface ? portalY + F * 1.15 : portalY - r - 2.5,
       shortName(decline.id) || decline.token, { class: 'sx-tag' }));
     let drawnBottom = null;

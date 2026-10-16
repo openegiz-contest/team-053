@@ -1,5 +1,6 @@
 // Hover card of the long section: name, kind, state and the key values of the
-// twin under the pointer. A click opens the full twin card of the page.
+// twin under the pointer, then what the drawing rests on (from the geometry,
+// extra(thingId)). A click opens the full twin card of the page.
 
 import { KEY_FEATURES, featureLabel, featureText, kindLabel, thingState } from '../panels/dict.js';
 import { clear, el } from '../panels/format.js';
@@ -22,19 +23,20 @@ const MORE = {
   settling_pond: ['tss_in_mgl'],
 };
 
-export function createCard(root) {
+export function createCard(root, extra = () => []) {
   const node = el('div', { class: 'sx-card', hidden: true });
   root.append(node);
   let shown = null;
   let signature = '';
 
-  function render(thing, things) {
+  function render(thingId, thing, things) {
     const state = thingState(thing);
     const units = (thing.attrs && thing.attrs.units) || {};
     const keys = [...(KEY_FEATURES[thing.kind] || []), ...(MORE[thing.kind] || [])]
       .filter((key, index, all) => key in thing.f && all.indexOf(key) === index);
     const rows = keys.map((key) => [featureLabel(key, thing.kind),
       featureText(key, thing.f[key], { kind: thing.kind, unit: units[key], things })]);
+    rows.push(...extra(thingId));
     const next = JSON.stringify([thing.name, state, rows]);
     if (next === signature) return;
     signature = next;
@@ -66,13 +68,13 @@ export function createCard(root) {
         return;
       }
       shown = thingId;
-      render(thing, state.things);
+      render(thingId, thing, state.things);
       node.hidden = false;
       place(clientX, clientY);
     },
     /** Keep the values of the open card live. */
     refresh(state) {
-      if (shown && state && state.things[shown]) render(state.things[shown], state.things);
+      if (shown && state && state.things[shown]) render(shown, state.things[shown], state.things);
     },
     hide() {
       shown = null;
