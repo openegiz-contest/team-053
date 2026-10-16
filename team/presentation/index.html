@@ -338,21 +338,22 @@ pre.cmd .c { color: var(--text-3); }
 <!-- 6 -->
 <section class="slide">
   <div class="kicker"><b>Визуализация рудника</b> · three.js и SVG на стенде, без внешних запросов</div>
-  <h1>Рудник в 3D и в разрезе: отметки — по документам, план — схема</h1>
+  <h1>Рудник на настоящем рельефе: отметки — по документам, план — схема</h1>
   <div class="body" style="flex-direction:column; gap:12px">
     <div style="display:flex; gap:24px">
       <div style="flex:none">
-        <img class="shot" src="img/s06_scene3d.jpg" style="height:555px" alt="3D-сцена рудника">
-        <div class="cap" style="width:603px"><b>3D-сцена</b>: блоки по стадии цикла, самосвалы на уклонах, стрелки воздуха, насосные с уровнем в водосборнике.</div>
+        <img class="shot" src="img/s06_scene3d.jpg" style="height:545px" alt="3D-сцена рудника">
+        <div class="cap" style="width:597px"><b>3D-сцена</b>: земля над выработками просвечивает; блоки по стадии цикла, самосвалы на уклонах, насосные с уровнем в водосборнике.</div>
       </div>
       <div style="flex:none">
-        <img class="shot" src="img/s06_section.jpg" style="height:555px" alt="Продольный разрез рудника">
-        <div class="cap" style="width:819px"><b>Продольный разрез</b>: та же геометрия на плоскости X–Y, линейка отметок; все подписи и значения — текст страницы.</div>
+        <img class="shot" src="img/s06_section.jpg" style="height:545px" alt="Продольный разрез рудника">
+        <div class="cap" style="width:804px"><b>Продольный разрез</b>: та же геометрия на плоскости X–Y, линия земли по рельефу, карьер в проекции; все подписи и значения — текст страницы.</div>
       </div>
     </div>
     <div style="display:flex; gap:18px">
-      <div class="callout cok" style="flex:1; font-size:16px; line-height:1.4; padding:10px 14px"><b>По источникам:</b> порталы уклонов +430 и +320&nbsp;м, уклон 8°, сечение 18&nbsp;м², горизонты через 50&nbsp;м, забои уклонов −50 и −34&nbsp;м, проектный низ −300 и −200&nbsp;м.</div>
-      <div class="callout cwarn" style="flex:1; font-size:16px; line-height:1.4; padding:10px 14px"><b>Схема:</b> положения выработок в плане — план горных работ не опубликован; на стенде это подписано под сценой.</div>
+      <div class="callout cok" style="flex:1.35; font-size:15px; line-height:1.38; padding:9px 14px"><b>Поверхность — открытые данные:</b> рельеф Copernicus DEM GLO-30 (30&nbsp;м, 2011–2015&nbsp;гг.), снимок Sentinel-2 от 30.09.2026 (10&nbsp;м), карьер, пруды, хвосты, ручей и река — OpenStreetMap; карьер вырезан до дна +320&nbsp;м.</div>
+      <div class="callout cok" style="flex:1; font-size:15px; line-height:1.38; padding:9px 14px"><b>Выработки — по документам:</b> порталы +430 и +320&nbsp;м, уклон 8°, сечение 18&nbsp;м², горизонты через 50&nbsp;м; блоки 106&nbsp;×&nbsp;50&nbsp;×&nbsp;6&nbsp;м — 90&nbsp;000&nbsp;т при 2,83&nbsp;т/м³.</div>
+      <div class="callout cwarn" style="flex:1; font-size:15px; line-height:1.38; padding:9px 14px"><b>Схема:</b> план выработок (план горных работ не опубликован); на поверхности — фабрика, склад, новая карта, выпуск, водозабор. Подписи источников — в углу сцены.</div>
     </div>
   </div>
   <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Рудник»</b>: «3D-сцена», «Продольный разрез», ракурсы «Уклоны», «Вентиляция», «Водоотлив»; щелчок по объекту — карточка двойника</span><span class="pg">6 / 14</span></div>
@@ -574,34 +575,36 @@ pre.cmd .c { color: var(--text-3); }
 <!-- 13 -->
 <section class="slide">
   <div class="kicker"><b>Данные и допущения</b> · что взято из источников, что принято и чего модель не знает</div>
-  <h1>Все исходные цифры — из открытых источников; 177 из 250 параметров — допущения, и у каждого есть обоснование</h1>
+  <h1>Все исходные цифры — из открытых источников; 183 из 256 параметров — допущения, и у каждого есть обоснование</h1>
   <div class="body" style="gap:22px">
     <div class="card" style="flex:1">
       <div class="stephead"><b>Источники</b> · 73 параметра</div>
-      <ul class="clean" style="font-size:18px">
+      <ul class="clean" style="font-size:16.5px">
         <li>AltynGold: годовые отчёты за 2024 и 2025&nbsp;гг., полугодовой за I&nbsp;пол. 2026&nbsp;г., квартальные за 3-й кв. 2025 и 1-й кв. 2026&nbsp;г., итоги 2021 и I&nbsp;пол. 2022&nbsp;г.</li>
         <li>Отчёт компетентного лица по JORC (EY, 2019): запасы до −400&nbsp;м.</li>
         <li>Природоохранные документы рудника на ecoportal.kz: заключение скрининга 2022&nbsp;г. и отчёт о возможных воздействиях 2023&nbsp;г. — отметки, сечения, воздух 252 → 322&nbsp;м³/с, приток, водный баланс, хвостохранилище.</li>
         <li>Проект SATREPS «Smart Mining+» (страницы JICA и JST).</li>
         <li>Онтарио, Reg. 854 s.183.1(1): 0,06&nbsp;м³/с воздуха на кВт дизеля; спецификации дилеров Cat.</li>
+        <li>Поверхность: рельеф Copernicus DEM GLO-30 (30&nbsp;м, 2011–2015&nbsp;гг.), снимок Sentinel-2 от 30.09.2026 (10&nbsp;м), карта OpenStreetMap (ODbL) — подписи в <span class="mono" style="font-size:14px">team/model/terrain/ATTRIBUTION.md</span>.</li>
       </ul>
     </div>
     <div class="card" style="flex:1.05">
-      <div class="stephead"><b>Несущие допущения</b> · 177 параметров</div>
-      <ul class="clean" style="font-size:18px">
+      <div class="stephead"><b>Несущие допущения</b> · 183 параметра</div>
+      <ul class="clean" style="font-size:16.5px">
         <li>Воздух: 180&nbsp;м³/с + 0,06&nbsp;м³/с на кВт дизеля в работе — воспроизводит 252 и 322&nbsp;м³/с (C6, C7).</li>
         <li>Рудный склад 94&nbsp;264&nbsp;т на 1.01.2027 — сумма «добыто минус переработано» с 2020&nbsp;г.; нижняя граница.</li>
         <li>Дамба № 4 заполнена на 90&nbsp;%, дамбы № 2 и 3 — по 1&nbsp;426&nbsp;950&nbsp;т; новая карта 6,0&nbsp;млн&nbsp;т — мера-допущение.</li>
         <li>Вентилятор ВПВ +105&nbsp;м³/с, ствол ВС-3 +240&nbsp;м³/с; линии № 4–6.</li>
         <li>Готовность самосвалов 0,80; коэффициент откатки 0,811 подобран под добычу 2025&nbsp;г.</li>
         <li>Вода фабрики и площадки 1,123 и 0,603&nbsp;м³/т — из водного баланса ОВОС.</li>
+        <li>Карьер в рельефе: дно +320&nbsp;м по порталу ТУ-2, уступы 15&nbsp;м — DEM снят до конца открытых работ (дно 389,7&nbsp;м).</li>
       </ul>
     </div>
     <div class="card" style="flex:1">
       <div class="stephead"><b>Ограничения</b></div>
-      <ul class="clean" style="font-size:18px">
+      <ul class="clean" style="font-size:16.5px">
         <li>Данных с рудника нет: всё, что движется на стенде, — выход имитатора (зерно 53).</li>
-        <li>План горных работ не опубликован: положения в плане — схема.</li>
+        <li>План горных работ не опубликован: положения выработок в плане — схема; на поверхности схематичны фабрика, склад, новая карта, выпуск и водозабор.</li>
         <li>Центр откатки в формуле — +75&nbsp;м; при пяти блоках имитатор выдаёт на 4,5–6,3&nbsp;% больше.</li>
         <li>Ожидание воздуха решается целыми машинами — мера по парку даёт ступенчатый результат.</li>
         <li>Капзатраты известны только для расширения до 2–2,5&nbsp;млн&nbsp;т в целом; AISC при росте выпуска принят неизменным.</li>
@@ -609,7 +612,7 @@ pre.cmd .c { color: var(--text-3); }
       </ul>
     </div>
   </div>
-  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Данные и допущения»</b> (все 250 параметров, фильтр «факт / допущение») · выписки с цитатами — <span class="mono">team/research/</span></span><span class="pg">13 / 14</span></div>
+  <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Данные и допущения»</b> (все 256 параметров, фильтр «факт / допущение») · выписки с цитатами — <span class="mono">team/research/</span></span><span class="pg">13 / 14</span></div>
 </section>
 
 <!-- 14 -->
@@ -627,15 +630,15 @@ make stand-smoke</pre>
         <div class="kpi"><div class="l">make stand-smoke</div><div class="v num">25<small>с</small></div><div class="s">стенд, Ditto, InfluxDB, советник, сценарий</div></div>
         <div class="kpi"><div class="l">Память</div><div class="v num">≈4<small>ГБ</small></div><div class="s">пик при запуске 3&nbsp;989 МиБ</div></div>
       </div>
-      <p class="dim" style="font-size:15.5px; line-height:1.45; margin:0">Ещё: 484 модульных теста; 60-минутный прогон на промежуточной сборке — ноль перезапусков и ошибок в журналах. Остановить — <span class="mono">make down</span>, очистить — <span class="mono">make clean</span>.</p>
+      <p class="dim" style="font-size:15.5px; line-height:1.45; margin:0">Ещё: 516 модульных тестов; 60-минутный прогон на промежуточной сборке — ноль перезапусков и ошибок в журналах. Остановить — <span class="mono">make down</span>, очистить — <span class="mono">make clean</span>.</p>
       <div class="card" style="padding:16px 20px">
         <div class="stephead" style="margin-bottom:8px"><b>Разделы стенда</b></div>
         <table class="t" style="font-size:16px">
-          <tr><td style="width:250px"><b>Рудник</b></td><td class="muted">3D-сцена, продольный разрез, ракурсы</td></tr>
+          <tr><td style="width:250px"><b>Рудник</b></td><td class="muted">3D-сцена на настоящем рельефе, продольный разрез, ракурсы</td></tr>
           <tr><td><b>Сценарии</b></td><td class="muted">цели, меры − / +, нарушения, «Шаг назад»</td></tr>
           <tr><td><b>Советник</b>, «Что изменилось»</td><td class="muted">восемь звеньев против цели, следующая мера</td></tr>
           <tr><td><b>Лестница мер и прогноз</b></td><td class="muted">1,0 / 1,2 / 2,0 / 2,5 млн т, 2027–2036</td></tr>
-          <tr><td><b>Двойники</b>, <b>Калибровка</b>, <b>Данные</b></td><td class="muted">96 двойников, C1–C16, 250 параметров</td></tr>
+          <tr><td><b>Двойники</b>, <b>Калибровка</b>, <b>Данные</b></td><td class="muted">96 двойников, C1–C16, 256 параметров</td></tr>
         </table>
       </div>
     </div>

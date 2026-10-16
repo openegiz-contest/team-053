@@ -14,22 +14,22 @@ OUT = HERE / "img"
 
 # name: (raw file, crop box (left, top, right, bottom) or None)
 CROPS = {
-    "s01_section": ("b_sec.png", (0, 271, 2272, 1912)),
+    "s01_section": ("b_sec.png", (0, 225, 2272, 1865)),
     "s04_openegiz_children": ("g_children.png", (620, 200, 3200, 1140)),
     "s05_grafana_overview": ("g_gov_base.png", (0, 0, 3200, 1720)),
-    "s06_scene3d": ("b_3d.png", (413, 177, 1888, 1534)),
-    "s06_section": ("b_sec.png", (0, 271, 1534, 1310)),
+    "s06_scene3d": ("b_3d.png", (0, 190, 2272, 2266)),
+    "s06_section": ("b_sec.png", (0, 225, 2272, 1764)),
     "s08_advisor": ("b_advisor.png", (0, 0, 784, 1240)),
-    "s09_scene_held": ("n1_3d_decl.png", (71, 354, 1770, 1475)),
+    "s09_scene_held": ("n1_3d_decl.png", (118, 330, 2159, 1676)),
     "s09_changes": ("n1_chg.png", (0, 0, 784, 600)),
     "s09_advisor_vpv": ("n2_adv.png", (0, 0, 784, 1170)),
     "s10_ladder": ("b_plan.png", (20, 160, 2262, 800)),
     "s11_projection": ("b_plan.png", (2280, 110, 3780, 835)),
-    "s12_tu2_scene": ("tu2_3d_decl.png", (1000, 640, 2227, 1505)),
+    "s12_tu2_scene": ("tu2_3d_decl.png", (590, 354, 2218, 1492)),
     "s12_tu2_next": ("tu2_adv.png", (0, 700, 784, 935)),
-    "s12_vs2_scene": ("vs2_3d_decl.png", (826, 401, 2006, 1239)),
+    "s12_vs2_scene": ("vs2_3d_decl.png", (1180, 354, 2218, 1080)),
     "s12_vs2_next": ("vs2_adv.png", (0, 700, 784, 935)),
-    "s12_ps_scene": ("ps_3d_water.png", (708, 1015, 2006, 1935)),
+    "s12_ps_scene": ("ps_3d_water.png", (755, 1097, 1982, 1955)),
     "s12_ps_next": ("ps3_adv.png", (0, 700, 784, 965)),
 }
 
