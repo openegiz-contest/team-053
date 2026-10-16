@@ -26,6 +26,9 @@ Outputs (--out, default team/model/terrain):
   features.json   the OpenStreetMap features the scene uses, in scene coordinates and simplified,
                   the haul-road graph, and the carved pit (outline, floor, crests, ramp, section).
 
+The map data of the stylised 3D surface (landscape.json, land cover, buildings, roads, waterways)
+comes from the same OSM extract through the sibling tool build_landscape.py.
+
 Steps:
 
   1. Frame (sekis/geometry.py): scene x = UTM 44N easting - 613640.00, z = 5576392.36 - northing.

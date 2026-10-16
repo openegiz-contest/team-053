@@ -34,6 +34,7 @@ HTTP API (JSON, UTF-8; an error is {"ok": false, "code": "...", "error": "<Russi
     GET  /api/params       model/params.json
     GET  /api/geometry     model/geometry.json (404 no_geometry while it does not exist)
     GET  /terrain/texture.jpg   model/terrain/texture.jpg, the satellite image of the 3D terrain
+    GET  /terrain/landscape.json   model/terrain/landscape.json, the map data of the stylised 3D surface
     GET  /, /embed/scene, /embed/section   the page; other paths are files of stand/web
 """
 
@@ -622,6 +623,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_file(geometry, cache="no-store")
         elif path == "/terrain/texture.jpg":
             self.send_file(os.path.join(MODEL_DIR, "terrain", "texture.jpg"), cache="public, max-age=86400")
+        elif path == "/terrain/landscape.json":
+            self.send_file(os.path.join(MODEL_DIR, "terrain", "landscape.json"), cache="public, max-age=3600")
         elif path.startswith("/api/"):
             raise ApiError(404, "not_found", "Нет такого адреса API")
         elif path in INDEX_PATHS:

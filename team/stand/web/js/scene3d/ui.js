@@ -1,5 +1,6 @@
 // DOM chrome of the scene: its own style sheet (scoped by the s3d- prefix; the
-// colours are the page tokens), the camera preset bar, the legend line, the
+// colours are the page tokens), the camera preset bar (with the grade and the
+// «Снимок» switches and the zoom buttons), the legend line, the
 // attribution of the surface data (required by the licences wherever the data
 // is shown), the debug overlay and the message shown when the graphics context
 // is lost.
@@ -84,9 +85,9 @@ export const PRESETS = [
 ];
 
 /**
- * Build the chrome inside `root`. Handlers: onPreset(id), onGrade(on), onZoom(direction).
+ * Build the chrome inside `root`. Handlers: onPreset(id), onGrade(on), onPhoto(on), onZoom(direction).
  */
-export function createOverlay(root, palette, { onPreset, onGrade, onZoom }) {
+export function createOverlay(root, palette, { onPreset, onGrade, onPhoto, onZoom }) {
   const style = el('style', { text: CSS });
   const swallow = (node) => {
     // Keep clicks on the chrome away from the orbit controls and the picker.
@@ -104,9 +105,16 @@ export function createOverlay(root, palette, { onPreset, onGrade, onZoom }) {
     title: 'Раскрасить очистные блоки по содержанию золота в руде',
     onclick: () => onGrade(gradeButton.getAttribute('aria-pressed') !== 'true'),
   });
+  // The surface is drawn from map data by default; the image is the evidence of the real place.
+  const photoButton = el('button', {
+    type: 'button', 'aria-pressed': 'false', text: 'Снимок',
+    title: 'Показать на рельефе спутниковый снимок Sentinel-2 (30.09.2026, 10 м) вместо условной поверхности',
+    onclick: () => onPhoto(photoButton.getAttribute('aria-pressed') !== 'true'),
+  });
   const bar = el('div', { class: 's3d-bar' },
     swallow(el('div', { class: 's3d-seg', role: 'group', 'aria-label': 'Ракурс' }, presetButtons)),
     swallow(el('div', { class: 's3d-seg' }, gradeButton)),
+    swallow(el('div', { class: 's3d-seg' }, photoButton)),
     swallow(el('div', { class: 's3d-seg', role: 'group', 'aria-label': 'Масштаб' },
       el('button', { type: 'button', text: '+', title: 'Приблизить', 'aria-label': 'Приблизить', onclick: () => onZoom(1) }),
       el('button', { type: 'button', text: '−', title: 'Отдалить', 'aria-label': 'Отдалить', onclick: () => onZoom(-1) }))));
@@ -153,6 +161,9 @@ export function createOverlay(root, palette, { onPreset, onGrade, onZoom }) {
       stateLegend.hidden = on;
       gradeLegend.hidden = !on;
     },
+    setPhoto(on) {
+      photoButton.setAttribute('aria-pressed', String(on));
+    },
     setAlerts({ air, flood }) {
       if (airAlert.hidden === air) airAlert.hidden = !air;
       if (floodAlert.hidden === flood) floodAlert.hidden = !flood;
@@ -160,7 +171,7 @@ export function createOverlay(root, palette, { onPreset, onGrade, onZoom }) {
     /** Rectangles (in root pixels) the labels must keep clear of. */
     reserved() {
       const base = root.getBoundingClientRect();
-      return [bar.firstChild, bar.children[1], bar.children[2], legend, credit].map((node) => {
+      return [...bar.children, legend, credit].map((node) => {
         const r = node.getBoundingClientRect();
         return [r.left - base.left, r.top - base.top, r.width, r.height];
       }).filter((r) => r[2] > 0 && r[3] > 0);

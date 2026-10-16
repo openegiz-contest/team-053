@@ -4,7 +4,9 @@
 // in their dams, whose level follows the twin), `ghost` (dashed outlines of
 // everything that is still a project), `lines` (thin outlines, roads, streams,
 // pipes, the bench crests of the old pit) and the elevation ruler. The ground
-// itself is the terrain mesh (terrain.js); surface outlines are laid on it.
+// itself is the terrain mesh (terrain.js, landscape.js); surface outlines are
+// laid on it. The tailings cells stand on it as embankments with sloped faces
+// (a cell that is still a project is dashed).
 //
 // Which things are a project is decided by the live twin state, so the whole
 // set is rebuilt when a measure turns a planned object into a working one or a
@@ -31,6 +33,83 @@ const TURN = 0.15;               // rad: the crusher house stands at the first t
 // ruler are, and the dashed design levels at the bottom fade first.
 const XRAY_GROW = [1.3, 1.28, 1.75];
 const XRAY_LIFT = 0.1;
+// Embankments of the tailings cells (schematic: no dam section is published).
+const DAM_OUTER = 2.5;   // m of run per metre of height, outer face (1:2.5)
+const DAM_INNER = 2;     // inner face (1:2)
+const DAM_CREST = 6;     // m: crest width
+const DAM_STEP = 25;     // m: the faces follow the ground in pieces of at most this length
+const UNNUMBERED_BUND = 2;   // m: the crest of a cell without a dam number above the highest ground of its outline
+const POND_SHARE = 0.45;     // the pond on a tailings fill: the outline shrunk to this share about its centre
+
+/**
+ * The embankment of a tailings cell: a flat crest DAM_CREST wide inside the
+ * mapped outline at elevation `crest`, the outer face down to the ground and
+ * the inner face down to `floor`. The fill prism of the cell (its level
+ * follows the twin) covers the lower part of the inner face.
+ */
+function embankment(solid, footprint, crest, floor, groundAt, colors, key) {
+  let ring = footprint.length > 1 && footprint[0][0] === footprint[footprint.length - 1][0]
+    && footprint[0][1] === footprint[footprint.length - 1][1] ? footprint.slice(0, -1) : footprint.slice();
+  let area = 0;
+  for (let i = 0; i < ring.length; i += 1) {
+    const [a, b] = [ring[i], ring[(i + 1) % ring.length]];
+    area += a[0] * b[1] - b[0] * a[1];
+  }
+  if (area < 0) ring = ring.reverse();   // interior to the left of every edge
+  const n = ring.length;
+  // Outward normal of each edge, and the mitre at each vertex.
+  const normals = ring.map((a, i) => {
+    const b = ring[(i + 1) % n];
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [(b[1] - a[1]) / l, -(b[0] - a[0]) / l];
+  });
+  const mitres = ring.map((_, i) => {
+    const [p, q] = [normals[(i + n - 1) % n], normals[i]];
+    const m = [p[0] + q[0], p[1] + q[1]];
+    const l = Math.hypot(m[0], m[1]) || 1;
+    const cos = Math.max(0.5, (m[0] * q[0] + m[1] * q[1]) / l);
+    return [m[0] / l / cos, m[1] / l / cos];
+  });
+  const samples = [];   // [point, outward direction]
+  for (let i = 0; i < n; i += 1) {
+    const [a, b] = [ring[i], ring[(i + 1) % n]];
+    const k = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / DAM_STEP));
+    samples.push([a, mitres[i]]);
+    for (let s = 1; s < k; s += 1) samples.push([[a[0] + ((b[0] - a[0]) * s) / k, a[1] + ((b[1] - a[1]) * s) / k], normals[i]]);
+  }
+  const at = ([x, z], [dx, dz], d) => [x + dx * d, z + dz * d];
+  const toe = (p, dir) => {
+    let d = Math.max(0, crest - groundAt(p[0], p[1])) * DAM_OUTER;
+    for (let k = 0; k < 2; k += 1) {
+      const q = at(p, dir, d);
+      d = Math.max(0, crest - groundAt(q[0], q[1])) * DAM_OUTER;
+    }
+    const q = at(p, dir, d);
+    return [q[0], groundAt(q[0], q[1]) - 0.4, q[1]];
+  };
+  const rows = samples.map(([p, dir]) => {
+    const inner = at(p, dir, -DAM_CREST);
+    const foot = at(inner, dir, -Math.max(0, crest - floor) * DAM_INNER);
+    return {
+      toe: toe(p, dir), edge: [p[0], crest, p[1]], inner: [inner[0], crest, inner[1]], foot: [foot[0], floor - 0.5, foot[1]],
+    };
+  });
+  for (let i = 0; i < rows.length; i += 1) {
+    const [a, b] = [rows[i], rows[(i + 1) % rows.length]];
+    const below = (p, q) => [(p[0] + q[0]) / 2, Math.min(p[1], q[1]) - 30, (p[2] + q[2]) / 2];
+    solid.use(key, colors.face, false).quad(a.edge, b.edge, b.toe, a.toe, below(a.inner, b.inner));
+    solid.use(key, colors.crest, false).quad(a.inner, b.inner, b.edge, a.edge, below(a.edge, b.edge));
+    solid.use(key, colors.face, false).quad(a.foot, b.foot, b.inner, a.inner, below(a.edge, b.edge));
+  }
+}
+
+/** The outline shrunk to `share` about its centroid (the pond on a tailings fill). */
+function shrunk(footprint, share) {
+  const n = footprint.length || 1;
+  const cx = footprint.reduce((t, p) => t + p[0], 0) / n;
+  const cz = footprint.reduce((t, p) => t + p[1], 0) / n;
+  return footprint.map(([x, z]) => [cx + (x - cx) * share, cz + (z - cz) * share]);
+}
 
 /**
  * The conveyor from the ROM pad: on the ground up to its ramp, then in an
@@ -228,19 +307,20 @@ export function buildStatics(geometry, palette, live, terrain) {
   if (scenery['industrial-zone'] && scenery['industrial-zone'].footprint) {
     lines.use(null, palette.scene('site')).path(drapeOutline(scenery['industrial-zone'].footprint));
   }
+  const damLook = { face: palette.model('dam'), crest: palette.model('damCrest') };
   for (const name of ['tsf-cell-south', 'tsf-cell-southeast']) {
     const cell = scenery[name];
-    if (cell && cell.footprint) lines.use(null, palette.scene('tsfCell')).path(drapeOutline(cell.footprint, 2.5));
+    if (!cell || !cell.footprint) continue;
+    // No dam number and no capacity: a low bund above the highest ground of the outline.
+    const crest = Math.max(...cell.footprint.map(([x, z]) => groundAt(x, z))) + UNNUMBERED_BUND;
+    embankment(solid, cell.footprint, crest, cell.y, groundAt, damLook, null);
+    lines.use(null, palette.scene('tsfCell')).outline(cell.footprint, crest + 0.4);
   }
   const village = scenery.village;
   if (village && Array.isArray(village.anchor)) {
+    // The houses of the landscape show the village; its name stands over the mapped village point.
     const [x, , z] = village.anchor;
-    const y = groundAt(x, z);
-    const head = [x, y + 24, z];
-    solid.use(null, palette.scene('village'));
-    solid.beam([x, y, z], head, 1.8, 1.8);
-    solid.box(head, [8, 8, 8]);
-    places.push({ id: 'place:village', name: 'с. Секисовка', line: 'посёлок', position: [x, y + 30, z] });
+    places.push({ id: 'place:village', name: 'с. Секисовка', line: 'посёлок', position: [x, groundAt(x, z) + 22, z] });
   }
   const watercourses = [['river-sekisovka', 'р. Секисовка', 'река'], ['stream-volchevka', 'руч. Волчевка', 'ручей']];
   for (const [name, text, line] of watercourses) {
@@ -434,13 +514,20 @@ export function buildStatics(geometry, palette, live, terrain) {
         Math.min(...o.footprint.map((p) => p[1]))]);
     } else if (o.kind === 'tailings_dam' && o.footprint) {
       const [cx, cz] = centroid(o.footprint);
-      // The dam: its crest at `top`, the walls from the ground up; the base outline lies on the ground.
-      const edges = isGhost ? ghost : lines.use(id, palette.tone('idle'));
-      edges.outline(o.footprint, o.top);
-      edges.path(drapeOutline(o.footprint, 1.2));
-      for (const [x, z] of o.footprint) edges.seg([x, Math.min(o.top, groundAt(x, z)), z], [x, o.top, z]);
-      // The tailings: a prism from the lowest ground, whose top derive() moves to the fill level.
-      if (!isGhost) fills.use(id, palette.scene('tailings')).prism(o.footprint, o.bottom, o.bottom + 1);
+      if (isGhost) {
+        // A project: its crest at `top`, the walls from the ground up, dashed.
+        ghost.outline(o.footprint, o.top);
+        ghost.path(drapeOutline(o.footprint, 1.2));
+        for (const [x, z] of o.footprint) ghost.seg([x, Math.min(o.top, groundAt(x, z)), z], [x, o.top, z]);
+      } else {
+        // The embankment with its crest at `top`; the crest line carries the state of the dam.
+        embankment(solid, o.footprint, o.top, o.bottom, groundAt, damLook, id);
+        lines.use(id, palette.tone('idle')).outline(o.footprint, o.top + 0.4);
+        // The tailings: a prism from the lowest ground, whose top derive() moves to the fill level,
+        // and the pond on it.
+        fills.use(id, palette.scene('tailings')).prism(o.footprint, o.bottom, o.bottom + 1);
+        fills.use(id + '#pond', palette.scene('tailingsPond')).polygon(shrunk(o.footprint, POND_SHARE), o.bottom + 1);
+      }
       pick.set(id, [[cx, o.top, cz], [cx, groundAt(cx, cz), cz]]);
       spheres.set(id, sphereOf(o.footprint.map(([x, z]) => [x, o.top, z])));
       anchors.set(id, [cx, o.top, cz]);

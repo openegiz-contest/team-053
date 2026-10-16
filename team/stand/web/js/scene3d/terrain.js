@@ -44,8 +44,10 @@ function gridSampler(origin, spacing, rows) {
 
 /**
  * Build the terrain from the `terrain` block. Returns { geometry, triangles,
- * extent, heightAt(x, z), drape(points, lift, step) }; `null` when the block
- * is missing.
+ * extent, grids, heightAt(x, z), drape(points, lift, step) }; `null` when the
+ * block is missing. `grids` are the triangulated grids, { origin, spacing, box },
+ * the coarse one first: a line laid on the ground follows the triangles when
+ * it is split where it crosses their edges.
  */
 export function createTerrain(block) {
   if (!block || !Array.isArray(block.rows) || !block.rows.length) return null;
@@ -152,10 +154,14 @@ export function createTerrain(block) {
     return out;
   }
 
+  const grids = [{ origin, spacing, box: extent }];
+  if (inset && cells) grids.push({ origin: inset.origin, spacing: inset.spacing, box: insetBox });
+
   return {
     geometry,
     triangles: indices.length / 3,
     extent,
+    grids,
     heightAt,
     drape,
   };
@@ -211,32 +217,14 @@ export function groundOpacity(p, eye, ellipsoid) {
   return 1 + (XRAY_ALPHA - 1) * xrayWeight(p, eye, ellipsoid);
 }
 
-/**
- * Material of the ground: unlit, vertex hillshade times the image (plain
- * `fallback` colour until the image has loaded), with the x-ray window.
- * Returns { material, setXray(ellipsoid), setMap(texture) }; `ellipsoid` is
- * { center: [x, y, z], radii: [rx, ry, rz] } around the workings, or null for
- * an opaque ground.
- */
-export function terrainMaterial(fallback) {
-  const material = new THREE.MeshBasicMaterial({
-    color: fallback.clone(), vertexColors: true, transparent: true, depthWrite: true,
-  });
-  const uniforms = {
-    xrayCenter: { value: new THREE.Vector3() },
-    xrayRadii: { value: new THREE.Vector3(1, 1, 1) },
-    xrayEdge: { value: new THREE.Vector2(XRAY_EDGE[0], XRAY_EDGE[1]) },
-    xrayAlpha: { value: 1 },
-    xrayLight: { value: new THREE.Vector2(XRAY_LIGHT[0], XRAY_LIGHT[1]) },
-  };
-  material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vXrayWorld;')
-      .replace('#include <project_vertex>',
-        '#include <project_vertex>\n\tvXrayWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>
+// Contour lines of the stylised ground, drawn by the fragment shader from the
+// elevation (no texture, no line geometry): a thin line every CONTOUR[0] metres
+// and a stronger one every CONTOUR[1]; both fade out where they would be closer
+// than a few pixels (steep walls, far away), so they never turn into a grey wash.
+export const CONTOUR = [10, 50];          // m
+const CONTOUR_DARK = [0.2, 0.34];         // how much a line darkens the ground
+
+const GLSL_XRAY = `
 varying vec3 vXrayWorld;
 uniform vec3 xrayCenter;
 uniform vec3 xrayRadii;
@@ -252,24 +240,131 @@ float xrayChord(vec3 p, vec3 d) {
   if (disc <= 0.0) return 0.0;
   float root = sqrt(disc);
   return max((-b + root) / a - max((-b - root) / a, 0.0), 0.0);
-}`)
-      .replace('#include <opaque_fragment>', `#include <opaque_fragment>
+}`;
+
+const GLSL_CONTOURS = `
+uniform float contourOn;
+uniform vec2 contourStep;
+uniform vec2 contourDark;
+float contourLine(float y, float w, float stepM, float width) {
+  float d = abs(fract(y / stepM + 0.5) - 0.5) * stepM;
+  return (1.0 - smoothstep(width * 0.5 * w, width * w, d)) * (1.0 - smoothstep(stepM / 6.0, stepM / 3.5, w));
+}`;
+
+// Contours need screen-space derivatives: built into WebGL 2, an extension in WebGL 1.
+const CONTOUR_FRAGMENT = `
+#if __VERSION__ >= 300 || defined(GL_OES_standard_derivatives)
+\tif (contourOn > 0.5) {
+\t\t// No lines on nearly flat ground (a beach, the pit floor), where a level would wander as noise.
+\t\tvec3 cn = normalize(cross(dFdx(vXrayWorld), dFdy(vXrayWorld)));
+\t\tfloat slope = sqrt(max(1.0 - cn.y * cn.y, 0.0)) / max(abs(cn.y), 1e-3);
+\t\tfloat cw = fwidth(vXrayWorld.y);
+\t\tfloat ck = max(contourLine(vXrayWorld.y, cw, contourStep.x, 1.6) * contourDark.x,
+\t\t\tcontourLine(vXrayWorld.y, cw, contourStep.y, 2.2) * contourDark.y) * smoothstep(0.006, 0.02, slope);
+\t\tgl_FragColor.rgb *= 1.0 - ck;
+\t}
+#endif`;
+
+const XRAY_FRAGMENT = `
 \tfloat xrayK = xrayAlpha < 1.0
 \t\t? smoothstep(xrayEdge.x, xrayEdge.y, xrayChord(vXrayWorld, normalize(vXrayWorld - cameraPosition))) : 0.0;
 \tgl_FragColor.rgb = mix(gl_FragColor.rgb, min(gl_FragColor.rgb * xrayLight.x + xrayLight.y, vec3(1.0)), xrayK);
-\tgl_FragColor.a *= mix(1.0, xrayAlpha, xrayK);`);
+\tgl_FragColor.a *= mix(1.0, xrayAlpha, xrayK);`;
+
+// Instanced models (houses, trees) are shaded here from their turned normals
+// with the light that kit.js bakes into the merged meshes; the `paint`
+// attribute says how much of the instance colour a vertex takes (1 for a roof
+// or a crown, 0 for walls and trunks, which keep their own colour).
+const INSTANCE_VERTEX = `
+#ifdef USE_INSTANCING
+\t{
+\t\tmat3 im = mat3(instanceMatrix);
+\t\tvec3 inv = vec3(dot(im[0], im[0]), dot(im[1], im[1]), dot(im[2], im[2]));
+\t\tvec3 wn = normalize(im * (normal / max(inv, vec3(1e-8))));
+\t\tfloat shade = 0.5 + 0.25 * (1.0 + dot(wn, modelLight));
+#ifdef USE_INSTANCING_COLOR
+\t\tvColor.rgb = color.rgb * mix(vec3(1.0), instanceColor.rgb, paint) * shade;
+#else
+\t\tvColor.rgb = color.rgb * shade;
+#endif
+\t}
+#endif`;
+
+function xrayShader(shader, uniforms, { contours = false, instanced = false } = {}) {
+  Object.assign(shader.uniforms, uniforms);
+  let vertex = shader.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vXrayWorld;'
+      + (instanced ? '\nattribute float paint;\nuniform vec3 modelLight;' : ''))
+    .replace('#include <project_vertex>', `#include <project_vertex>
+\tvec4 xrayAt = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+\txrayAt = instanceMatrix * xrayAt;
+#endif
+\tvXrayWorld = (modelMatrix * xrayAt).xyz;`);
+  if (instanced) vertex = vertex.replace('#include <color_vertex>', '#include <color_vertex>' + INSTANCE_VERTEX);
+  shader.vertexShader = vertex;
+  shader.fragmentShader = shader.fragmentShader
+    .replace('#include <common>', '#include <common>' + GLSL_XRAY + (contours ? GLSL_CONTOURS : ''))
+    .replace('#include <opaque_fragment>', '#include <opaque_fragment>' + (contours ? CONTOUR_FRAGMENT : '')
+      + XRAY_FRAGMENT);
+}
+
+/**
+ * Materials of the ground and of the landscape models on it, all unlit and
+ * coloured per vertex, with the same x-ray window: `material` (the ground:
+ * the stylised land cover with contour lines, or the image), `models` (merged
+ * meshes whose shade is baked: heaps, walls, footprint buildings) and
+ * `instances` (instanced houses and trees, shaded in the vertex shader).
+ * Returns { material, models, instances, setXray(ellipsoid), showPhoto(texture),
+ * showStyled(color) }; `ellipsoid` is { center: [x, y, z], radii: [rx, ry, rz] }
+ * around the workings, or null for an opaque ground.
+ */
+export function terrainMaterial(fallback, light) {
+  const uniforms = {
+    xrayCenter: { value: new THREE.Vector3() },
+    xrayRadii: { value: new THREE.Vector3(1, 1, 1) },
+    xrayEdge: { value: new THREE.Vector2(XRAY_EDGE[0], XRAY_EDGE[1]) },
+    xrayAlpha: { value: 1 },
+    xrayLight: { value: new THREE.Vector2(XRAY_LIGHT[0], XRAY_LIGHT[1]) },
+    contourOn: { value: 1 },
+    contourStep: { value: new THREE.Vector2(CONTOUR[0], CONTOUR[1]) },
+    contourDark: { value: new THREE.Vector2(CONTOUR_DARK[0], CONTOUR_DARK[1]) },
+    modelLight: { value: new THREE.Vector3().fromArray(light || [-0.35, 0.8, 0.48]).normalize() },
   };
+  // Translucent only inside the x-ray window; they write depth, so that a near
+  // hill or house hides what stands behind it.
+  const make = (key, options, inject) => {
+    const m = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: true, ...options });
+    m.onBeforeCompile = (shader) => xrayShader(shader, uniforms, inject);
+    m.customProgramCacheKey = () => key;   // three.js would otherwise share one program among the three
+    return m;
+  };
+  const material = make('sekis-ground', { color: fallback.clone() }, { contours: true });
+  // WebGL 1 enables the derivatives extension for "flat shading"; a basic material does not use normals.
+  material.flatShading = true;
+  const models = make('sekis-models', {}, {});
+  const instances = make('sekis-instances', {}, { instanced: true });
   return {
     material,
+    models,
+    instances,
     setXray(ellipsoid) {
       uniforms.xrayCenter.value.fromArray(ellipsoid ? ellipsoid.center : [0, 0, 0]);
       uniforms.xrayRadii.value.fromArray(ellipsoid ? ellipsoid.radii : [1, 1, 1]);
       uniforms.xrayAlpha.value = ellipsoid ? XRAY_ALPHA : 1;
     },
-    /** The image replaces the plain colour (the vertex hillshade stays). */
-    setMap(texture) {
+    /** «Снимок»: the image on the ground (the vertex hillshade stays), no contours. */
+    showPhoto(texture) {
       material.map = texture;
       material.color.setRGB(1, 1, 1);
+      uniforms.contourOn.value = 0;
+      material.needsUpdate = true;
+    },
+    /** The stylised ground: vertex colours times `color` (white over the land cover), with contours. */
+    showStyled(color) {
+      material.map = null;
+      material.color.copy(color);
+      uniforms.contourOn.value = 1;
       material.needsUpdate = true;
     },
   };
@@ -284,6 +379,8 @@ float xrayChord(vec3 p, vec3 d) {
  * faces only, so that from outside only its far side shows. Returns a
  * BufferGeometry (about 800 triangles), or null without an ellipsoid.
  */
+const BACKDROP_AROUND = [[-70, 0], [70, 0], [0, -70], [0, 70], [-50, -50], [50, -50], [-50, 50], [50, 50]];
+
 export function xrayBackdrop(ellipsoid, heightAt, near, deep) {
   if (!ellipsoid) return null;
   const geometry = new THREE.SphereGeometry(1, 32, 14);
@@ -294,7 +391,11 @@ export function xrayBackdrop(ellipsoid, heightAt, near, deep) {
   for (let i = 0; i < position.count; i += 1) {
     const x = c[0] + position.getX(i) * r[0];
     const z = c[2] + position.getZ(i) * r[2];
-    const ground = heightAt(x, z) - 4;
+    // Under the lowest ground around the vertex: its triangles are wide, and in a valley between two
+    // vertices a wall pressed only under the ground at the vertices would come up through it.
+    let low = heightAt(x, z);
+    for (const [dx, dz] of BACKDROP_AROUND) low = Math.min(low, heightAt(x + dx, z + dz));
+    const ground = low - 6;
     const y = Math.min(ground, c[1] + position.getY(i) * r[1]);
     position.setXYZ(i, x, y, z);
     const t = THREE.MathUtils.clamp((ground - y) / (r[1] * 1.4), 0, 1);

@@ -391,10 +391,11 @@ class TerrainTest(GeometryCase):
 
     def test_no_raw_osm_data_is_committed(self):
         names = {p.name for p in TERRAIN.iterdir()}
-        self.assertEqual(names, {"heightmap.json", "texture.jpg", "features.json", "ATTRIBUTION.md"})
-        text = (TERRAIN / "features.json").read_text(encoding="utf-8")
-        for raw in ('"uid"', '"user"', '"changeset"', '"timestamp"', '"tags"'):
-            self.assertNotIn(raw, text)
+        self.assertEqual(names, {"heightmap.json", "texture.jpg", "features.json", "landscape.json", "ATTRIBUTION.md"})
+        for name in ("features.json", "landscape.json"):
+            text = (TERRAIN / name).read_text(encoding="utf-8")
+            for raw in ('"uid"', '"user"', '"changeset"', '"timestamp"', '"version"', '"tags"'):
+                self.assertNotIn(raw, text, name)
 
     def test_profile_is_the_ground_along_the_long_section(self):
         profile = self.doc["profile"]

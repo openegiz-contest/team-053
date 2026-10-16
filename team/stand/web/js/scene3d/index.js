@@ -7,16 +7,22 @@
 // mount() throws when no WebGL context can be created; the page then mounts the
 // long section in this container.
 //
+// The ground is the stylised landscape of landscape.js (land cover, roads,
+// water, buildings, trees, heaps from OpenStreetMap on the real terrain); the
+// «Снимок» button puts the Sentinel-2 image on the terrain instead.
+//
 // Budget (spec 4.5): no lights, shadows or post-processing; one texture (the
-// satellite image on the terrain, served by the Stand at /terrain/texture.jpg);
-// static geometry merged into a few objects (buildings and fixed equipment are
-// low-poly models merged into them, models.js); moving things are instances:
+// satellite image on the terrain, served by the Stand at /terrain/texture.jpg
+// and loaded only when «Снимок» is first turned on); static geometry merged
+// into a few objects (buildings and fixed equipment are low-poly models merged
+// into them, models.js; the houses and trees of the landscape are instanced);
+// moving things are instances:
 // one mesh per unit model (truck, its load, LHD, its load, drill rig), the
 // pumps, and boxes, cones and rings for the rest; antialias off, pixel ratio 1, canvas at most 1280 x 720; a
 // frame is drawn only while something moves and at most 12 times a second. The
 // one exception is a frame that must not wait: after mount, the first state, a
-// canvas resize (which clears the buffer), the scene being shown again or the
-// image arriving, the frame is drawn at once (see drawNow).
+// canvas resize (which clears the buffer), the scene being shown again, the
+// landscape or the image arriving, the frame is drawn at once (see drawNow).
 // `?debug=1` in the page address shows triangle and draw-call counts;
 // `?view=<preset>` (mine, declines, vent, water, plant) opens the scene in a
 // preset; without it the scene opens on the declines (DEFAULT_VIEW).
@@ -25,8 +31,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { NS, stateTone } from '../panels/dict.js';
 import { el, fmt, isNum } from '../panels/format.js';
-import { cumulative, faceShade, pointAlong } from './kit.js';
+import { LIGHT_DIR, cumulative, faceShade, pointAlong } from './kit.js';
 import { MAX_LABELS, createLabels } from './labels.js';
+import { LANDSCAPE_URL, buildLandscape } from './landscape.js';
 import { buildNetwork } from './network.js';
 import { PLINTH, PUMP_SIZE, buildUnitModels } from './models.js';
 import { createPalette } from './palette.js';
@@ -191,18 +198,27 @@ export async function mount(container, geometry) {
 
   // The ground: drawn after everything else, opaque except where the line of
   // sight runs on into the workings (the x-ray cut, terrain.js). It writes
-  // depth, so that a near hill hides the ground behind it.
+  // depth, so that a near hill hides the ground behind it. Until the landscape
+  // has arrived it is the plain grid in the meadow colour; the landscape models
+  // (houses, trees, heaps, walls) share its x-ray window.
   const terrain = createTerrain(geometry.terrain);
-  const groundLook = terrainMaterial(palette.scene('ground'));
+  const groundLook = terrainMaterial(palette.cover('meadow'), LIGHT_DIR);
   const ground = new THREE.Mesh(terrain ? terrain.geometry : new THREE.BufferGeometry(), groundLook.material);
   ground.renderOrder = 3;
   ground.visible = Boolean(terrain);
+  // Picking and the ground tests use the plain grid, whatever is drawn (never added to the scene).
+  const groundPick = new THREE.Mesh(ground.geometry);
   let groundTexture = null;
+  let landscape = null;
+  let photoOn = false;
+  let photoLoading = false;
   // Behind the workings, seen through the x-ray window: soil, not the page.
   const backdrop = new THREE.Mesh(new THREE.BufferGeometry(), basic({ side: THREE.BackSide }));
   backdrop.visible = false;
   const solidMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic());
-  const fillMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic());
+  // The fills are pulled a little towards the eye: a low fill level that meets the ground does not flicker.
+  const fillMesh = new THREE.Mesh(new THREE.BufferGeometry(),
+    basic({ polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
   const ghostLines = new THREE.LineSegments(new THREE.BufferGeometry(),
     new THREE.LineDashedMaterial({ vertexColors: true, dashSize: 9, gapSize: 8 }));
   const thinLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true }));
@@ -382,6 +398,11 @@ export async function mount(container, geometry) {
   }
   const overlay = createOverlay(root, palette, {
     onPreset: applyPreset,
+    onPhoto(on) {
+      photoOn = on;
+      overlay.setPhoto(on);
+      showSurface();
+    },
     onGrade(on) {
       gradeMode = on;
       overlay.setGrade(on);
@@ -577,8 +598,12 @@ export async function mount(container, geometry) {
         paint(statics.lines, id, palette.tone(tone || 'idle'), selected);
         // The tailings prism rises from the lowest ground to the fill level
         // (where the level is under the ground, the ground hides it).
-        const h = Math.max(0.6, (o.top - o.bottom) * clamp((isNum(f.fill_pct) ? f.fill_pct : 0) / 100, 0, 1));
+        // An empty cell keeps its prism under the ground.
+        const pct = isNum(f.fill_pct) ? f.fill_pct : 0;
+        const h = pct > 0 ? Math.max(0.6, (o.top - o.bottom) * clamp(pct / 100, 0, 1)) : -1;
         statics.fills.setLevel(id, o.bottom + 0.5, o.bottom + h);
+        // The pond lies on the fill once there is one; on an empty cell it stays under the ground.
+        statics.fills.setLevel(id + '#pond', o.bottom + 0.5, o.bottom + h + (h > 2 ? 0.3 : -0.5));
         paint(statics.fills, id, palette.scene(f.state === 'active' ? 'tailingsActive' : 'tailings'), selected);
       } else if (o.kind === 'plant' || o.kind === 'tailings_facility' || o.kind === 'rom_stockpile') {
         paint(statics.lines, id, selected ? white : palette.scene('site'), false);
@@ -818,7 +843,7 @@ export async function mount(container, geometry) {
     const distance = camera.position.distanceTo(point);
     groundRay.set(camera.position, scratch.copy(point).sub(camera.position).normalize());
     groundRay.far = Math.max(0, distance - 6);
-    const hit = groundRay.intersectObject(ground, false)[0];
+    const hit = groundRay.intersectObject(groundPick, false)[0];
     return Boolean(hit) && groundOpacity(hit.point.toArray(), camera.position.toArray(), statics.xray) > 0.6;
   }
 
@@ -864,15 +889,17 @@ export async function mount(container, geometry) {
     pointer.set((x / size.width) * 2 - 1, -(y / size.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
     const instances = pickable.map((item) => item.mesh);
-    for (const hit of raycaster.intersectObjects([solidMesh, fillMesh, ...instances, stock, ground], false)) {
-      if (hit.object === ground) {
+    const surface = ground.visible ? [groundPick] : [];
+    for (const hit of raycaster.intersectObjects([solidMesh, fillMesh, ...instances, stock, ...surface], false)) {
+      if (hit.object === groundPick) {
         // Opaque ground ends the search; through the x-ray cut the ray goes on.
         if (groundOpacity(hit.point.toArray(), camera.position.toArray(), statics.xray) > 0.6) return null;
         continue;
       }
-      const id = hit.object === solidMesh ? statics.solid.keyOfFace(hit.faceIndex)
+      const key = hit.object === solidMesh ? statics.solid.keyOfFace(hit.faceIndex)
         : hit.object === fillMesh ? statics.fills.keyOfFace(hit.faceIndex)
           : hit.object === stock ? stockId : pickable[instances.indexOf(hit.object)].ids[hit.instanceId];
+      const id = key ? key.split('#')[0] : null;   // a part such as the pond of a dam names its twin
       if (id && objects[id]) return id;
     }
     // 4. Anything close.
@@ -1183,6 +1210,64 @@ export async function mount(container, geometry) {
     draw(now);
   }
 
+  // ------------------------------------------------------------- surface
+  /**
+   * The ground as chosen: the stylised landscape (default) or, with «Снимок»,
+   * the plain grid draped with the Sentinel-2 image (the one texture of the
+   * budget, loaded the first time it is asked for) and no landscape models.
+   */
+  function showSurface() {
+    if (!terrain || disposed) return;
+    if (photoOn && !groundTexture && !photoLoading) {
+      photoLoading = true;
+      new THREE.TextureLoader().load(TEXTURE_URL, (texture) => {
+        photoLoading = false;
+        if (disposed) {
+          texture.dispose();
+          return;
+        }
+        texture.colorSpace = THREE.SRGBColorSpace;
+        groundTexture = texture;
+        showSurface();
+      }, undefined, () => {   // no image: the stylised ground stays
+        photoLoading = false;
+        photoOn = false;
+        overlay.setPhoto(false);
+      });
+    }
+    const photo = Boolean(photoOn && groundTexture);
+    ground.geometry = photo || !landscape ? terrain.geometry : landscape.ground;
+    if (photo) groundLook.showPhoto(groundTexture);
+    else groundLook.showStyled(landscape ? white : palette.cover('meadow'));
+    if (landscape) landscape.group.visible = !photo;
+    dirty = true;
+    drawNow(true);
+  }
+
+  /** [x, z, r] circles around the twin's own surface models: no OSM building or tree is drawn there. */
+  function keepOut() {
+    const out = [];
+    const near = (x, y, z) => Math.abs(y - terrain.heightAt(x, z)) < 25;
+    for (const o of Object.values(objects)) {
+      if (VEHICLE_KINDS.has(o.kind)) continue;
+      if ((o.kind === 'plant_line' || o.kind === 'main_fan' || o.kind === 'settling_pond') && o.center && o.size
+        && near(o.center[0], o.center[1] - o.size[1] / 2, o.center[2])) {
+        out.push([o.center[0], o.center[2], Math.hypot(o.size[0], o.size[2]) / 2 + 6]);
+      } else if (o.kind === 'shaft' && o.base && near(o.base[0], o.top, o.base[2])) {
+        out.push([o.base[0], o.base[2], 22]);
+      } else if (o.kind === 'rom_stockpile' && o.base) {
+        out.push([o.base[0], o.base[2], (o.radius || 30) + 12]);
+      } else if (o.kind === 'monitoring_point' && o.anchor) {
+        out.push([o.anchor[0], o.anchor[2], 8]);
+      } else if (o.kind === 'decline') {
+        for (const node of o.nodes || []) {
+          if (node.type === 'portal' && Array.isArray(node.at) && near(...node.at)) out.push([node.at[0], node.at[2], 24]);
+        }
+      }
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------ plumbing
   const resizeObserver = 'ResizeObserver' in window ? new ResizeObserver(resize) : null;
   if (resizeObserver) resizeObserver.observe(container);
@@ -1220,26 +1305,29 @@ export async function mount(container, geometry) {
   resize();   // sizes the canvas and draws the first frame now
   raf = requestAnimationFrame(frame);
 
-  // The satellite image (the one texture of the budget). Until it arrives the
-  // ground is drawn in a plain colour; then the frame is drawn at once.
+  // The landscape: built from /terrain/landscape.json once it has arrived
+  // (until then, and without it, the ground is the plain grid in the meadow
+  // colour), then the frame is drawn at once.
   if (terrain) {
-    new THREE.TextureLoader().load(TEXTURE_URL, (texture) => {
-      if (disposed) {
-        texture.dispose();
-        return;
-      }
-      texture.colorSpace = THREE.SRGBColorSpace;
-      groundTexture = texture;
-      groundLook.setMap(texture);
-      dirty = true;
-      drawNow(true);
-    }, undefined, () => {});   // no image: the plain ground stays
+    fetch(LANDSCAPE_URL).then((answer) => (answer.ok ? answer.json() : null)).then((data) => {
+      if (disposed || !data) return;
+      landscape = buildLandscape(data, terrain, palette, groundLook, keepOut());
+      scene.add(landscape.group);
+      showSurface();
+    }).catch(() => {});   // no landscape: the plain ground stays
   }
 
   if (debugOn) {
     // Measurement hooks for the performance budget (only with ?debug=1).
     window.sekisScene3d = {
-      stats: () => ({ ...stats, labels: labelCount, canvas: [canvas.width, canvas.height], network: [network.nodes, network.edges] }),
+      stats: () => ({ ...stats, labels: labelCount, canvas: [canvas.width, canvas.height], network: [network.nodes, network.edges],
+        landscape: landscape ? landscape.counts : null, photo: Boolean(photoOn && groundTexture) }),
+      /** «Снимок» on or off, as the button does. */
+      photo(on) {
+        photoOn = Boolean(on);
+        overlay.setPhoto(photoOn);
+        showSurface();
+      },
       /**
        * Draw `count` frames back to back; reading one pixel after each frame
        * waits until the rasteriser has finished it. Returns ms per frame.
@@ -1342,6 +1430,9 @@ export async function mount(container, geometry) {
         if (object.material) object.material.dispose();
       });
       if (groundTexture) groundTexture.dispose();
+      if (landscape) landscape.dispose();
+      if (terrain) terrain.geometry.dispose();   // the plain grid, also when the landscape was drawn
+      for (const look of [groundLook.models, groundLook.instances]) look.dispose();
       renderer.dispose();
       if (debugOn) delete window.sekisScene3d;
       root.remove();

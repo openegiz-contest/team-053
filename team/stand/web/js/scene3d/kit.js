@@ -6,7 +6,9 @@
 
 import * as THREE from 'three';
 
-const LIGHT = new THREE.Vector3(-0.35, 0.8, 0.48).normalize();
+/** The one light of the scene, baked into vertex colours (and applied to the instanced landscape models). */
+export const LIGHT_DIR = [-0.35, 0.8, 0.48];
+const LIGHT = new THREE.Vector3().fromArray(LIGHT_DIR).normalize();
 
 /** Baked brightness of a face with the given unit normal: 0.5 (away) … 1 (facing the light). */
 export function faceShade(nx, ny, nz) {

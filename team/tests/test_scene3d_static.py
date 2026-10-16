@@ -22,6 +22,8 @@ SCENE_DIR = os.path.join(WEB_DIR, "js", "scene3d")
 VENDOR_DIR = os.path.join(WEB_DIR, "vendor", "three")
 GEOMETRY_FILE = os.path.join(TEAM_DIR, "model", "geometry.json")
 TEXTURE_FILE = os.path.join(TEAM_DIR, "model", "terrain", "texture.jpg")
+LANDSCAPE_FILE = os.path.join(TEAM_DIR, "model", "terrain", "landscape.json")
+LANDSCAPE_BUDGET_BYTES = 400_000
 SERVER_FILE = os.path.join(TEAM_DIR, "stand", "server.py")
 
 # three@0.160.0 from the npm registry tarball (sha1 cd1e4dbd01aee0719280a9086d75545db52b7a8f):
@@ -141,7 +143,8 @@ class SceneModule(unittest.TestCase):
         coarse = (len(rows) - 1) * (len(rows[0]) - 1) - (x1 - x0) * (z1 - z0)
         fine = (len(inset["rows"]) - 1) * (len(inset["rows"][0]) - 1)
         self.assertEqual(2 * (coarse + fine), 9272)
-        self.assertLessEqual(2 * (coarse + fine), 10000)   # leaves 10 000 of the 20 000 for the rest
+        # The plain grid (the photo's) stays under 10 000; the stylised ground is cut from it (landscape.js).
+        self.assertLessEqual(2 * (coarse + fine), 10000)
         self.assertEqual(terrain["texture"]["size"], [512, 512])
 
     def test_resize_never_leaves_the_canvas_cleared(self):
@@ -268,6 +271,25 @@ class SceneModule(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_server_serves_the_landscape(self):
+        spec = importlib.util.spec_from_file_location("stand_server_landscape", SERVER_FILE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        server = module.make_server("127.0.0.1", 0, True)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/terrain/landscape.json"
+            with urllib.request.urlopen(url, timeout=10) as answer:
+                self.assertEqual(answer.status, 200)
+                self.assertTrue(answer.headers["Content-Type"].startswith("application/json"))
+                self.assertIn("max-age", answer.headers["Cache-Control"])
+                body = answer.read()
+            self.assertEqual(body, read(LANDSCAPE_FILE))
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_ui_text_is_russian(self):
         text = read(os.path.join(SCENE_DIR, "ui.js")).decode("utf-8")
         for preset in ("Рудник", "Уклоны", "Вентиляция", "Водоотлив", "Фабрика и хвосты"):
@@ -275,6 +297,99 @@ class SceneModule(unittest.TestCase):
         # The legend sentence of the page footer is not repeated inside the scene.
         scene_text = "\n".join(read(path).decode("utf-8") for path in scene_files())
         self.assertFalse("расположение в плане" in scene_text)
+
+
+
+class Landscape(unittest.TestCase):
+    """The stylised surface (spec 4.2): OSM data in model/terrain/landscape.json, drawn by landscape.js."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.raw = read(LANDSCAPE_FILE)
+        cls.data = json.loads(cls.raw.decode("utf-8"))
+
+    def test_file_is_small_lf_and_attributed(self):
+        self.assertLess(len(self.raw), LANDSCAPE_BUDGET_BYTES)
+        self.assertNotIn(b"\r", self.raw)
+        about = self.data["about"]
+        for part in ("OpenStreetMap contributors", "Open Database License", "build_landscape.py", "ATTRIBUTION.md"):
+            self.assertIn(part, about)
+        text = self.raw.decode("utf-8")
+        for raw in ('"uid"', '"user"', '"changeset"', '"timestamp"', '"version"', '"tags"', '"nodes"'):
+            self.assertNotIn(raw, text)
+
+    def test_geometry_is_quantised_inside_the_square(self):
+        def coords(flat):
+            self.assertEqual(len(flat) % 2, 0)
+            for v in flat:
+                self.assertLessEqual(abs(v), 2000)
+                self.assertEqual(v * 2, int(v * 2))   # multiples of 0.5 m
+            return list(zip(flat[0::2], flat[1::2]))
+
+        def area(ring):
+            return sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(ring, ring[1:] + ring[:1])) / 2
+
+        order = self.data["class_order"]
+        for item in self.data["areas"]:
+            self.assertIn(item["class"], order)
+            ring = coords(item["ring"])
+            self.assertGreaterEqual(len(ring), 3)
+            self.assertGreater(area(ring), 0)      # counter-clockwise in (x, z)
+        ranks = [order.index(a["class"]) for a in self.data["areas"]]
+        self.assertEqual(ranks, sorted(ranks))   # listed in drawing order
+        self.assertEqual(sum(1 for a in self.data["areas"] if a["class"] == "pit"), 1)
+        for item in self.data["heaps"]:
+            self.assertGreater(area(coords(item["ring"])), 0)
+            self.assertGreaterEqual(item["rise"], 2)
+        for item in self.data["buildings"]:
+            self.assertGreater(area(coords(item["ring"])), 0)
+            if "levels" in item:
+                self.assertGreater(item["levels"], 0)
+        for key in ("roads", "waterways", "barriers"):
+            for item in self.data[key]:
+                self.assertGreaterEqual(len(coords(item["line"])), 2)
+        counts = self.data["counts"]
+        self.assertEqual(counts["buildings"], len(self.data["buildings"]))
+        self.assertEqual(counts["roads"], len(self.data["roads"]))
+
+    def test_landscape_is_the_default_and_the_photo_a_switch(self):
+        index = read(os.path.join(SCENE_DIR, "index.js")).decode("utf-8")
+        ui = read(os.path.join(SCENE_DIR, "ui.js")).decode("utf-8")
+        landscape = read(os.path.join(SCENE_DIR, "landscape.js")).decode("utf-8")
+        self.assertIn("export const LANDSCAPE_URL = '/terrain/landscape.json';", landscape)
+        self.assertIn("fetch(LANDSCAPE_URL)", index)
+        self.assertIn("let photoOn = false;", index)
+        # The image is loaded only when «Снимок» is first turned on, and drawn at once.
+        show = re.search(r"\n  function showSurface\(\) \{\n(.*?)\n  \}\n", index, re.S)
+        self.assertIsNotNone(show)
+        self.assertIn("new THREE.TextureLoader().load(TEXTURE_URL", show.group(1))
+        self.assertIn("drawNow(true);", show.group(1))
+        self.assertIn("text: 'Снимок'", ui)
+        self.assertIn("onPhoto(photoButton.getAttribute('aria-pressed') !== 'true')", ui)
+
+    def test_models_are_instanced_and_share_the_xray_window(self):
+        landscape = read(os.path.join(SCENE_DIR, "landscape.js")).decode("utf-8")
+        terrain = read(os.path.join(SCENE_DIR, "terrain.js")).decode("utf-8")
+        # Houses, blocks and trees: instanced meshes made in one place, with the instanced x-ray material.
+        self.assertEqual(landscape.count("new THREE.InstancedMesh("), 1)
+        self.assertIn("new THREE.InstancedMesh(geometry, materials.instances,", landscape)
+        for model in ("instancedOf(houseGeometry(", "instancedOf(treeGeometry(", "instancedOf(facetGeometry(boxFaces("):
+            self.assertIn(model, landscape)
+        self.assertIn("new THREE.Mesh(merged.geometry, materials.models)", landscape)
+        self.assertIn("new THREE.Mesh(ribbons.geometry, materials.models)", landscape)
+        # One x-ray shader for the ground and the models; contour lines only on the ground.
+        self.assertEqual(terrain.count("m.onBeforeCompile = (shader) => xrayShader(shader, uniforms, inject);"), 1)
+        self.assertIn("make('sekis-ground', { color: fallback.clone() }, { contours: true })", terrain)
+        self.assertIn("make('sekis-instances', {}, { instanced: true })", terrain)
+
+    def test_tree_and_building_counts_fit_the_budget(self):
+        # Spec 4.5: at most 60 000 triangles in all. A tree takes 13 triangles, a house 14.
+        landscape = read(os.path.join(SCENE_DIR, "landscape.js")).decode("utf-8")
+        caps = re.search(r"const TREE_CAP = \{ wood: (\d+), river: (\d+), park: (\d+) \};", landscape)
+        self.assertIsNotNone(caps)
+        trees = sum(int(v) for v in caps.groups())
+        self.assertLessEqual(trees, 1000)
+        self.assertLessEqual(13 * trees + 14 * len(self.data["buildings"]), 20_000)
 
 
 if __name__ == "__main__":
