@@ -102,6 +102,8 @@ class Ramp:
         self.slot: List[Optional["Truck"]] = [None] * n   # waiting slot of each node
         self.slot_free = [-INF] * n
         self.road = Polyline(geo.surface_road(key))       # portal -> ROM pad
+        # The decline itself, for positions between nodes: a portal leg may bend between two bays.
+        self.line = Polyline(geo.obj(key)["points"])
         surface_km = p(f"decline.{key}.surface_km")
         self.surface_loaded_s = surface_km / p("truck.speed_flat_loaded_kmh") * SECONDS_PER_HOUR
         self.surface_empty_s = surface_km / p("truck.speed_flat_empty_kmh") * SECONDS_PER_HOUR
@@ -625,10 +627,9 @@ class Haulage:
         if phase == P_DOWN or phase == P_UP:
             i = trk.seg
             a, b = (i, i + 1) if phase == P_DOWN else (i + 1, i)
-            pa, pb = ramp.pos[a], ramp.pos[b]
             ch = ramp.chainage[a] + (ramp.chainage[b] - ramp.chainage[a]) * f
-            return (pa[0] + (pb[0] - pa[0]) * f, pa[1] + (pb[1] - pa[1]) * f, pa[2] + (pb[2] - pa[2]) * f,
-                    ch, self.v_down if phase == P_DOWN else self.v_up)
+            x, y, z = ramp.line.at_distance(ch)
+            return x, y, z, ch, self.v_down if phase == P_DOWN else self.v_up
         if phase == P_DOWN_WAIT or phase == P_UP_WAIT:
             x, y, z = ramp.pos[trk.node]
             return x, y, z, ramp.chainage[trk.node], 0.0

@@ -189,7 +189,7 @@ export function buildUnderground(ctx) {
     ctx.reg(level.id, px((level.x0 + level.x1) / 2), y);
     ctx.on(level.id, (thing, state) => {
       const f = thing.f;
-      const short = levelAir(thing, state, M) !== 'ok';
+      const short = levelAir(thing, state, level.id) !== 'ok';
       set(g, { 'data-state': f.state || '', 'data-air': short ? 'short' : 'ok' });
       set(band, { 'data-air': short ? 'short' : 'ok' });
       levelState[level.id] = f.state;

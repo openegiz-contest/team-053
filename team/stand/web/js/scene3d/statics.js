@@ -559,7 +559,9 @@ export function buildStatics(geometry, palette, live, terrain) {
     // Elevation ruler: a vertical scale left of the levels; the marks are the
     // level elevations and the ground at the ruler. Built in its own frame (x
     // to the right, text in the plane z = 0) so that it can turn to the camera.
-    const driveZ = levels[0].points[0][2];
+    // It stands at the z of most level drives (the ventilation level's drive runs elsewhere).
+    const zs = levels.map((l) => l.points[0][2]);
+    const driveZ = zs.reduce((best, z) => (zs.filter((v) => v === z).length > zs.filter((v) => v === best).length ? z : best), zs[0]);
     rulerAt = [x0 - 46, 0, driveZ];
     const groundY = Math.round(groundAt(rulerAt[0], rulerAt[2]));
     ruler.use(null, palette.scene('ruler'));

@@ -51,6 +51,7 @@ const DEG = Math.PI / 180;
 const VEHICLE_KINDS = new Set(['haul_truck', 'lhd', 'drill_rig']);
 const THIN_KINDS = new Set(['decline', 'level', 'shaft', 'raise', 'main_fan', 'pump_station', 'monitoring_point']);
 const RING_STATES = new Set(['waiting_bay', 'held_vent', 'standby_vent', 'maintenance']);
+const HELD_STATES = new Set(['held_vent', 'standby_vent']);   // a unit waiting for air
 const IDLE_STOPE = new Set(['standby', 'planned', 'preparation', 'backfilling']);
 const ALARM_TONES = new Set(['fail', 'flood', 'warn']);
 // Drawn length of a working unit at the preset distances, in CSS pixels of a
@@ -67,13 +68,14 @@ const MAX_PITCH = 14 * Math.PI / 180;   // a unit is drawn pitched along a decli
 
 // Camera presets: the target, the direction the camera looks from (azimuth
 // from the south towards the east, elevation above the horizon) and distance.
-// The workings lie under the old pit (x -500 … +215, z -180 … +75); the plant
-// is 0.9 km east-north-east and the tailings 1.1–1.5 km north-east of the pit.
+// The workings lie under the old pit (x -470 … +360, z -180 … +210: shafts north
+// of the pit, declines in the footwall south of it); the plant is 0.9 km
+// east-north-east and the tailings 1.1–1.5 km north-east of the pit.
 const VIEWS = {
-  mine: { target: [-120, 70, -40], azimuth: -24, elevation: 27, distance: 2350 },
-  declines: { target: [20, 175, -30], azimuth: -12, elevation: 24, distance: 1900 },
-  vent: { target: [-142, 200, -87], azimuth: 30, elevation: 24, distance: 1700 },
-  water: { target: [-40, 200, -60], azimuth: -38, elevation: 25, distance: 1750 },
+  mine: { target: [-30, 70, 40], azimuth: -24, elevation: 27, distance: 2350 },
+  declines: { target: [40, 175, 30], azimuth: -12, elevation: 24, distance: 1900 },
+  vent: { target: [-60, 200, 0], azimuth: 30, elevation: 24, distance: 1700 },
+  water: { target: [40, 200, 10], azimuth: -38, elevation: 25, distance: 1750 },
   plant: { target: [560, 440, -820], azimuth: -28, elevation: 34, distance: 2350 },
 };
 
@@ -448,15 +450,25 @@ export async function mount(container, geometry) {
     return out.copy(palette.stope(f.state));
   }
 
-  function levelLook(id, restricted) {
+  /** Levels where a loader stands held for lack of air (its stope's level). */
+  function heldLevels() {
+    const out = new Set();
+    for (const thing of Object.values(things)) {
+      if (!thing || thing.kind !== 'lhd' || !thing.f || !HELD_STATES.has(thing.f.state)) continue;
+      const stope = things[NS + thing.f.stope];
+      if (stope && stope.attrs && stope.attrs.link_level) out.add(stope.attrs.link_level);
+    }
+    return out;
+  }
+
+  function levelLook(id, held) {
     const f = F(id);
     if (f.state === 'flooded') return { drive: palette.tone('flood'), plate: palette.tone('flood') };
+    // Amber only where the units are short: less air than the level needs, or a loader held there.
+    // A level not in use needs nothing and carries its leakage share; it is never short.
     const short = isNum(f.air_flow_m3s) && isNum(f.air_required_m3s) && f.air_required_m3s > 0
       && f.air_flow_m3s < f.air_required_m3s * 0.98;
-    // While the mine holds units for lack of air, every ventilated level is marked.
-    if (short || (restricted && isNum(f.air_required_m3s) && f.air_required_m3s > 0)) {
-      return { drive: palette.tone('warn'), plate: palette.tone('warn') };
-    }
+    if (short || held.has(id)) return { drive: palette.tone('warn'), plate: palette.tone('warn') };
     if (f.state === 'mined_out') return { drive: palette.scene('driveQuiet'), plate: palette.scene('plateQuiet') };
     return { drive: palette.scene('drive'), plate: palette.scene('plate') };
   }
@@ -477,7 +489,7 @@ export async function mount(container, geometry) {
     const mine = F(NS + 'mine');
     const waterSystem = F(NS + 'water');
     const plant = F(NS + 'plant');
-    const restricted = mine.state === 'restricted_air';
+    const held = heldLevels();
     blastWindow = F(NS + 'enterprise').shift === 'blast';
     const nextFixed = [];
     const nextFlows = [];
@@ -501,7 +513,7 @@ export async function mount(container, geometry) {
 
       if (o.kind === 'level') {
         if (ghost) continue;
-        const look = levelLook(id, restricted);
+        const look = levelLook(id, held);
         paint(statics.solid, id, look.drive, selected);
         lowest = Math.min(lowest, o.elevation);
         if (f.state === 'flooded') flooded.push(o.elevation);
@@ -657,7 +669,7 @@ export async function mount(container, geometry) {
     else waterTarget = null;
 
     overlay.setAlerts({
-      air: restricted || nextPlates.some((plate) => plate.color === palette.tone('warn')),
+      air: nextPlates.some((plate) => plate.color === palette.tone('warn')),   // the legend of the amber levels
       flood: waterTarget !== null,
     });
     fixed = nextFixed;

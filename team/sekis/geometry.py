@@ -49,14 +49,24 @@ ATTRIBUTION = [
 
 # --------------------------------------------------------------------------
 # Underground layout (spec 4.2), schematic. Plan pairs are (x, z) in the mine
-# layout frame: origin on the axis of shaft VS1, ore zone along its x axis.
-# LAYOUT_SHIFT places that frame in the scene so that the TU2 portal stands on
-# the centre of the carved pit floor (features.json pit.centre); the shift is a
-# multiple of 0.1 m, so every decline keeps its length and chainages.
-# Where a value differs from the spec text, the comment says why.
+# layout frame: origin on the ore zone under the centre of the old pit's floor,
+# x along the strike, z across it (south). The strike runs east-west (grid
+# azimuth 90 deg, about 91 deg true), along the long axis of the OSM pit outline
+# (357 m east-west against 306 m north-south); no azimuth is published.
+# LAYOUT_SHIFT places that frame in the scene: it is the centre of the carved
+# pit floor (features.json pit.centre), where the TU2 portal stands, so the
+# middle stope column lies under the pit centre and the outer ones run on along
+# the strike beyond the rim at depth.
+# Cross-section, north to south: shafts and raises (collars north of the pit,
+# off the OSM roads, heaps and the northern quarry), the ventilation drive of the
+# +320 m level under the pit's north wall, the ore zone, the level drives, the
+# pump chambers, then the declines in the footwall, TU1 west and TU2 east.
+# Every decline leg keeps the 8 deg slope and the 0.1 m horizontal runs of the
+# earlier layout, so lengths and chainages are unchanged.
 # --------------------------------------------------------------------------
 
-LAYOUT_SHIFT = (-172.3, -87.5)
+LAYOUT_SHIFT = (0.0, 62.5)
+STRIKE_AZIMUTH_DEG = 90              # grid azimuth of the strike (schematic)
 
 
 def _lx(x):
@@ -72,34 +82,47 @@ ORE_Z = _lz(0.0)                     # ... at this z; the long section is drawn 
 STOPE_X = tuple(_lx(x) for x in (-200.0, 0.0, 200.0))   # stope 1, 2, 3 of a level
 DIP_DEG = 90                         # stopes are vertical tabular blocks (ore dips 70-90 deg, FACT A1)
 DRIVE_Z = _lz(40.0)                  # level drive, south of the ore zone
+# The +320 m ventilation level carries no stopes and joins the shafts: its drive runs
+# north of the ore zone, under the pit's north wall (at least 35 m of rock above it);
+# at DRIVE_Z it would cross the TU2 portal leg 6 m below the pit floor.
+VENT_DRIVE_Z = _lz(-100.0)
 DRIVE_WIDTH, DRIVE_HEIGHT = 4.0, 4.0
-LEVEL_Z = (_lz(-30.0), _lz(160.0))   # z range of a level's workings (water plane, tint)
+LEVEL_Z = (_lz(-30.0), _lz(150.0))   # z range of a level's workings (water plane, tint)
 
-# West end of each zigzag and its vertical plane. The east end follows from the
-# slope: one leg of 50 m of depth runs 50 / tan 8 deg = 355.8 m.
+# Plan path of each decline's portal leg, (x, z) in the layout frame: the portal, any bends,
+# then the first turn (the first multiple of 50 m below the portal). The leg falls at 8 deg
+# along that path; from the first turn the zigzag runs east in the vertical plane of the
+# first turn, turning every 50 m of depth: one leg runs 50 / tan 8 deg = 355.8 m.
+# Every run is that of the earlier layout (portal legs 213.5 m and 142.3 m in plan), so the
+# lengths and chainages do not change. TU1: the portal of the earlier layout (+430 m where
+# the DEM ground is 431.1 m), 85.4 m west as before, then 128.1 m south into the footwall
+# (the bend falls at +418 m). TU2: the portal on the pit floor centre, 142.3 m south under
+# the pit's south wall.
+# The planes also keep the volume of the -50 m and 0 m workings, from which the flood
+# thresholds of params.json are derived (water.flood_threshold_*; test_vod checks them).
 DECLINE_PLAN = {
-    "decline-tu1": {"x_west": _lx(-330.0), "z": _lz(120.0)},
-    "decline-tu2": {"x_west": _lx(30.0), "z": _lz(150.0)},
+    "decline-tu1": [(-288.8, -30.0), (-374.2, -30.0), (-374.2, 98.1)],
+    "decline-tu2": [(0.0, 0.0), (0.0, 142.3)],
 }
 DECLINE_WIDTH = 4.5                  # 4.5 m x 4.0 m = the published 18 m2
 
+# Airways stand where the level connections that cross the ore zone pass between the
+# stope columns or beyond them, and where a vertical airway misses the stopes in the
+# long section (stopes at x -253..-147, -53..53, 147..253).
 AIRWAY_PLAN = {name: (_lx(x), _lz(z)) for name, (x, z) in {
-    "shaft-vs1": (0.0, -60.0),
-    # spec (250, -60) lies inside the pit rim; 30 m further north the collar and its fan are clear
-    "shaft-vs2": (250.0, -90.0),
-    # spec (-250, -60): its level connections would cut through stope 1
-    "shaft-vs3": (-300.0, -60.0),
-    "raise-vpv": (-100.0, -40.0),
-    # spec x = -250 / +250 projects onto stopes 1 and 3 in the long section
-    "raise-vhv-tu1": (-280.0, 100.0),
-    "raise-vhv-tu2": (280.0, 100.0),
-    # spec (330, -20) stood 2 m from the schematic pit rim; (340, -20) is 49 m outside the OSM pit outline
-    "raise-vhv-exhaust": (340.0, -20.0),
+    "shaft-vs1": (-172.3, -210.0),   # collar of the earlier layout, 111 m north of the pit
+    "shaft-vs2": (135.0, -182.5),    # 43 m north of the pit, clear of the roads and the northern quarry
+    "shaft-vs3": (-472.3, -210.0),   # collar of the earlier layout, west of the ore zone
+    "raise-vpv": (-115.0, -190.0),   # between stope columns 1 and 2
+    "raise-vhv-tu1": (-342.0, 68.0),  # 30 m north of the TU1 zigzag, west of the stopes
+    "raise-vhv-tu2": (270.0, 110.0),  # 32 m north of the TU2 zigzag, east of the stopes
+    "raise-vhv-exhaust": (320.0, 7.5),  # east of the ore zone, 149 m from the pit, off the roads
 }.items()}
 # Raises driven alongside a decline exist only as deep as that decline's levels.
 RAISE_DECLINE = {"raise-vhv-tu1": "decline-tu1", "raise-vhv-tu2": "decline-tu2"}
 
 PUMP_Z = _lz(70.0)                   # pump chambers, 30 m south of the drive
+# between stope columns 2 and 3
 PUMP_X = {name: _lx(x) for name, x in {"ps-p150": 100.0, "ps-m050": 100.0, "ps-m200": 112.0}.items()}
 PUMP_CHAMBER = (20.0, 5.0, 10.0)
 SUMP_DEPTH = 6.0
@@ -644,19 +667,27 @@ class _Builder:
             if (portal, design) != (float(self.attr(name, "portal_elevation_m")),
                                     float(self.attr(name, "design_bottom_m"))):
                 raise ValueError(f"{name}: params.json and registry.json disagree on its elevations")
-            plan = DECLINE_PLAN[name]
+            path = [(_lx(x), _lz(z)) for x, z in DECLINE_PLAN[name]]
             first = math.floor(portal / self.floor) * self.floor
             if first == portal:
                 first -= self.floor
             tan = math.tan(math.radians(self.slope))
-            points = [[plan["x_west"] + (portal - first) / tan, portal, plan["z"]]]
+            # The portal leg keeps the horizontal run of the earlier layout, rounded to 0.1 m.
+            runs = [math.dist(a, b) for a, b in zip(path, path[1:])]
+            if abs(sum(runs) - _num((portal - first) / tan)) > 1e-6:
+                raise ValueError(f"{name}: the portal leg is not {_num((portal - first) / tan)} m long in plan")
+            points, done = [], 0.0
+            for (x, z), run in zip(path[:-1], [0.0] + runs[:-1]):   # the first turn follows below
+                done += run
+                points.append([x, portal - (portal - first) * done / sum(runs), z])
+            tx, tz = path[-1]
             y, side = first, 0
             while y > design:
-                points.append([plan["x_west"] + side * self.run, y, plan["z"]])
+                points.append([tx + side * self.run, y, tz])
                 y, side = y - self.floor, 1 - side
             last = points[-1]
             x_end = last[0] + (1 if side else -1) * (last[1] - design) / tan
-            points.append([x_end, design, plan["z"]])
+            points.append([x_end, design, tz])
             self.decline_pts[name] = _rounded(points)
             self.decline_bottom[name] = float(self.p[f"decline.{token}.bottom_m"])
         self.surface_y = max(p[0][1] for p in self.decline_pts.values())
@@ -708,12 +739,13 @@ class _Builder:
             section = self.attr(name, "section_m2")
             if name == "decline-tu2":
                 source = ("elevations, slope and section: facts file A2; portal on the centre of the carved pit "
-                          "floor (OSM pit outline); zigzag " + SCHEMATIC_PLAN)
+                          "floor (OSM pit outline), first leg south under the pit wall, zigzag in the footwall "
+                          "plane; " + SCHEMATIC_PLAN)
             else:
                 g = self.terrain.height(pts[0][0], pts[0][2])
                 source = (f"elevations, slope and section: facts file A2; portal at +{portal:g} m where the "
-                          f"ground (Copernicus DEM, cell mean) is {g:.1f} m, west of the pit; zigzag "
-                          + SCHEMATIC_PLAN)
+                          f"ground (Copernicus DEM, cell mean) is {g:.1f} m, west of the pit; first leg west, then south "
+                          "(bend at +418 m), zigzag in the footwall plane; " + SCHEMATIC_PLAN)
             obj = self.head(name, "polyline", pts[0], source)
             obj.update({
                 "token": name.rsplit("-", 1)[1],
@@ -774,10 +806,14 @@ class _Builder:
                 inside = [max(below, key=lambda lvl: self.levels[lvl])]
             self.airway_levels[name] = inside
 
+    def drive_z(self, level):
+        """z of a level's drive: the ventilation level's runs north of the ore zone."""
+        return VENT_DRIVE_Z if self.attr(level, "role") == "ventilation" else DRIVE_Z
+
     def airway_link(self, airway, level):
         obj, e = self.built[airway], self.levels[level]
         x, bottom, z = obj["base"]
-        return [[x, e, DRIVE_Z], [x, max(e, bottom), z]]
+        return [[x, e, self.drive_z(level)], [x, max(e, bottom), z]]
 
     # -- stopes and levels -------------------------------------------------
 
@@ -806,14 +842,15 @@ class _Builder:
     def build_levels(self):
         for level, e in self.levels.items():
             level_planned = self.planned(level)
+            dz = self.drive_z(level)
             links = []
             for decline, point, planned in self.accesses(level):
                 links.append({"to": self.tid(decline), "role": "access", "planned": planned,
-                              "points": [[point[0], e, DRIVE_Z], point]})
+                              "points": [[point[0], e, dz], point]})
             for stope in self.of_kind("stope"):
                 if self.links(stope, "link_level") == [level]:
                     links.append({"to": self.tid(stope), "role": "crosscut", "planned": self.planned(stope),
-                                  "points": [[self.built[stope]["draw_point"][0], e, DRIVE_Z],
+                                  "points": [[self.built[stope]["draw_point"][0], e, dz],
                                              self.built[stope]["draw_point"]]})
             for airway, served in self.airway_levels.items():
                 if level in served:
@@ -825,20 +862,20 @@ class _Builder:
                 if _short(self.attr(station, "_parents")) == level:
                     x = PUMP_X[station]
                     links.append({"to": self.tid(station), "role": "chamber", "planned": self.planned(station),
-                                  "points": [[x, e, DRIVE_Z], [x, e, PUMP_Z - PUMP_CHAMBER[2] / 2]]})
+                                  "points": [[x, e, dz], [x, e, PUMP_Z - PUMP_CHAMBER[2] / 2]]})
             # The drive spans the ore zone and every junction that exists with the level itself.
             xs = list(ORE_X) + [ln["points"][0][0] for ln in links if level_planned or not ln["planned"]]
             x_min, x_max = min(xs), max(xs)
             for ln in links:
                 x = ln["points"][0][0]
                 if not x_min <= x <= x_max:
-                    ln["points"].insert(0, [min(max(x, x_min), x_max), e, DRIVE_Z])
-            obj = self.head(level, "polyline", [x_min, e, DRIVE_Z],
+                    ln["points"].insert(0, [min(max(x, x_min), x_max), e, dz])
+            obj = self.head(level, "polyline", [x_min, e, dz],
                             "elevation: facts file A2 and the 50 m floor (A1); " + SCHEMATIC_PLAN)
             obj.update({"elevation": e, "role": self.attr(level, "role"),
                         "width": DRIVE_WIDTH, "height": DRIVE_HEIGHT,
-                        "points": [[x_min, e, DRIVE_Z], [x_max, e, DRIVE_Z]],
-                        "extent": [x_min, LEVEL_Z[0], x_max, LEVEL_Z[1]], "links": links})
+                        "points": [[x_min, e, dz], [x_max, e, dz]],
+                        "extent": [x_min, min(LEVEL_Z[0], dz - 30.0), x_max, LEVEL_Z[1]], "links": links})
             self.built[level] = obj
 
     # -- fans and pump stations --------------------------------------------
@@ -889,7 +926,7 @@ class _Builder:
                 shaft = self.built[PIPE_SHAFT]
                 sx, _, sz = shaft["base"]
                 pond = self.built[target]["anchor"]
-                pipe += [[x, le, PUMP_Z], [x, le, DRIVE_Z]] + self.airway_link(PIPE_SHAFT, level)
+                pipe += [[x, le, PUMP_Z], [x, le, self.drive_z(level)]] + self.airway_link(PIPE_SHAFT, level)
                 pipe += [[sx, shaft["top"], sz]] + self.drape([[sx, sz], [pond[0], pond[2]]])
             obj = self.head(name, "box", center, "elevation and sump: facts file A6; " + SCHEMATIC_PLAN)
             obj.update({"center": center, "size": [dx, dy, dz], "elevation": e,
@@ -1201,9 +1238,12 @@ class _Builder:
                              "WGS 84); grid north is the scene's north",
                       "grid_convergence_deg": round(grid_convergence_deg(), 3),
                       "layout_shift": list(LAYOUT_SHIFT),
+                      "strike_azimuth_deg": STRIKE_AZIMUTH_DEG,
                       "layout": "underground plan positions are schematic: the mine layout (ore zone, declines, "
-                                "airways, levels) is shifted by layout_shift so that the TU2 portal stands on the "
-                                "centre of the carved pit floor; surface positions are real (sourced flags)"},
+                                "airways, levels) is drawn in a frame whose origin, layout_shift, is the centre of "
+                                "the carved pit floor, where the TU2 portal stands; the ore zone strikes east-west "
+                                "(strike_azimuth_deg, grid) under the old pit, along its long axis; no azimuth is "
+                                "published; surface positions are real (sourced flags)"},
             "bounds": {"min": [x0, math.floor(low), z0], "max": [x1, math.ceil(high), z1]},
             "terrain": terrain,
             "profile": self.profile(),

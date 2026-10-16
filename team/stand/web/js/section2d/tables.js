@@ -88,7 +88,7 @@ export function buildTables(ctx) {
     layers.labels.append(g);
     ctx.on(level.id, (thing, state) => {
       const f = thing.f;
-      const air = levelAir(thing, state, M);
+      const air = levelAir(thing, state, level.id);
       const short = air !== 'ok';
       const tone = f.state === 'flooded' ? 'flood' : f.state === 'planned' ? 'planned' : short ? 'warn' : 'idle';
       set(g, { 'data-tone': tone });
@@ -96,8 +96,7 @@ export function buildTables(ctx) {
       const role = stateLabel(f.state, 'level');
       if (sub) {
         setText(value, flow);
-        const lack = air === 'cut' ? (lines === 3 ? 'нет подачи' : 'подача воздуха нарушена')
-          : lines === 3 ? 'мало воздуха' : `мало воздуха: нужно ${fmt(f.air_required_m3s, 1)}`;
+        const lack = lines === 3 ? 'мало воздуха' : `мало воздуха: нужно ${fmt(f.air_required_m3s, 1)}`;
         setText(sub, short ? lack : lines === 3 && f.state === 'mined_out' ? 'отработан' : role);
       } else {
         setText(value, f.state === 'flooded' ? role : flow);

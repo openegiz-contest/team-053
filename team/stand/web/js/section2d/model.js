@@ -27,20 +27,27 @@ export function shortName(id) {
   return SHORT[id.slice(NS.length)] || null;
 }
 
+const HELD_STATES = new Set(['held_vent', 'standby_vent']);   // a unit waiting for air
+
 /**
- * Air state of a level: 'short' when its flow is below the requirement, 'cut' when
- * the main fan of its intake airway has failed, otherwise 'ok'.
+ * Air state of a level: 'short' when its units are short of air, that is its flow is
+ * below its requirement or a loader stands held there for lack of air; otherwise 'ok'.
+ * Under ventilation on demand a level not in use needs no air and carries its leakage
+ * share: it is never short, even while a main fan is down.
  */
-export function levelAir(thing, state, M) {
+export function levelAir(thing, state, levelId) {
   const f = thing.f;
   if (f.state === 'planned' || f.state === 'flooded') return 'ok';
-  const intake = thing.attrs && thing.attrs.link_air_intake;
-  const fanId = intake && M.fanByAirway[intake];
-  const fan = fanId && state.things[fanId];
-  if (fan && fan.f && fan.f.state === 'failed') return 'cut';
   const short = typeof f.air_flow_m3s === 'number' && typeof f.air_required_m3s === 'number'
     && f.air_required_m3s > 0 && f.air_flow_m3s < f.air_required_m3s - 0.05;
-  return short ? 'short' : 'ok';
+  if (short) return 'short';
+  const things = (state && state.things) || {};
+  for (const unit of Object.values(things)) {
+    if (!unit || unit.kind !== 'lhd' || !unit.f || !HELD_STATES.has(unit.f.state)) continue;
+    const stope = things[NS + unit.f.stope];
+    if (stope && stope.attrs && stope.attrs.link_level === levelId) return 'short';
+  }
+  return 'ok';
 }
 
 export function levelLabel(elevation) {

@@ -259,7 +259,11 @@ export function readModel(geometry) {
     under[id] = true;
     const points = o.points || [];
     const plan = points.map(XZ);
-    const xs = plan.map((p) => p[0]);
+    // The zigzag lies in the vertical plane of the last point; the portal leg runs from the
+    // portal to the first point in that plane.
+    const z = plan.length ? plan[plan.length - 1][1] : 0;
+    const first = Math.max(1, plan.findIndex((p) => Math.abs(p[1] - z) < 0.05));
+    const xs = plan.slice(first).map((p) => p[0]);
     const nodes = (o.nodes || []).map((node) => ({ ...node, xz: XZ(node.at) }));
     const portal = nodes.length ? nodes[0].xz : plan[0];
     // The first leg leaves the portal: the opening of the portal faces the other way.
@@ -267,8 +271,8 @@ export function readModel(geometry) {
     return {
       id, token: o.token, plan, nodes, portal,
       heading: Math.atan2(next[1] - portal[1], next[0] - portal[0]),
-      span: [Math.min(...xs), Math.max(...xs)],
-      z: plan.length ? plan[0][1] : 0,
+      span: xs.length ? [Math.min(...xs), Math.max(...xs)] : [0, 0],
+      z, leg: plan.slice(0, first + 1),
       route: routeOf(id, points),
       bottom: o.bottom_elevation, designBottom: o.design_bottom, portalElevation: o.portal_elevation,
     };
@@ -327,7 +331,8 @@ export function readModel(geometry) {
   const home = unionBox([pitBox, plant ? boxes[plant.id] : null, tailBox,
     village ? [village[0] + 120, village[1] - 120, village[0] + 120, village[1] - 120] : null]) || image.extent;
   const presets = {
-    pit: pitBox ? unionBox([pitBox, [-300, -180, 240, 220]]) : home,
+    // the pit and the workings under it: shafts north, declines south, ore zone along the strike
+    pit: pitBox ? unionBox([pitBox, [-480, -180, 360, 215]]) : home,
     plant: unionBox([plant ? boxes[plant.id] : null, rom && rom.pad ? bboxOf(rom.pad) : null, waterBox]),
     tailings: unionBox([tailBox, ...dams.map((dam) => boxes[dam.id])]),
   };

@@ -229,44 +229,48 @@ export function buildUnderground(ctx) {
     g.append(S('rect', { class: 'pl-backfill', x: cx - sx / 2, y: cz - sz / 2, width: sx, height: sz }));
   }
   // The levels stand on top of each other in plan: one drive line for the
-  // developed levels (planned extensions dashed), and the accesses, crosscuts
-  // and chambers of every level, deeper ones fainter (one line where they coincide).
+  // developed levels on each drive line (the production drives south of the ore
+  // zone, the ventilation drive north of it; planned extensions dashed), and the
+  // accesses, crosscuts, chambers and airway connections of every level, deeper
+  // ones fainter (one line where they coincide).
   const span = (list) => {
     const xs = list.flatMap((level) => level.points.map((p) => p[0]));
     return xs.length ? [Math.min(...xs), Math.max(...xs)] : null;
   };
-  const built = M.levels.filter((level) => !level.planned);
-  const driveZ = M.levels.length && M.levels[0].points.length ? M.levels[0].points[0][1] : 0;
-  const builtSpan = span(built);
-  const designSpan = span(M.levels.filter((level) => level.planned));
-  if (designSpan) {
-    for (const [a, b] of [[designSpan[0], builtSpan ? builtSpan[0] : designSpan[1]], [builtSpan ? builtSpan[1] : designSpan[0], designSpan[1]]]) {
-      if (b - a > 1) g.append(S('path', { class: 'pl-drive design', d: `M${a} ${driveZ}L${b} ${driveZ}` }));
-    }
+  const drives = new Map();
+  for (const level of M.levels) {
+    if (!level.points.length) continue;
+    const z = level.points[0][1];
+    if (!drives.has(z)) drives.set(z, []);
+    drives.get(z).push(level);
   }
-  if (builtSpan) g.append(S('path', { class: 'pl-drive', d: `M${builtSpan[0]} ${driveZ}L${builtSpan[1]} ${driveZ}` }));
+  for (const [driveZ, levels] of drives) {
+    const builtSpan = span(levels.filter((level) => !level.planned));
+    const designSpan = span(levels.filter((level) => level.planned));
+    if (designSpan) {
+      for (const [a, b] of [[designSpan[0], builtSpan ? builtSpan[0] : designSpan[1]], [builtSpan ? builtSpan[1] : designSpan[0], designSpan[1]]]) {
+        if (b - a > 1) g.append(S('path', { class: 'pl-drive design', d: `M${a} ${driveZ}L${b} ${driveZ}` }));
+      }
+    }
+    if (builtSpan) g.append(S('path', { class: 'pl-drive', d: `M${builtSpan[0]} ${driveZ}L${builtSpan[1]} ${driveZ}` }));
+  }
   const drawn = new Set();
   for (const level of M.levels) {
     for (const link of level.links) {
-      if (link.role === 'airway') continue;
       const d = pathOf(link.points);
       if (drawn.has(d)) continue;
       drawn.add(d);
+      const cls = link.role === 'airway' ? 'pl-airlink' : `pl-link ${link.role}`;
       g.append(S('path', {
-        class: `pl-link ${link.role}${link.planned ? ' design' : ''}`, d, style: `opacity: ${fade(level.elevation)}`,
+        class: `${cls}${link.planned ? ' design' : ''}`, d, style: `opacity: ${fade(level.elevation)}`,
       }));
     }
   }
-  // Airway links of the top level reach the shafts and raises.
-  const first = M.levels[0];
-  if (first) {
-    for (const link of first.links.filter((l) => l.role === 'airway')) {
-      g.append(S('path', { class: `pl-airlink${link.planned ? ' design' : ''}`, d: pathOf(link.points) }));
-    }
-  }
   for (const decline of M.declines) {
+    // The portal leg from the portal to the first turn, then the zigzag, whose legs
+    // lie on one line in plan.
     const [sx0, sx1] = decline.span;
-    const d = `M${sx0} ${decline.z}L${sx1} ${decline.z}`;
+    const d = `${pathOf(decline.leg)}M${sx0} ${decline.z}L${sx1} ${decline.z}`;
     const way = S('path', { class: 'way', d });
     const nodes = S('g', { class: 'nodes' });
     for (const node of decline.nodes) {

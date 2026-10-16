@@ -109,7 +109,9 @@ export function keyValue(thing, { gradeMode = false } = {}) {
       return isNum(f.air_flow_m3s) ? unit(f.air_flow_m3s, 0, 'м³/с') : '';
     case 'level':
       if (!isNum(f.air_flow_m3s) || !isNum(f.air_required_m3s)) return '';
-      return `воздух ${fmt(f.air_flow_m3s, 1)} из ${unit(f.air_required_m3s, 1, 'м³/с')}`;
+      if (f.air_required_m3s > 0) return `воздух ${fmt(f.air_flow_m3s, 1)} из ${unit(f.air_required_m3s, 1, 'м³/с')}`;
+      // Ventilation on demand: a level not in use needs no air and carries only its leakage share.
+      return f.air_flow_m3s > 0 ? `утечка ${unit(f.air_flow_m3s, 1, 'м³/с')}` : '';
     case 'pump_station': {
       if ((f.state === 'failed' || f.state === 'alarm_high') && isNum(f.hours_to_overflow) && f.hours_to_overflow > 0) {
         return `до перелива ${unit(f.hours_to_overflow, 1, 'ч')}`;

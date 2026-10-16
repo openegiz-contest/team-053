@@ -358,11 +358,14 @@ class Paths:
     def level_route(self, token, stope, t):
         """Point between the decline access (t = 0) and the stope draw point (t = 1)."""
         attrs = self.model.attrs
-        level = float(attrs[attrs[stope]["link_level"][len(NS):]]["elevation_m"])
+        level_name = attrs[stope]["link_level"][len(NS):]
+        level = float(attrs[level_name]["elevation_m"])
         access = self.decline(token, level)
         x = STOPE_X[stope[-1]]
         draw = (self.objects.get(NS + stope) or {}).get("draw_point") or (x, level, DRAW_Z)
-        return along([access, (access[0], level, DRIVE_Z), (draw[0], level, DRIVE_Z),
+        drive = (self.objects.get(NS + level_name) or {}).get("points")
+        drive_z = drive[0][2] if drive else DRIVE_Z
+        return along([access, (access[0], level, drive_z), (draw[0], level, drive_z),
                       tuple(draw)], t)
 
     def stope(self, stope):

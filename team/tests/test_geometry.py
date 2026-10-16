@@ -589,13 +589,25 @@ class DeclineTest(GeometryCase):
     def test_zigzag_turns_at_every_floor_height(self):
         floor = self.params["level.floor_height_m"]
         for thing_id, item in self.declines().items():
-            inner = item["points"][1:-1]
+            points = item["points"]
+            # The portal leg runs from the portal, through any bends, to the first turn (the first
+            # multiple of the floor height); the zigzag below it stays in one vertical plane along the strike.
+            first = next(i for i, p in enumerate(points) if i and p[1] % floor == 0)
+            leg, zigzag = points[:first + 1], points[first:]
+            self.assertLess(points[0][1] - points[first][1], floor, thing_id)
+            inner = zigzag[:-1]
             self.assertEqual([p[1] % floor for p in inner], [0] * len(inner), thing_id)
-            self.assertEqual({a[1] - b[1] for a, b in segments(item["points"][1:])}, {floor})
-            self.assertEqual(len({p[2] for p in item["points"]}), 1, "one vertical plane")
-            xs = [p[0] for p in item["points"][1:]]
+            self.assertEqual({a[1] - b[1] for a, b in segments(zigzag)}, {floor})
+            self.assertEqual(len({p[2] for p in zigzag}), 1, "one vertical plane")
+            xs = [p[0] for p in zigzag]
             self.assertEqual(len(set(xs)), 2, thing_id)
             self.assertTrue(all(a != b for a, b in zip(xs, xs[1:])), "turns alternate")
+            # Every leg keeps the horizontal run of the layout before the move under the pit
+            # (portal legs 213.5 m and 142.3 m, zigzag legs 355.8 m), so chainages are unchanged.
+            run = sum(math.hypot(b[0] - a[0], b[2] - a[2]) for a, b in segments(leg))
+            self.assertAlmostEqual(run, {"tu1": 213.5, "tu2": 142.3}[item["token"]], delta=1e-6, msg=thing_id)
+            runs = [round(math.hypot(b[0] - a[0], b[2] - a[2]), 1) for a, b in segments(zigzag)]
+            self.assertEqual(set(runs), {355.8}, thing_id)
 
     def test_lengths(self):
         sin = math.sin(math.radians(self.params["decline.slope_deg"]))
@@ -781,6 +793,41 @@ class StopeTest(GeometryCase):
             self.assertLessEqual(high[0], geometry.ORE_X[1])
             self.assertEqual(item["center"][2], geometry.ORE_Z)
         self.assertEqual({len(v) for v in per_level.values()}, {3})
+
+    def test_ore_zone_lies_under_the_old_pit(self):
+        """The underground mine continues the ore body below the open pit (spec 4.2): the strike runs
+        along the pit's long axis, the middle column lies under the pit centre, the outer columns run on
+        beyond the rim at depth."""
+        frame = self.doc["frame"]
+        self.assertEqual(frame["strike_azimuth_deg"], geometry.STRIKE_AZIMUTH_DEG)
+        self.assertEqual(frame["strike_azimuth_deg"], 90, "stopes are axis-aligned boxes along x")
+        outline = self.pit["outline"]
+        xs, zs = [p[0] for p in outline], [p[1] for p in outline]
+        self.assertGreater(max(xs) - min(xs), max(zs) - min(zs), "the pit is longer east-west")
+        centre = self.features["pit"]["centre"]
+        self.assertEqual(list(geometry.LAYOUT_SHIFT), centre)
+        self.assertEqual(geometry.ORE_Z, centre[1])
+        columns = {}
+        for item in self.of_kind("stope").values():
+            columns.setdefault(item["center"][0], item)
+        self.assertEqual(sorted(columns)[1], centre[0], "the middle column is under the pit centre")
+        for x, item in columns.items():
+            (x0, _, z0), (x1, _, z1) = box_limits(item)
+            inside = sum(geometry.point_in_polygon(x0 + (x1 - x0) * i / 20, (z0 + z1) / 2, outline)
+                         for i in range(21))
+            if x == centre[0]:
+                self.assertEqual(inside, 21, "the middle column lies wholly under the pit")
+            else:
+                self.assertGreaterEqual(inside, 5, f"column at x = {x} lies away from the pit")
+            self.assertLess(item["center"][1] + item["size"][1] / 2, self.pit["floor"] - 100)
+        # Production drives in the footwall south of the ore zone, the ventilation drive north of it.
+        for level in self.of_kind("level").values():
+            z = level["points"][0][2]
+            if level["role"] == "ventilation":
+                self.assertLess(z, geometry.ORE_Z - 50)
+            else:
+                self.assertEqual(z, geometry.DRIVE_Z)
+                self.assertGreater(z, geometry.ORE_Z)
 
     def test_blocks_do_not_overlap(self):
         boxes = dict(self.of_kind("stope"))
