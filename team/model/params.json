@@ -157,6 +157,36 @@
     "source": "ASSUMPTION: baseline production centroid: mean elevation of levels +150, +100, +50, 0 (spec 2.3)"
   },
   "ore.density": {"value": 2.83, "unit": "t/m3", "source": "FACT A3 'Ore density': 2.83 t/m3"},
+  "stope.thickness_m": {
+    "value": 6,
+    "unit": "m",
+    "source": "ASSUMPTION: a stope is drawn as one steep tabular ore body 6 m thick: inside FACT A1 'Thickness of ore bodies' (1.5-15 m) and near the lower end of the medium bodies (3.5-15 m) because thin bodies (1.5-3 m) carry 30-50 % of the ore; its strike length follows from stope.ore_initial_t, ore.density and the 50 m floor"
+  },
+  "pit.floor_m": {
+    "value": 320,
+    "unit": "m",
+    "source": "ASSUMPTION: final floor of the old open pit (completed 2016, FACT A1 'Deposit is worked underground only; earlier open pit completed 2016') taken at the TU2 portal elevation +320 m (FACT A2 'Transport decline TU2: portal to bottom'), the portal being on the pit floor as in decline.tu2.surface_km; the 2011-2015 DEM shows the pit only down to 389.7 m"
+  },
+  "pit.bench_height_m": {
+    "value": 15,
+    "unit": "m",
+    "source": "ASSUMPTION: final-wall bench height of a hard-rock open pit (rock hardness f 8-10, FACT A1 'Rock hardness f'); used only to draw the carved pit"
+  },
+  "pit.face_angle_deg": {
+    "value": 70,
+    "unit": "deg",
+    "source": "ASSUMPTION: bench face angle in hard rock; with pit.berm_m it gives an overall wall slope of about 50 deg, inside the 45-55 deg usual for final walls in strong rock"
+  },
+  "pit.berm_m": {
+    "value": 7,
+    "unit": "m",
+    "source": "ASSUMPTION: safety berm width between benches of the final wall (bench run 15 / tan 70 deg = 5.5 m plus the berm gives 12.5 m per 15 m of height)"
+  },
+  "pit.ramp_grade_deg": {
+    "value": 8,
+    "unit": "deg",
+    "source": "ASSUMPTION: the ramp from the TU2 portal on the pit floor to the rim is drawn at the decline slope (FACT A2 'Transport decline TU2: cross-section / slope': 8 deg), since the same underground trucks use it"
+  },
   "dev.advance_vm_per_year": {
     "value": 34,
     "unit": "m of depth/yr",

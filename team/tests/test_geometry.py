@@ -1,7 +1,8 @@
-"""Tests for sekis/geometry.py and team/model/geometry.json (spec section 4.2)."""
+"""Tests for sekis/geometry.py, team/model/geometry.json and team/model/terrain/ (spec section 4.2)."""
 
 import json
 import math
+import struct
 import sys
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ if str(TEAM) not in sys.path:
 from sekis import geometry  # noqa: E402
 
 MODEL = TEAM / "model"
+TERRAIN = MODEL / "terrain"
 NS = "kz.sekis"
 
 # Kinds that the spec places in the scene (4.2, 4.3); the other five kinds are abstract.
@@ -23,9 +25,17 @@ POSITIONED_KINDS = {
     "monitoring_point", "haul_truck", "lhd", "drill_rig", "rom_stockpile", "plant", "plant_line",
     "tailings_facility", "tailings_dam",
 }
-PRIMITIVES = {"box", "cylinder", "frustum", "cone", "prism", "polyline", "outline", "marker"}
+PRIMITIVES = {"box", "cylinder", "pit", "cone", "prism", "polyline", "outline", "marker"}
+SURFACE_KINDS = {"settling_pond", "monitoring_point", "rom_stockpile", "plant", "plant_line", "tailings_facility",
+                 "tailings_dam", "haul_truck", "lhd", "drill_rig"}
 SLOPE_TOLERANCE_DEG = 0.2
 TOUCH = 0.15          # two rounded coordinates describe the same point
+ON_GROUND = 0.15      # a point placed on the ground (both rounded to 0.1 m)
+BURIED_BOX = 6.0      # a box on sloping ground may sit this far below the highest ground under it
+BURIED_PRISM = 20.0   # the same for a tailings cell (cells of 0.1-0.3 km2)
+PORTAL_CUT = 5.0      # the TU1 portal (+430) against the DEM ground at its position
+PIT_RAMP = 4.0        # the ramp on the overall-slope wall against the drawn inset ground
+ROCK_COVER = 5.0      # underground workings stay this far below the pit's ground
 
 
 def load_json(path):
@@ -103,6 +113,55 @@ def axis(item):
     return [x, bottom, z], [x, item["top"], z]
 
 
+def rect(item):
+    """Plan footprint of a box."""
+    (x0, _, z0), (x1, _, z1) = box_limits(item)
+    return [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
+
+
+def _cross(o, a, b):
+    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+
+def segments_cross(a, b, c, d):
+    """Proper crossing of two plan segments (touching does not count)."""
+    return (_cross(a, b, c) * _cross(a, b, d) < 0) and (_cross(c, d, a) * _cross(c, d, b) < 0)
+
+
+def shrink(poly, metres):
+    """Polygon moved towards its vertex mean by `metres` (for overlap checks that ignore shared edges)."""
+    cx, cz = sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly)
+    out = []
+    for x, z in poly:
+        d = math.hypot(x - cx, z - cz)
+        f = max(0.0, (d - metres) / d) if d else 0.0
+        out.append([cx + (x - cx) * f, cz + (z - cz) * f])
+    return out
+
+
+def polygons_overlap(p, q, margin=1.0):
+    p, q = shrink(p, margin), shrink(q, margin)
+    if any(geometry.point_in_polygon(x, z, q) for x, z in p) or any(geometry.point_in_polygon(x, z, p) for x, z in q):
+        return True
+    return any(segments_cross(a, b, c, d) for a, b in zip(p, p[1:] + p[:1]) for c, d in zip(q, q[1:] + q[:1]))
+
+
+def jpeg_size(data):
+    """(width, height) from the SOF marker of a JPEG file."""
+    if data[:2] != b"\xff\xd8":
+        raise ValueError("not a JPEG file")
+    i = 2
+    while i < len(data):
+        if data[i] != 0xFF:
+            raise ValueError("bad JPEG marker")
+        marker, length = data[i + 1], struct.unpack(">H", data[i + 2:i + 4])[0]
+        if marker in (0xC0, 0xC1, 0xC2):
+            height, width = struct.unpack(">HH", data[i + 5:i + 9])
+            return width, height
+        i += 2 + length
+    raise ValueError("no SOF marker")
+
+
 class GeometryCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -116,6 +175,8 @@ class GeometryCase(unittest.TestCase):
         cls.scenery = cls.doc["scenery"]
         cls.geo = geometry.Geometry(cls.doc)
         cls.surface = cls.doc["frame"]["surface"]
+        cls.pit = cls.scenery["old-pit"]
+        cls.features = load_json(TERRAIN / "features.json")
 
     def attr(self, thing_id, key, default=None):
         return self.things[thing_id]["attributes"].get(key, default)
@@ -129,6 +190,14 @@ class GeometryCase(unittest.TestCase):
 
     def links(self, level_id, role=None):
         return [ln for ln in self.objects[level_id]["links"] if role is None or ln["role"] == role]
+
+    def ground(self, x, z):
+        return self.geo.ground(x, z)
+
+    def in_pit(self, x, z, margin=0.0):
+        outline = self.pit["outline"]
+        return geometry.point_in_polygon(x, z, outline) or \
+            geometry.plan_distance_to_polygon(x, z, outline) < margin
 
 
 class FileTest(GeometryCase):
@@ -148,12 +217,23 @@ class FileTest(GeometryCase):
         self.assertNotIn(b"\r", self.raw)
         self.assertTrue(self.raw.endswith(b"}\n"))
         self.raw.decode("ascii")
+        for name in ("heightmap.json", "features.json", "ATTRIBUTION.md"):
+            data = (TERRAIN / name).read_bytes()
+            self.assertNotIn(b"\r", data, name)
+            self.assertFalse(data.startswith(b"\xef\xbb\xbf"), name)
+            data.decode("utf-8")
 
     def test_top_level_shape(self):
-        self.assertEqual(list(self.doc), ["_schema", "namespace", "frame", "bounds", "scenery", "objects"])
+        self.assertEqual(list(self.doc),
+                         ["_schema", "namespace", "frame", "bounds", "terrain", "profile", "scenery", "objects"])
         self.assertEqual(self.doc["namespace"], NS)
-        self.assertEqual((self.doc["frame"]["x"], self.doc["frame"]["z"], self.doc["frame"]["unit"]),
-                         ("east", "south", "m"))
+        frame = self.doc["frame"]
+        self.assertEqual((frame["x"], frame["z"], frame["unit"]), ("east", "south", "m"))
+        self.assertIn("50.3286583 N, 82.5966139 E", frame["origin"])
+        self.assertIn("613640.00", frame["crs"])
+        self.assertIn("5576392.36", frame["crs"])
+        self.assertAlmostEqual(frame["grid_convergence_deg"], 1.23, delta=0.01)
+        self.assertEqual(frame["layout_shift"], list(geometry.LAYOUT_SHIFT))
 
     def test_numbers_are_rounded_to_a_decimetre(self):
         def walk(value, key, path):
@@ -172,6 +252,8 @@ class FileTest(GeometryCase):
 
         walk(self.objects, None, "objects")
         walk(self.scenery, None, "scenery")
+        walk(self.doc["terrain"], None, "terrain")
+        walk(self.doc["profile"], None, "profile")
 
     def test_everything_lies_inside_the_bounds(self):
         low, high = self.doc["bounds"]["min"], self.doc["bounds"]["max"]
@@ -179,6 +261,230 @@ class FileTest(GeometryCase):
             for p in geometry.item_points(item):
                 for i in range(3):
                     self.assertTrue(low[i] <= p[i] <= high[i], f"{name} {p}")
+        x0, z0, x1, z1 = self.doc["terrain"]["extent"]
+        self.assertEqual((low[0], low[2], high[0], high[2]), (x0, z0, x1, z1))
+        lo, hi = self.doc["terrain"]["elevation_range"]
+        self.assertLessEqual(low[1], lo)
+        self.assertGreaterEqual(high[1], hi)
+
+    def test_nothing_references_an_external_url(self):
+        def walk(value, path):
+            if isinstance(value, str):
+                self.assertNotIn("://", value, path)
+                self.assertFalse(value.startswith("//"), path)
+            elif isinstance(value, dict):
+                for k, v in value.items():
+                    walk(v, f"{path}/{k}")
+            elif isinstance(value, list):
+                for v in value:
+                    walk(v, path)
+
+        walk(self.doc, "")
+        terrain = self.doc["terrain"]
+        for key in ("heightmap_file", "attribution_file"):
+            self.assertTrue((TEAM / terrain[key]).is_file(), terrain[key])
+        self.assertTrue((TEAM / terrain["texture"]["file"]).is_file())
+
+
+class TerrainTest(GeometryCase):
+    def setUp(self):
+        self.terrain = self.doc["terrain"]
+
+    def test_grid_size_and_extent(self):
+        t = self.terrain
+        self.assertTrue(t["sourced"])
+        self.assertEqual(t["size"], [65, 65])
+        self.assertEqual(t["spacing"], 62.5)
+        self.assertEqual(t["origin"], [-2000, -2000])
+        self.assertEqual(t["extent"], [-2000, -2000, 2000, 2000])
+        self.assertEqual(len(t["rows"]), 65)
+        self.assertEqual({len(row) for row in t["rows"]}, {65})
+        self.assertEqual(t["triangles"], 2 * 64 * 64)
+        self.assertEqual(t["triangles"], 8192)
+        values = [v for row in t["rows"] for v in row]
+        self.assertEqual(t["elevation_range"], [min(values + [v for r in t["inset"]["rows"] for v in r]),
+                                                max(values)])
+        heightmap = load_json(TERRAIN / "heightmap.json")
+        self.assertEqual(heightmap["rows"], t["rows"])
+        self.assertEqual(heightmap["inset"]["rows"], t["inset"]["rows"])
+
+    def test_elevations_are_plausible(self):
+        # Copernicus DEM in the 4 km square: 389.7 .. 550.8 m before carving (research notes 1a).
+        outside = []
+        t = self.terrain
+        for j, row in enumerate(t["rows"]):
+            for i, v in enumerate(row):
+                x, z = t["origin"][0] + i * t["spacing"], t["origin"][1] + j * t["spacing"]
+                if not self.in_pit(x, z, margin=10.0):
+                    outside.append(v)
+        self.assertGreaterEqual(min(outside), 385)
+        self.assertLessEqual(max(outside), 560)
+        self.assertEqual(self.terrain["elevation_range"][0], self.params["pit.floor_m"])
+
+    def test_inset_covers_the_pit_without_cracks(self):
+        t, inset = self.terrain, self.terrain["inset"]
+        step, div = t["spacing"], round(t["spacing"] / inset["spacing"])
+        self.assertEqual(inset["spacing"] * div, step)
+        ci0, cj0, ci1, cj1 = inset["cells"]
+        self.assertEqual(inset["origin"], [t["origin"][0] + ci0 * step, t["origin"][1] + cj0 * step])
+        self.assertEqual(inset["size"], [(ci1 - ci0) * div + 1, (cj1 - cj0) * div + 1])
+        x0, z0 = inset["origin"]
+        x1, z1 = x0 + (inset["size"][0] - 1) * inset["spacing"], z0 + (inset["size"][1] - 1) * inset["spacing"]
+        for x, z in self.pit["outline"]:
+            self.assertTrue(x0 <= x <= x1 and z0 <= z <= z1, "the inset does not cover the pit outline")
+        rows, main = inset["rows"], t["rows"]
+        nx, nz = inset["size"]
+        for j in range(nz):
+            for i in range(nx):
+                gi, gj = ci0 + i / div, cj0 + j / div
+                if i % div == 0 and j % div == 0:
+                    self.assertEqual(rows[j][i], main[int(gj)][int(gi)], f"inset vertex {i},{j}")
+                if 0 < i < nx - 1 and 0 < j < nz - 1:
+                    continue
+                a, b = int(math.floor(gi)), int(math.floor(gj))
+                if gi == a and gj == b:
+                    edge = main[b][a]
+                elif gj == b:
+                    edge = main[b][a] + (main[b][a + 1] - main[b][a]) * (gi - a)
+                else:
+                    edge = main[b][a] + (main[b + 1][a] - main[b][a]) * (gj - b)
+                self.assertAlmostEqual(rows[j][i], edge, delta=0.11, msg=f"crack at inset border {i},{j}")
+
+    def test_ground_lookup_follows_the_triangles(self):
+        t = self.terrain
+        for j in (0, 17, 64):
+            for i in (0, 31, 64):
+                x, z = t["origin"][0] + i * t["spacing"], t["origin"][1] + j * t["spacing"]
+                if not self.in_pit(x, z, margin=200):
+                    self.assertAlmostEqual(self.ground(x, z), t["rows"][j][i], places=6)
+        # inside a cell the lookup is linear on the two triangles of the SW-NE diagonal
+        i, j = 10, 10
+        x, z = t["origin"][0] + i * t["spacing"], t["origin"][1] + j * t["spacing"]
+        r = t["rows"]
+        nw, ne, sw = r[j][i], r[j][i + 1], r[j + 1][i]
+        self.assertAlmostEqual(self.ground(x + 0.25 * t["spacing"], z + 0.25 * t["spacing"]),
+                               nw + 0.25 * (ne - nw) + 0.25 * (sw - nw), places=6)
+
+    def test_texture_is_a_512_px_jpeg_of_the_same_extent(self):
+        texture = self.terrain["texture"]
+        data = (TEAM / texture["file"]).read_bytes()
+        self.assertEqual(jpeg_size(data), (512, 512))
+        self.assertEqual(texture["size"], [512, 512])
+        self.assertEqual(texture["extent"], self.terrain["extent"])
+        self.assertTrue(texture["north_up"])
+        self.assertIn("2026", texture["source"])
+        self.assertLess(len(data), 200_000)
+
+    def test_attribution(self):
+        text = (TERRAIN / "ATTRIBUTION.md").read_text(encoding="utf-8")
+        for notice in ("produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space "
+                       "GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved",
+                       "Contains modified Copernicus Sentinel data 2026",
+                       "© OpenStreetMap contributors",
+                       "Open Database License"):
+            self.assertIn(notice, text)
+        self.assertEqual(len(self.terrain["attribution"]), 3)
+        joined = " ".join(self.terrain["attribution"])
+        for part in ("Copernicus WorldDEM-30", "Copernicus Sentinel data 2026", "OpenStreetMap contributors"):
+            self.assertIn(part, joined)
+        self.assertIn("carved", text)
+
+    def test_no_raw_osm_data_is_committed(self):
+        names = {p.name for p in TERRAIN.iterdir()}
+        self.assertEqual(names, {"heightmap.json", "texture.jpg", "features.json", "ATTRIBUTION.md"})
+        text = (TERRAIN / "features.json").read_text(encoding="utf-8")
+        for raw in ('"uid"', '"user"', '"changeset"', '"timestamp"', '"tags"'):
+            self.assertNotIn(raw, text)
+
+    def test_profile_is_the_ground_along_the_long_section(self):
+        profile = self.doc["profile"]
+        self.assertTrue(profile["sourced"])
+        self.assertEqual(profile["step"], 10)
+        self.assertEqual(profile["z"], geometry.ORE_Z)
+        for stope in self.of_kind("stope").values():
+            self.assertEqual(stope["center"][2], profile["z"])
+        xs = [p[0] for p in profile["points"]]
+        self.assertEqual(xs, sorted(xs))
+        self.assertEqual({round(b - a, 6) for a, b in zip(xs, xs[1:])}, {10})
+        self.assertEqual((xs[0], xs[-1]), (self.terrain["extent"][0], self.terrain["extent"][2]))
+        for x, y in profile["points"]:
+            self.assertAlmostEqual(y, self.ground(x, profile["z"]), delta=0.06)
+
+
+class SurfaceGroundTest(GeometryCase):
+    """Every surface object stands on the terrain; the carved pit objects on the carved floor."""
+
+    def assert_on_ground(self, p, label, tolerance=ON_GROUND):
+        self.assertAlmostEqual(p[1], self.ground(p[0], p[2]), delta=tolerance, msg=label)
+
+    def assert_footprint_on_ground(self, footprint, bottom, label, buried):
+        for x, z in footprint:
+            g = self.ground(x, z)
+            self.assertLessEqual(bottom, g + ON_GROUND, f"{label} floats at {x}, {z}")
+            self.assertLessEqual(g - bottom, buried, f"{label} is buried at {x}, {z}")
+
+    def test_surface_objects_stand_on_the_terrain(self):
+        checked = 0
+        for thing_id, item in self.objects.items():
+            kind, prim = item["kind"], item["primitive"]
+            if kind not in SURFACE_KINDS and kind not in ("shaft", "main_fan") and thing_id != tid("raise-vhv-exhaust"):
+                continue
+            if kind == "main_fan" and item["center"][1] < self.surface - 50:
+                continue                                    # underground fans
+            if kind == "settling_pond":
+                self.assert_on_ground([item["center"][0], item["center"][1] + item["size"][1] / 2,
+                                       item["center"][2]], thing_id)
+            elif prim == "box":
+                self.assert_footprint_on_ground(rect(item), item["center"][1] - item["size"][1] / 2, thing_id,
+                                                BURIED_BOX)
+            elif prim == "prism":
+                self.assert_footprint_on_ground(item["footprint"], item["bottom"], thing_id, BURIED_PRISM)
+                for x, z in item["footprint"]:
+                    self.assertGreater(item["top"], self.ground(x, z), f"{thing_id}: crest under the ground")
+            elif prim == "cone":
+                self.assert_footprint_on_ground(item["pad"], item["base"][1], thing_id, BURIED_BOX)
+                self.assertEqual(item["dump"][1], item["base"][1])
+            elif prim == "outline":
+                self.assertLessEqual(item["y"], min(self.ground(x, z) for x, z in item["footprint"]) + ON_GROUND)
+            elif prim == "marker":
+                self.assert_on_ground(item["anchor"], thing_id)
+            elif prim == "cylinder":
+                self.assert_on_ground(axis(item)[1], thing_id)
+            checked += 1
+        self.assertEqual(checked, 2 + 2 + 1 + 1 + 6 + 1 + 4 + 27 + 3 + 3 + 1)
+
+    def test_draped_lines_lie_on_the_ground(self):
+        for name, item in self.scenery.items():
+            if item["primitive"] != "polyline":
+                continue
+            points = item["points"]
+            if name.startswith("road-"):
+                points = points[1:-1]                       # portal and dump are their own elevations
+            for p in points:
+                if name == "road-tu2" and self.in_pit(p[0], p[2], margin=1.0):
+                    continue                                # the ramp: test_pit_ramp_lies_on_the_pit_wall
+                self.assert_on_ground(p, f"{name} {p}")
+        for name in ("village",):
+            self.assert_on_ground(self.scenery[name]["anchor"], name)
+        yard = self.scenery["yard"]
+        self.assertLessEqual(yard["y"], min(self.ground(x, z) for x, z in yard["footprint"]) + ON_GROUND)
+
+    def test_portals(self):
+        tu1 = self.objects[tid("decline-tu1")]["points"][0]
+        self.assertEqual(tu1[1], self.surface)
+        self.assertEqual(tu1[1], self.params["decline.tu1.portal_m"])
+        self.assertAlmostEqual(tu1[1], self.ground(tu1[0], tu1[2]), delta=PORTAL_CUT)
+        self.assertFalse(self.in_pit(tu1[0], tu1[2], margin=20))
+        tu2 = self.objects[tid("decline-tu2")]["points"][0]
+        self.assertEqual(tu2, self.pit["base"])
+        self.assertEqual(tu2[1], self.params["pit.floor_m"])
+        self.assertEqual(self.ground(tu2[0], tu2[2]), tu2[1], "the TU2 portal is not on the carved floor")
+
+    def test_shaft_collars_are_on_the_ground(self):
+        for thing_id, item in self.of_kind("shaft").items():
+            self.assertEqual(item["top"], round(self.ground(item["base"][0], item["base"][2]), 1), thing_id)
+            self.assertEqual(item["documented_top"], self.attr(thing_id, "top_elevation_m"), thing_id)
+            self.assertIn("registry collar", item["source"])
 
 
 class RegistryTest(GeometryCase):
@@ -191,15 +497,22 @@ class RegistryTest(GeometryCase):
 
     def test_common_keys(self):
         for thing_id, item in self.objects.items():
-            self.assertEqual(list(item)[:5], ["kind", "primitive", "sourced", "planned", "anchor"], thing_id)
+            self.assertEqual(list(item)[:6], ["kind", "primitive", "sourced", "planned", "anchor", "source"],
+                             thing_id)
             self.assertEqual(item["kind"], self.attr(thing_id, "kind"), thing_id)
             self.assertIn(item["primitive"], PRIMITIVES, thing_id)
             self.assertIsInstance(item["sourced"], bool, thing_id)
             self.assertEqual(item["planned"], self.state(thing_id) == "planned", thing_id)
             self.assertEqual(len(item["anchor"]), 3, thing_id)
+            self.assertGreater(len(item["source"]), 10, thing_id)
         for name, item in self.scenery.items():
             self.assertIn(item["primitive"], PRIMITIVES, name)
             self.assertIsInstance(item["sourced"], bool, name)
+            self.assertGreater(len(item["source"]), 10, name)
+
+    def test_underground_plan_positions_are_labelled_schematic(self):
+        for thing_id, item in self.of_kind("level", "stope", "decline", "shaft", "raise", "pump_station").items():
+            self.assertIn("plan position schematic", item["source"], thing_id)
 
     def test_planned_things_are_flagged(self):
         planned = {t for t, o in self.objects.items() if o["planned"]}
@@ -210,11 +523,17 @@ class RegistryTest(GeometryCase):
 
     def test_sourced_flags(self):
         for name in ("lvl-p150", "decline-tu1", "decline-tu2", "shaft-vs1", "shaft-vs2", "raise-vpv",
-                     "raise-vhv-tu1", "raise-vhv-tu2", "ps-p150", "ps-m200", "pond-upper", "tailings"):
+                     "raise-vhv-tu1", "raise-vhv-tu2", "ps-p150", "ps-m200", "pond-upper", "pond-lower", "tailings",
+                     "tsf-dam2", "tsf-dam3", "tsf-dam4"):
             self.assertTrue(self.objects[tid(name)]["sourced"], name)
         for name in ("raise-vhv-exhaust", "shaft-vs3", "stp-p150-1", "fan-vs1", "ps-m050", "truck-01",
-                     "plant-line-1", "rom-stockpile", "tsf-dam4", "mon-volchevka"):
+                     "plant", "plant-line-1", "rom-stockpile", "tsf-cell5", "mon-volchevka", "mon-sekisovka"):
             self.assertFalse(self.objects[tid(name)]["sourced"], name)
+        for name in ("surface", "old-pit", "stream-volchevka", "river-sekisovka", "village", "industrial-zone",
+                     "tsf-cell-south", "tsf-cell-southeast"):
+            self.assertTrue(self.scenery[name]["sourced"], name)
+        for name in ("road-tu1", "road-tu2", "yard", "conveyor", "pipeline-intake"):
+            self.assertFalse(self.scenery[name]["sourced"], name)
 
     def test_references_resolve(self):
         for thing_id, item in self.objects.items():
@@ -259,11 +578,12 @@ class DeclineTest(GeometryCase):
             self.assertEqual(item["bottom_at"][1], item["bottom_elevation"])
             self.assertLess(point_polyline(item["bottom_at"], item["points"]), TOUCH)
 
-    def test_portals_stand_on_the_surface_and_on_the_pit_floor(self):
-        pit = self.scenery["old-pit"]
-        self.assertEqual(self.objects[tid("decline-tu1")]["points"][0][1], self.surface)
-        self.assertEqual(self.objects[tid("decline-tu2")]["points"][0], pit["base"])
-        self.assertEqual(pit["top"], self.surface)
+    def test_lengths_and_chainages_did_not_change_with_the_real_surface(self):
+        # The simulator's travel times depend on them (values before the move to real coordinates).
+        expected = {"decline-tu1": (5245.7, 3449.3), "decline-tu2": (3736.7, 2543.8)}
+        for name, (length, built) in expected.items():
+            item = self.objects[tid(name)]
+            self.assertEqual((item["length"], item["built_length"]), (length, built), name)
 
     def test_zigzag_turns_at_every_floor_height(self):
         floor = self.params["level.floor_height_m"]
@@ -426,12 +746,30 @@ class StopeTest(GeometryCase):
             self.assertEqual(item["level"], level)
             self.assertEqual(item["center"][1] - item["size"][1] / 2, e, thing_id)
             self.assertEqual(item["draw_point"][1], e)
-            self.assertEqual(item["size"], list(geometry.STOPE_SIZE))
-            self.assertLess(item["center"][1] + item["size"][1] / 2, e + self.params["level.floor_height_m"])
+            self.assertLessEqual(item["center"][1] + item["size"][1] / 2, e + self.params["level.floor_height_m"])
             self.assertEqual(item["routes"], self.attr(thing_id, "link_ore_route"))
             link = next(ln for ln in self.links(level, "crosscut") if ln["to"] == thing_id)
             self.assertEqual(link["points"][-1], item["draw_point"])
             self.assertLess(point_box(item["draw_point"], item), TOUCH)
+
+    def test_stopes_are_steep_tabular_ore_bodies_sized_from_their_tonnage(self):
+        density = self.params["ore.density"]
+        thickness = self.params["stope.thickness_m"]
+        self.assertTrue(1.5 <= thickness <= 15, "FACT A1: ore bodies are 1.5-15 m thick")
+        for thing_id, item in self.of_kind("stope").items():
+            length, height, width = item["size"]
+            self.assertEqual(height, self.params["level.floor_height_m"], thing_id)
+            self.assertEqual(width, thickness, thing_id)
+            self.assertEqual((item["strike_length"], item["thickness"]), (length, width))
+            self.assertEqual(item["dip_deg"], 90)
+            self.assertEqual(item["density_t_m3"], density)
+            self.assertGreater(length, 5 * width, f"{thing_id} is not tabular")
+            tonnes = length * height * width * density
+            self.assertAlmostEqual(tonnes / self.attr(thing_id, "ore_initial_t"), 1.0, delta=0.05, msg=thing_id)
+            self.assertEqual(item["tonnage_t"], self.attr(thing_id, "ore_initial_t"))
+        for name, item in self.scenery.items():
+            if name.startswith("backfill-"):
+                self.assertEqual(item["size"], self.objects[tid("stp-p150-1")]["size"], name)
 
     def test_three_stopes_per_level_inside_the_ore_zone(self):
         per_level = {}
@@ -440,6 +778,7 @@ class StopeTest(GeometryCase):
             low, high = box_limits(item)
             self.assertGreaterEqual(low[0], geometry.ORE_X[0])
             self.assertLessEqual(high[0], geometry.ORE_X[1])
+            self.assertEqual(item["center"][2], geometry.ORE_Z)
         self.assertEqual({len(v) for v in per_level.values()}, {3})
 
     def test_blocks_do_not_overlap(self):
@@ -457,21 +796,19 @@ class AirwayTest(GeometryCase):
         for thing_id, item in self.airways().items():
             top, bottom = self.attr(thing_id, "top_elevation_m"), self.attr(thing_id, "bottom_elevation_m")
             if top is None:
-                # Not published: from the lowest level it serves to the surface, and flagged.
+                # Not published: from the lowest level it serves to the ground, and flagged.
                 served = [self.attr(t, "elevation_m") for t in self.things
                           if self.attr(t, "kind") == "level" and self.attr(t, "link_air_exhaust") == thing_id]
-                top, bottom = self.surface, min(served)
+                bottom = min(served)
                 self.assertFalse(item["sourced"])
                 self.assertEqual(thing_id, tid("raise-vhv-exhaust"))
+            if top is None or item["kind"] == "shaft":
+                top = round(self.ground(item["base"][0], item["base"][2]), 1)     # collar on the ground
             self.assertEqual((item["top"], item["base"][1]), (top, bottom), thing_id)
             self.assertEqual(item["anchor"], [item["base"][0], top, item["base"][2]])
             self.assertEqual(item["section_m2"], self.attr(thing_id, "section_m2"))
             self.assertAlmostEqual(item["radius"], math.sqrt(item["section_m2"] / math.pi), delta=0.06)
             self.assertEqual(item["direction"], self.attr(thing_id, "direction"))
-
-    def test_shaft_collars_are_on_the_surface(self):
-        for thing_id, item in self.of_kind("shaft").items():
-            self.assertEqual(item["top"], self.surface, thing_id)
 
     def test_airways_connect_the_levels_they_pass(self):
         levels = self.of_kind("level")
@@ -564,13 +901,8 @@ class ClearanceTest(GeometryCase):
                 self.assertFalse(crosses, f"{thing_id} at x = {x} runs over a stope in the x-y projection")
 
     def test_nothing_hangs_in_the_old_pit(self):
-        pit = self.scenery["old-pit"]
-        cx, floor, cz = pit["base"]
-
-        def clearance(p):
-            wall = pit["radius_base"] + (min(max(p[1], floor), pit["top"]) - floor) \
-                   / (pit["top"] - floor) * (pit["radius_top"] - pit["radius_base"])
-            return math.hypot(p[0] - cx, p[2] - cz) - wall
+        """Underground workings near the pit stay under its carved ground; collars stand outside it."""
+        floor = self.pit["floor"]
 
         def samples(points, n=40):
             for a, b in segments(points):
@@ -580,7 +912,13 @@ class ClearanceTest(GeometryCase):
         for thing_id, item in self.objects.items():
             if thing_id == tid("decline-tu2"):
                 continue   # its portal is the centre of the pit floor
+            if item["kind"] in SURFACE_KINDS:
+                continue
             if item["kind"] in ("shaft", "raise"):
+                x, _, z = item["base"]
+                if item["top"] >= floor - ROCK_COVER:
+                    self.assertFalse(self.in_pit(x, z, margin=ROCK_COVER) and item["top"] > self.ground(x, z) - 1,
+                                     f"{thing_id} comes up in the pit")
                 lines = [list(axis(item))]
             elif item["primitive"] == "polyline":
                 lines = [item["points"]] + [ln["points"] for ln in item.get("links", [])]
@@ -588,23 +926,81 @@ class ClearanceTest(GeometryCase):
                 lines = [geometry.item_points(item) + item.get("pipe", [])]
             for line in lines:
                 for p in samples(line) if len(line) > 1 else line:
-                    if floor <= p[1] <= pit["top"]:
-                        self.assertGreater(clearance(p), 5.0, f"{thing_id} at {p}")
+                    if p[1] >= floor - ROCK_COVER and self.in_pit(p[0], p[2], margin=ROCK_COVER):
+                        self.assertLessEqual(p[1], self.ground(p[0], p[2]) - ROCK_COVER, f"{thing_id} at {p}")
 
     def test_pit_ramp_lies_on_the_pit_wall(self):
-        pit = self.scenery["old-pit"]
-        cx, floor, cz = pit["base"]
+        pit = self.pit
         road = self.scenery["road-tu2"]["points"]
         self.assertEqual(road[0], pit["base"])
-        ramp = [p for p in road if math.hypot(p[0] - cx, p[2] - cz) <= pit["radius_top"] + TOUCH][1:]
-        self.assertEqual((ramp[0][1], ramp[-1][1]), (floor, self.surface))
-        for p in ramp:
-            wall = pit["radius_base"] + (p[1] - floor) / (pit["top"] - floor) \
-                   * (pit["radius_top"] - pit["radius_base"])
-            self.assertAlmostEqual(math.hypot(p[0] - cx, p[2] - cz), wall, delta=0.3)
-        for a, b in segments(ramp):
+        ramp = []
+        for p in road:
+            if not self.in_pit(p[0], p[2]):
+                break
+            ramp.append(p)
+        self.assertEqual(ramp[1][1], pit["floor"], "the ramp starts with a level run on the floor")
+        self.assertGreater(ramp[-1][1], pit["floor"] + 90, "the ramp reaches the rim")
+        for p in ramp[2:]:
+            self.assertAlmostEqual(p[1], self.ground(p[0], p[2]), delta=PIT_RAMP, msg=f"ramp {p}")
+        for a, b in segments(ramp[1:]):
             grade = math.degrees(math.atan2(b[1] - a[1], math.hypot(b[0] - a[0], b[2] - a[2])))
-            self.assertAlmostEqual(grade, 8.0, delta=0.5)
+            self.assertAlmostEqual(grade, self.params["pit.ramp_grade_deg"], delta=0.5)
+
+
+class PitTest(GeometryCase):
+    def test_outline_and_floor(self):
+        pit, feature = self.pit, self.features["pit"]
+        self.assertEqual(pit["primitive"], "pit")
+        self.assertTrue(pit["sourced"])
+        self.assertIn("OSM", pit["source"])
+        self.assertIn("carved", pit["source"])
+        self.assertEqual(pit["outline"], feature["outline"])
+        self.assertEqual(pit["floor"], self.params["pit.floor_m"])
+        self.assertEqual(pit["base"], [feature["centre"][0], pit["floor"], feature["centre"][1]])
+        self.assertTrue(geometry.point_in_polygon(pit["base"][0], pit["base"][2], pit["floor_outline"]))
+        for x, z in pit["floor_outline"]:
+            self.assertTrue(self.in_pit(x, z), "floor outside the outline")
+        # 2011-2015 DEM pit is about 280 x 355 m; the OSM quarry polygon 8 ha
+        self.assertAlmostEqual(geometry.polygon_area(pit["outline"]), 80000, delta=8000)
+        inset = self.doc["terrain"]["inset"]
+        x0, z0 = inset["origin"]
+        on_floor = 0
+        for j, row in enumerate(inset["rows"]):
+            for i, v in enumerate(row):
+                x, z = x0 + i * inset["spacing"], z0 + j * inset["spacing"]
+                if geometry.point_in_polygon(x, z, pit["floor_outline"]):
+                    self.assertEqual(v, pit["floor"])
+                    on_floor += 1
+                self.assertGreaterEqual(v, pit["floor"])
+        self.assertGreater(on_floor, 3)
+
+    def test_wall_rim_and_benches(self):
+        pit = self.pit
+        self.assertAlmostEqual(pit["overall_slope_deg"], 50.3, delta=0.2)
+        self.assertTrue(40 <= pit["overall_slope_deg"] <= 55)
+        self.assertEqual(pit["bench_height"], self.params["pit.bench_height_m"])
+        ys = [b["y"] for b in pit["benches"]]
+        self.assertEqual(ys, [pit["floor"] + pit["bench_height"] * (k + 1) for k in range(len(ys))])
+        self.assertGreaterEqual(len(ys), 6)
+        for bench in pit["benches"]:
+            for line in bench["lines"]:
+                for x, z in line:
+                    self.assertTrue(self.in_pit(x, z, margin=0.5), f"bench {bench['y']} outside the outline")
+                    self.assertAlmostEqual(self.ground(x, z), bench["y"], delta=PIT_RAMP,
+                                           msg=f"bench {bench['y']} at {x}, {z}")
+        for x, y, z in pit["rim"]:
+            self.assertTrue(self.in_pit(x, z, margin=0.5))
+            self.assertTrue(pit["floor"] + 90 <= y <= pit["top"])
+        self.assertEqual(pit["top"], max(p[1] for p in pit["rim"]))
+
+    def test_section_projection(self):
+        section = self.pit["section"]
+        xs = [p[0] for p in section]
+        self.assertEqual({round(b - a, 6) for a, b in zip(xs, xs[1:])}, {10})
+        self.assertEqual(min(p[1] for p in section), self.pit["floor"])
+        for x, y in section:
+            self.assertGreaterEqual(y, self.pit["floor"])
+            self.assertLessEqual(y, self.pit["top"] + 30)
 
 
 class ConnectionTest(GeometryCase):
@@ -696,6 +1092,9 @@ class ConnectionTest(GeometryCase):
         shaft = self.objects[tid(geometry.PIPE_SHAFT)]
         self.assertIn(shaft["anchor"], pipe)
         self.assertIn(shaft["base"], pipe)
+        after = pipe[pipe.index(shaft["anchor"]):]
+        for p in after:
+            self.assertAlmostEqual(p[1], self.ground(p[0], p[2]), delta=ON_GROUND + 3.0, msg=f"surface pipe {p}")
 
 
 class RouteTest(GeometryCase):
@@ -752,7 +1151,16 @@ class RouteTest(GeometryCase):
             self.assertAlmostEqual(ramp.length, self.geo.decline_chainage(decline, level["elevation"]), places=6)
             self.assertEqual(list(road.points), self.geo.surface_road(decline))
             self.assertEqual(road.points[0], tuple(item["points"][0]))
-            self.assertGreaterEqual(min(p[1] for p in road.points), item["portal_elevation"])
+
+    def test_surface_roads_follow_the_osm_roads(self):
+        nodes = [tuple(n) for n in self.features["roads"]["nodes"]]
+        for name in ("road-tu1", "road-tu2"):
+            plan = [(p[0], p[2]) for p in self.scenery[name]["points"]]
+            on_road = sum(1 for p in plan if p in nodes)
+            self.assertGreater(on_road, 5, f"{name} does not follow the OSM roads")
+            length = sum(math.dist(a, b) for a, b in zip(plan, plan[1:]))
+            # decline.tuX.surface_km is the haul distance used for travel times
+            self.assertLess(abs(length / 1000 - self.params[f"decline.{name[-3:]}.surface_km"]), 0.7, name)
 
     def test_default_decline_and_reversed_route(self):
         up = self.geo.stope_route("stp-p150-1")
@@ -818,124 +1226,153 @@ class PositionTest(GeometryCase):
     def test_parking_slots(self):
         mobile = self.of_kind("haul_truck", "lhd", "drill_rig")
         self.assertEqual(len(mobile), 27)
-        yard = self.scenery["yard"]["footprint"]
-        xs, zs = [p[0] for p in yard], [p[1] for p in yard]
+        yard = self.scenery["yard"]
+        xs, zs = [p[0] for p in yard["footprint"]], [p[1] for p in yard["footprint"]]
         for thing_id, item in mobile.items():
             self.assertTrue(item["mobile"])
-            self.assertEqual(item["center"][1] - item["size"][1] / 2, self.surface, thing_id)
+            self.assertEqual(round(item["center"][1] - item["size"][1] / 2, 6), yard["y"], thing_id)
             for p in geometry.item_points(item):
                 self.assertTrue(min(xs) <= p[0] <= max(xs) and min(zs) <= p[2] <= max(zs), thing_id)
         for (a, box_a), (b, box_b) in combinations(mobile.items(), 2):
             self.assertFalse(boxes_overlap(box_a, box_b), f"{a} / {b}")
         self.assertEqual([t for t, o in self.objects.items() if o.get("mobile")], list(mobile))
 
+    def test_scene_coordinates_round_trip_to_the_mine_point(self):
+        self.assertEqual(tuple(round(c, 2) for c in geometry.utm_forward(geometry.LAT0, geometry.LON0)),
+                         (613640.00, 5576392.36))
+        for x, z in ((0.0, 0.0), (1500.0, -1200.0), (-1999.0, 1999.0)):
+            lat, lon = geometry.from_scene(x, z)
+            back = geometry.to_scene(lat, lon)
+            self.assertAlmostEqual(back[0], x, delta=0.005)
+            self.assertAlmostEqual(back[1], z, delta=0.005)
+
 
 class SurfaceTest(GeometryCase):
-    def footprint_box(self, item):
-        xs, zs = [p[0] for p in item["footprint"]], [p[1] for p in item["footprint"]]
-        return {"center": [(min(xs) + max(xs)) / 2, 0, (min(zs) + max(zs)) / 2],
-                "size": [max(xs) - min(xs), 1, max(zs) - min(zs)]}
+    def footprints(self):
+        """Plan footprints of everything that stands on the surface."""
+        out = {}
+        for thing_id, item in self.of_kind("tailings_dam").items():
+            out[thing_id] = item["footprint"]
+        for thing_id, item in self.of_kind("plant_line", "settling_pond", "main_fan").items():
+            if item["center"][1] > self.surface - 50:
+                out[thing_id] = rect(item)
+        out["yard"] = self.scenery["yard"]["footprint"]
+        out["rom-pad"] = self.objects[tid("rom-stockpile")]["pad"]
+        for name in ("tsf-cell-south", "tsf-cell-southeast"):
+            out[name] = self.scenery[name]["footprint"]
+        return out
 
-    def test_ponds_keep_their_area_and_depth(self):
+    def test_ponds_keep_their_area_and_depth_inside_the_mapped_ponds(self):
         total = 0.0
+        osm = {p["osm"]: p for p in self.features["ponds"]}
         for thing_id, item in self.of_kind("settling_pond").items():
             area = item["size"][0] * item["size"][2]
             self.assertAlmostEqual(area, self.attr(thing_id, "area_m2"), delta=2.5)
             self.assertEqual(item["size"][1], self.attr(thing_id, "depth_m"))
-            self.assertEqual(item["center"][1] + item["size"][1] / 2, self.surface)
             total += area
+            self.assertIn(item["outline"], [p["outline"] for p in osm.values()])
+            for x, z in rect(item):
+                self.assertTrue(geometry.point_in_polygon(x, z, item["outline"]), f"{thing_id} leaves its pond")
         self.assertAlmostEqual(total, self.params["pond.area_m2"], delta=5.0)
+        upper, lower = self.objects[tid("pond-upper")], self.objects[tid("pond-lower")]
+        self.assertGreater(upper["anchor"][1], lower["anchor"][1], "water runs from the upper to the lower pond")
 
-    def test_tailings_lie_on_the_true_bearing(self):
+    def test_tailings_on_the_registry_coordinates_and_the_mapped_cells(self):
         item = self.objects[tid("tailings")]
         x, _, z = item["anchor"]
+        lat, lon = geometry._dms(self.attr(tid("tailings"), "coordinates"))
+        sx, sz = geometry.to_scene(lat, lon)
+        self.assertAlmostEqual(x, sx, delta=0.06)
+        self.assertAlmostEqual(z, sz, delta=0.06)
         self.assertAlmostEqual(math.degrees(math.atan2(x, -z)), item["bearing_deg"], delta=0.1)
-        self.assertAlmostEqual(item["bearing_deg"], 33.0, delta=1.0)        # spec 4.2: N 33 deg E
+        # spec 4.2: N 33 deg E (true); the scene's grid north is 1.23 deg east of true north
+        self.assertAlmostEqual(item["bearing_deg"] + self.doc["frame"]["grid_convergence_deg"], 33.4, delta=1.0)
         self.assertAlmostEqual(item["true_distance"], math.hypot(1257, 830), delta=15.0)
-        self.assertAlmostEqual(math.hypot(x, z), item["drawn_distance"], delta=0.2)
-        self.assertEqual(item["drawn_distance"], 900)
-        outline = self.footprint_box(item)
+        self.assertTrue(geometry.point_in_polygon(x, z, item["footprint"]))
+        cells = {c["osm"]: c["outline"] for c in self.features["tailings"]}
         for thing_id, dam in self.of_kind("tailings_dam").items():
-            self.assertEqual((dam["bottom"], dam["anchor"][1]), (self.surface, dam["top"]))
-            box = self.footprint_box(dam)
-            for corner in dam["footprint"]:
-                self.assertLess(point_box([corner[0], 0, corner[1]], outline), TOUCH, thing_id)
-            volume = box["size"][0] * box["size"][2] * (dam["top"] - dam["bottom"])
-            self.assertAlmostEqual(volume / self.attr(thing_id, "capacity_m3"), item["volume_scale"], delta=0.002)
+            name = thing_id.split(":")[1]
+            self.assertEqual(dam["anchor"][1], dam["top"])
+            if name in geometry.TSF_CELLS:
+                self.assertEqual(dam["footprint"], cells[geometry.TSF_CELLS[name]])
+                for cx, cz in shrink(dam["footprint"], 1.0):
+                    self.assertTrue(geometry.point_in_polygon(cx, cz, item["footprint"]), thing_id)
+                self.assertTrue(dam["sourced"])
+            else:
+                self.assertTrue(dam["planned"])
+                self.assertFalse(dam["sourced"])
+                self.assertFalse(polygons_overlap(dam["footprint"], item["footprint"], margin=0.0))
+            # stored volume between the ground and the crest is the capacity
+            samples = geometry.footprint_samples(self.geo.terrain, dam["footprint"])
+            cell = geometry.polygon_area(dam["footprint"]) / len(samples)
+            stored = sum(max(0.0, dam["top"] - g) for g in samples) * cell
+            self.assertAlmostEqual(stored / self.attr(thing_id, "capacity_m3"), 1.0, delta=0.02, msg=thing_id)
 
-    def test_surface_objects_do_not_overlap(self):
-        boxes = {}
-        for thing_id, item in self.of_kind("tailings_dam").items():
-            boxes[thing_id] = self.footprint_box(item)
-        for thing_id, item in self.of_kind("plant_line", "settling_pond", "main_fan").items():
-            if item["center"][1] > self.surface - 5:
-                boxes[thing_id] = {"center": [item["center"][0], 0, item["center"][2]],
-                                   "size": [item["size"][0], 1, item["size"][2]]}
-        for name in ("yard",):
-            boxes[name] = self.footprint_box(self.scenery[name])
-        pad = self.objects[tid("rom-stockpile")]
-        boxes["rom-pad"] = self.footprint_box({"footprint": pad["pad"]})
-        self.assertEqual(len(boxes), 4 + 6 + 2 + 3 + 2)
-        for (a, box_a), (b, box_b) in combinations(boxes.items(), 2):
-            self.assertFalse(boxes_overlap(box_a, box_b), f"{a} / {b}")
-        pit = self.scenery["old-pit"]
-        for name, box in boxes.items():
-            low, high = box_limits(box)
-            for x in (low[0], high[0]):
-                for z in (low[2], high[2]):
-                    gap = math.hypot(x - pit["base"][0], z - pit["base"][2]) - pit["radius_top"]
-                    self.assertGreater(gap, 5.0, f"{name} stands in the old pit")
+    def test_surface_objects_do_not_overlap_and_stay_out_of_the_pit(self):
+        footprints = self.footprints()
+        self.assertEqual(len(footprints), 4 + 6 + 2 + 3 + 2 + 2)
+        for (a, pa), (b, pb) in combinations(footprints.items(), 2):
+            self.assertFalse(polygons_overlap(pa, pb), f"{a} / {b}")
+        for name, footprint in footprints.items():
+            for x, z in footprint:
+                self.assertFalse(self.in_pit(x, z, margin=5.0), f"{name} stands in the old pit")
+        for name in ("rom-stockpile", "plant", "tailings"):
+            x, _, z = self.objects[tid(name)]["anchor"]
+            self.assertFalse(self.in_pit(x, z, margin=5.0), name)
 
-    def test_surface_objects_stand_apart_in_the_long_section(self):
-        for kinds in (("plant_line",), ("settling_pond",), ("tailings_dam",)):
-            spans = []
-            for item in self.of_kind(*kinds).values():
-                points = geometry.item_points(item)
-                spans.append((min(p[0] for p in points), max(p[0] for p in points)))
-            spans.sort()
-            for a, b in segments(spans):
-                self.assertLess(a[1], b[0], kinds)
+    def test_plant_lines_stand_apart_in_the_long_section(self):
+        spans = []
+        for item in self.of_kind("plant_line").values():
+            points = geometry.item_points(item)
+            spans.append((min(p[0] for p in points), max(p[0] for p in points)))
+        spans.sort()
+        for a, b in segments(spans):
+            self.assertLess(a[1], b[0])
 
     def test_plant_and_stockpile(self):
         lines = self.of_kind("plant_line")
         self.assertEqual(len(lines), 6)
-        outline = self.footprint_box(self.objects[tid("plant")])
+        plant = self.objects[tid("plant")]
+        self.assertEqual(plant["footprint"], self.features["plant_site"]["outline"])
+        zone = self.scenery["industrial-zone"]["footprint"]
+        for x, z in plant["footprint"]:
+            self.assertTrue(geometry.point_in_polygon(x, z, zone), "the plant leaves the industrial zone")
         for thing_id, item in lines.items():
-            self.assertEqual(item["center"][1] - item["size"][1] / 2, self.surface)
-            self.assertLess(point_box([item["center"][0], 0, item["center"][2]], outline), TOUCH)
+            for x, z in rect(item):
+                self.assertTrue(geometry.point_in_polygon(x, z, plant["footprint"]), f"{thing_id} leaves the plant")
         rom = self.objects[tid("rom-stockpile")]
-        self.assertEqual(rom["base"][1], self.surface)
         self.assertEqual(rom["reference_t"], self.params["stockpile.start_t"])
-        self.assertEqual(rom["dump"][1], self.surface)
-        self.assertLess(point_box([rom["dump"][0], 0, rom["dump"][2]], self.footprint_box({"footprint": rom["pad"]})),
-                        TOUCH)
+        self.assertTrue(geometry.point_in_polygon(rom["base"][0], rom["base"][2], zone))
+        dump = rom["dump"]
+        self.assertTrue(geometry.point_in_polygon(dump[0], dump[2], rom["pad"]))
         self.assertGreater(math.dist(rom["dump"], rom["base"]), 1.5 * rom["radius"])
 
     def test_monitoring_points_stand_on_their_water_course(self):
         for name, course in (("mon-volchevka", "stream-volchevka"), ("mon-sekisovka", "river-sekisovka")):
             self.assertLess(point_polyline(self.objects[tid(name)]["anchor"], self.scenery[course]["points"]), TOUCH)
 
-    def test_water_courses_keep_the_published_distances(self):
-        pit = self.scenery["old-pit"]
-        cx, _, cz = pit["base"]
+    def test_water_courses_agree_with_the_published_distances(self):
+        # Facts file, row "Water courses": the Volchevka runs 60 m from the pit's south boundary and is 735 m
+        # long to the Sekisovka; the pit is about 150 m from the Sekisovka's bank.
+        outline = self.pit["outline"]
         stream = self.scenery["stream-volchevka"]["points"]
         river = self.scenery["river-sekisovka"]["points"]
-        self.assertAlmostEqual(geometry.polyline_length(stream), 735, delta=2)
+        plan_length = sum(math.dist((a[0], a[2]), (b[0], b[2])) for a, b in segments(stream))
+        self.assertAlmostEqual(plan_length / 735, 1.0, delta=0.1)
         self.assertLess(point_polyline(stream[-1], river), TOUCH, "the stream runs into the river")
-        south = [cx, self.surface, cz + pit["radius_top"]]
-        self.assertAlmostEqual(point_polyline(south, stream), 60, delta=3)
-        self.assertAlmostEqual(point_polyline([cx, self.surface, cz], river) - pit["radius_top"], 150, delta=3)
+        to_stream = min(geometry.plan_distance_to_polygon(p[0], p[2], outline) for p in stream)
+        to_river = min(geometry.plan_distance_to_polygon(p[0], p[2], outline) for p in river)
+        self.assertAlmostEqual(to_stream, 60, delta=15)
+        self.assertAlmostEqual(to_river, 150, delta=25)
+        south = max(z for _, z in outline)
+        self.assertTrue(any(p[2] > south for p in stream), "the stream passes south of the pit")
 
-    def test_surface_is_flat_and_holds_everything(self):
+    def test_surface_spans_the_terrain(self):
         surface = self.scenery["surface"]
         self.assertEqual(surface["y"], self.surface)
         self.assertEqual(self.surface, self.params["decline.tu1.portal_m"])
         xs, zs = [p[0] for p in surface["footprint"]], [p[1] for p in surface["footprint"]]
-        low, high = self.doc["bounds"]["min"], self.doc["bounds"]["max"]
-        self.assertEqual((min(xs), min(zs), max(xs), max(zs)), (low[0], low[2], high[0], high[2]))
-        for name, item in self.scenery.items():
-            if item["primitive"] == "polyline" and name != "road-tu2":
-                self.assertEqual({p[1] for p in item["points"]}, {self.surface}, name)
+        self.assertEqual([min(xs), min(zs), max(xs), max(zs)], self.doc["terrain"]["extent"])
 
 
 if __name__ == "__main__":

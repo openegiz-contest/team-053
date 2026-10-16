@@ -1,2 +1,9 @@
 # Keep LF everywhere: the scripts run on Linux, also when edited on Windows.
 * text=auto eol=lf
+
+# Binary assets: never touch line endings.
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.pdf binary
+*.zip binary
