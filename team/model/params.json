@@ -636,7 +636,7 @@
   "publish.period_medium_s": {"value": 6, "unit": "s", "source": "ASSUMPTION: tier M publishing period (spec 1.2)"},
   "publish.period_slow_s": {"value": 20, "unit": "s", "source": "ASSUMPTION: tier L publishing period (spec 1.2)"},
   "publish.period_advisor_s": {"value": 30, "unit": "s", "source": "ASSUMPTION: advisor publishes on change and every 30 s (spec 1.2)"},
-  "publish.max_msg_per_s": {"value": 20, "unit": "messages/s", "source": "ASSUMPTION: publishing budget (spec 1.2)"},
+  "publish.max_msg_per_s": {"value": 18, "unit": "messages/s", "source": "ASSUMPTION: publishing budget of the simulator; together with the advisor (one message on change and every 30 s) the stream on telemetry/sekis/# stays at or below 20 messages/s (spec 1.2); 18 after a 60-minute soak on 16 Oct 2026 measured a 20.2 peak with 20"},
   "publish.fast_units_limit": {
     "value": 14,
     "unit": "units",

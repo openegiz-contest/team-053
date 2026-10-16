@@ -1807,9 +1807,9 @@ class TestPublishing(SimCase):
         sim = new_sim(**FULL_2500)
         planner, sent = self.publish(sim, 60, scale=0.25)             # four times faster than allowed
         self.assertEqual(planner.periods(), {"S": 0.75, "M": 1.5, "L": 5.0})
-        self.assertLessEqual(self.worst_second(sent), 20)
-        self.assertLessEqual(len(sent), 60 * 20 + 20)
-        self.assertGreater(len(sent), 60 * 19, "the budget is used when more is due than fits")
+        self.assertLessEqual(self.worst_second(sent), 18)
+        self.assertLessEqual(len(sent), 60 * 18 + 18)
+        self.assertGreater(len(sent), 60 * 17, "the budget is used when more is due than fits")
         count = {}
         for _, name in sent:
             count[name] = count.get(name, 0) + 1

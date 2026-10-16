@@ -641,7 +641,7 @@ class TestConfiguration(unittest.TestCase):
         service, (source, mqtt) = sim_service.build_service("1", None, self.log.append)
         line = service.start_line(source, mqtt)
         self.assertRegex(line, CYRILLIC)
-        for text in ("зерно 53", "×60", "2/6/20 с", "20 сообщений/с"):
+        for text in ("зерно 53", "×60", "2/6/20 с", "18 сообщений/с"):
             self.assertIn(text, line)
 
 

@@ -687,7 +687,7 @@ class TestParams(ParamsCase):
         self.assertEqual(v["gold.g_per_oz"], 31.1035)
         self.assertEqual(v["sim.speedup"], 60)
         self.assertEqual(v["sim.seed"], 53)
-        self.assertEqual(v["publish.max_msg_per_s"], 20)
+        self.assertEqual(v["publish.max_msg_per_s"], 18)
 
     def test_mandatory_mixed_sources(self):
         # facts are FACT, design choices are ASSUMPTION
