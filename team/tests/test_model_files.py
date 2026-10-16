@@ -13,7 +13,8 @@ FACTS = TEAM / "research" / "sekisovskoye-facts.md"
 NS = "kz.sekis"
 TNS = "kz.sekis.type"
 POLICY = "default:basic_policy"
-STRING_FEATURES = {"state", "shift", "decline", "stope", "binding_link", "next_measure", "label", "sim_time"}
+STRING_FEATURES = {"state", "shift", "decline", "stope", "binding_link", "next_measure", "label", "sim_time",
+                   "vod_state"}
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 KIND_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
@@ -360,7 +361,12 @@ class TestFeatures(RegistryCase):
         self.assertEqual(feats("enterprise"), ["sim_time", "sim_day", "shift", "ore_mined_tpd", "ore_milled_tpd",
                                                "gold_poured_oz_day", "gold_poured_total_oz", "annual_rate_ktpa",
                                                "binding_link"])
-        self.assertEqual(len(feats("mine")), 13)
+        self.assertEqual(len(feats("mine")), 25)   # 13 of spec 1.2 and 12 of ventilation on demand (spec 3.5)
+        self.assertEqual(feats("mine")[13:], ["vod_state", "air_delivered_m3s", "vod_demand_m3s", "vod_units_waiting",
+                                              "fan_power_kw", "fan_energy_today_kwh", "fan_saving_today_kwh",
+                                              "fan_saving_today_kzt", "fan_energy_shift_kwh", "fan_saving_shift_kwh",
+                                              "fan_energy_day_kwh", "fan_saving_day_kwh"])
+        self.assertEqual(feats("main_fan"), ["state", "air_flow_m3s", "duty_setpoint_m3s", "pressure", "power_kw"])
         self.assertEqual(len(feats("level")), 7)
         self.assertEqual(len(feats("stope")), 8)
         self.assertEqual(len(feats("decline")), 7)
@@ -370,7 +376,8 @@ class TestFeatures(RegistryCase):
                                                "tonnes_today"])
         self.assertEqual(len(feats("advisor")), 22)
         self.assertEqual(feats("scenario_control")[-2:], ["revision", "label"])
-        self.assertEqual(len(feats("scenario_control")), 17)  # 15 knobs + revision + label
+        self.assertEqual(len(feats("scenario_control")), 18)  # 16 knobs + revision + label
+        self.assertEqual(feats("scenario_control")[-3], "vod_enabled")
 
     def test_state_tokens_of_baseline(self):
         allowed = {
@@ -514,10 +521,10 @@ class TestCountsPerKind(RegistryCase):
         defaults = {"target_ktpa": 1000.0, "m_plant": 0.0, "m_haul": 0.0, "m_stopes": 0.0, "m_vent": 0.0,
                     "m_dev": 0.0, "m_water": 0.0, "m_tailings": 0.0, "tu1_closed": 0.0, "tu2_closed": 0.0,
                     "fan_vs2_off": 0.0, "pumps_failed_p150": 0.0, "inflow_factor": 1.0, "grade_gpt": 2.05,
-                    "line_down": 0.0, "revision": 0.0}
+                    "line_down": 0.0, "vod_enabled": 1.0, "revision": 0.0}
         for k, v in defaults.items():
             self.assertEqual(value_of(s, k), v, k)
-        self.assertEqual(len(defaults), 16)
+        self.assertEqual(len(defaults), 17)
         self.assertTrue(value_of(s, "label"))
 
     def test_hierarchy_parents(self):
@@ -643,7 +650,11 @@ class TestParams(ParamsCase):
                          (3, 300, 1800))
         self.assertEqual((v["water.ps_m050.pumps"], v["water.ps_m050.pump_m3h"], v["water.ps_m050.sump_m3"]),
                          (2, 150, 600))
-        self.assertEqual((v["water.flood_threshold_m050_m3"], v["water.flood_threshold_000_m3"]), (300, 1500))
+        self.assertEqual((v["water.flood_threshold_m050_m3"], v["water.flood_threshold_000_m3"]), (14960, 44930))
+        self.assertEqual((v["water.flood_section_m2"], v["water.flood_compression"]), (18.0, 24))
+        self.assertEqual((v["vent.vsd_min_share"], v["vent.leakage_share"]), (0.5, 0.2))
+        self.assertEqual((v["vod.margin_pct"], v["vod.ramp_pct_per_min"], v["vod.min_on_min"], v["vod.pre_vent_min"],
+                          v["vod.tariff_kzt_kwh"]), (5, 5, 30, 15, 35))
         self.assertEqual((v["water.pump_efficiency"], v["water.head_ps_p150_m"], v["water.head_ps_m050_m"]),
                          (0.70, 280, 200))
         self.assertEqual((v["pond.volume_m3"], v["pond.area_m2"], v["pond.depth_m"], v["pond.settling_h"]),
@@ -760,6 +771,13 @@ class TestParamsAgainstRegistry(RegistryCase, ParamsCase):
         self.assertEqual(fans["fan-ug-p320"]["duty_m3s"], self.v("vent.split_fan_ug_p320_m3s"))
         self.assertEqual(fans["fan-vs2"]["duty_m3s"], self.v("vent.fan_vs2.duty_m3s"))
         self.assertEqual(fans["fan-vs2"]["duty_max_m3s"], self.v("vent.fan_vs2.duty_max_m3s"))
+        # lowest duties under ventilation on demand: the published range of VS2, half the duty elsewhere
+        self.assertEqual(fans["fan-vs2"]["duty_min_m3s"], self.v("vent.fan_vs2.duty_min_m3s"))
+        for name, a in fans.items():
+            self.assertLessEqual(a["duty_min_m3s"], a["duty_m3s"], name)
+            self.assertLessEqual(a["duty_m3s"], a["duty_max_m3s"], name)
+            if name != "fan-vs2":
+                self.assertEqual(a["duty_min_m3s"], a["duty_m3s"] * self.v("vent.vsd_min_share"), name)
         self.assertEqual(fans["fan-vs2"]["pressure_pa"], self.v("vent.fan_vs2.pressure_pa"))
         self.assertEqual(fans["fan-vs1"]["pressure_pa"], self.v("vent.pressure_vs1_pa"))
         self.assertEqual(fans["fan-vpv"]["duty_m3s"], self.v("vent.measure_V1.delta_m3s"))

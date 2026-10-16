@@ -17,6 +17,7 @@ from .params import Params
 from .surface import Dewatering, Plant, UNBOUNDED, Water
 from .timebase import Calendar, SECONDS_PER_DAY, SECONDS_PER_HOUR, parse_epoch
 from .traffic import Haulage, P_MAINT
+from .vod import Vod
 
 PERCENT = 100.0
 SECONDS_PER_MINUTE = 60
@@ -25,7 +26,7 @@ SCENARIO_THING = "scenario"
 ADVISOR_THING = "advisor"
 #: Feature ids whose value is a string; every other feature is a float (spec 1.1).
 STRING_FEATURES = frozenset(("state", "shift", "decline", "stope", "binding_link", "next_measure", "label",
-                             "sim_time"))
+                             "sim_time", "vod_state"))
 #: Scenario features that are not knobs of the model.
 _SCENARIO_META = ("revision", "label")
 
@@ -117,6 +118,9 @@ class Simulator:
         self.water = Water(self)
         self.plant = Plant(self)
         self.dewater_spec = cap.dewatering(model, self.cap_state)
+        #: Ventilation on demand (spec 3.5): the duty of the main fans and their energy.
+        self.vod = Vod(self)
+        self._vod_waiting_lhds: Tuple[str, ...] = ()
         self.fans_installed: Tuple[str, ...] = ()
         self.fans_running: Tuple[str, ...] = ()
         self.air_supply = 0.0
@@ -132,6 +136,7 @@ class Simulator:
         self._configure(first=True)
         # The run opens on a working mine: the trucks are already spread along their cycles.
         self.haul.warm_start(float(self.t), float(self.cal.worked_s(self._i)[0]))
+        self.vod.prime()
 
         # publishing support
         self._snapshot_tick = -1
@@ -212,6 +217,7 @@ class Simulator:
         self.haul.reset_day()
         self.mining.reset_day()
         self.plant.reset_day()
+        self.vod.reset_day()
         self._refresh_analytic()
 
     def _minute(self, t: int, i: int) -> None:
@@ -228,6 +234,7 @@ class Simulator:
             self._refresh_analytic()
         self.plant.minute(t, dt, pumped, self.dewater.levelled_m3)
         self._ventilation_rule()
+        self._vod_minute(t, dt)
         if productive and self.dev_rate_m_per_s > 0.0:
             for ramp in self.haul.ramps.values():       # decline development advances the face
                 if ramp.bottom_elevation > ramp.design_bottom:
@@ -323,6 +330,7 @@ class Simulator:
         self.fans_installed = tuple(p("ladder.m_vent.fans")[state.m_vent])
         self.fans_running = cap.fans_running(model, state)
         self.air_supply = cap.air_supply_m3s(model, self.fans_running)
+        self.vod.configure(bool(round(float(self.knobs.get("vod_enabled", 1.0)))), self.fans_running)
         # water, plant, tailings, development
         self.dewater_spec = cap.dewatering(model, state)
         self.plant.configure()
@@ -380,9 +388,19 @@ class Simulator:
         for truck in self.haul.trucks:
             truck.held = truck.name in held
         self._count_working_trucks()
-        self.mining.set_held_lhds(self.held_lhds)
+        self.mining.set_held_lhds(self.held_lhds + self._vod_waiting_lhds)
         if self.air_demand > self.air_demand_peak:
             self.air_demand_peak = self.air_demand
+
+    def _vod_minute(self, t: int, dt: float) -> None:
+        """Ventilation on demand (spec 3.5): set the fans for the units in work and admit units
+        only while the delivered air covers them. An LHD that waits for the fans to ramp up idles
+        its stope like an LHD held by the hold rule."""
+        vod = self.vod
+        vod.minute(float(t), dt, self.productive)
+        if vod.waiting_lhds != self._vod_waiting_lhds:
+            self._vod_waiting_lhds = vod.waiting_lhds
+            self.mining.set_held_lhds(self.held_lhds + self._vod_waiting_lhds)
 
     def mine_state(self) -> str:
         if self.air_supply < self.p("vent.q_base"):
@@ -444,15 +462,25 @@ class Simulator:
                 "units_held_vent": float(len(self.held_trucks) + len(self.held_lhds)),
                 "inflow_m3h": round(self.dewater_spec.inflow_m3h, 1),
                 "pumped_m3h": round(self.water.r_mine.per_hour(), 1),
-                "flood_volume_m3": round(self.dewater.flood, 1)}
+                "flood_volume_m3": round(self.dewater.flood, 1),
+                **self.vod.mine_features()}
 
     def _air_by_level(self) -> Tuple[Dict[str, cap.LevelAir], Dict[str, float]]:
+        """Air of the levels (``capacity.level_air``): the units working on each level now, the
+        LHDs held for air at their stope's level, the air delivered and the requirement it is
+        set against (the demand of the units in work)."""
         cached = self._level_air
         if cached is None:
             kw: Dict[str, float] = {}
             self.haul.kw_on_levels(kw)
             self.mining.kw_on_levels(kw, self.t, self.productive)
-            cached = self._level_air = (cap.level_air(self.model, self.air_supply, kw), kw)
+            held: Dict[str, float] = {}
+            for lhd in self.mining.lhds:
+                if lhd.held and lhd.in_service and lhd.stope is not None:
+                    name = lhd.stope.level.name
+                    held[name] = held.get(name, 0.0) + lhd.engine_kw
+            air = cap.level_air(self.model, self.vod.delivered(), self.vod.demand, kw, self._flooded, held)
+            cached = self._level_air = (air, kw)
         return cached
 
     def _f_level(self, name: str) -> Dict[str, Any]:
@@ -491,7 +519,8 @@ class Simulator:
                 "ore_today_t": round(ramp.ore_today, 1), "avg_cycle_min": round(mean_cycle, 1)}
 
     def _fan_flow(self, fan: str) -> float:
-        return self.model.fans[fan].duty_m3s if fan in self.fans_running else 0.0
+        """Air a fan delivers now: its ventilation-on-demand flow, 0 when it does not run."""
+        return self.vod.flow.get(fan, 0.0) if fan in self.fans_running else 0.0
 
     def _airway(self, name: str) -> Dict[str, Any]:
         attrs = self.things[name]["attributes"]
@@ -501,7 +530,7 @@ class Simulator:
             flow = self._fan_flow(fan)
             in_service = fan in self.fans_installed
         elif attrs.get("direction") == "exhaust":   # all return air leaves through the exhaust raises
-            flow = self.air_supply
+            flow = self.vod.delivered()
         else:                                   # a raise alongside a decline: its share of the decline air
             key = name.rsplit("-", 1)[-1]
             flow = 0.0
@@ -519,14 +548,16 @@ class Simulator:
     _f_raise = _airway
 
     def _f_main_fan(self, name: str) -> Dict[str, Any]:
-        fan = self.model.fans[name]
+        """A main fan: its flow and setpoint under ventilation on demand, the pressure on the fixed
+        system curve (square of the flow) and the shaft power (cube of the flow), spec 3.5."""
         if name in self.fans_running:
-            state, flow, pressure = "running", fan.duty_m3s, fan.pressure_pa
+            state = "running"
+            flow, setpoint, pressure, power = self.vod.fan(name)
         else:
             state = "failed" if name in self.fans_installed else "planned"
-            flow = pressure = 0.0
-        return {"state": state, "air_flow_m3s": round(flow, 1), "pressure": round(pressure, 1),
-                "power_kw": round(cap.fan_power_kw(self.model, flow, pressure), 1)}
+            flow = setpoint = pressure = power = 0.0
+        return {"state": state, "air_flow_m3s": round(flow, 1), "duty_setpoint_m3s": round(setpoint, 1),
+                "pressure": round(pressure, 1), "power_kw": round(power, 1)}
 
     def _f_pump_station(self, name: str) -> Dict[str, Any]:
         return self.dewater.station_features(name)
@@ -696,6 +727,10 @@ class Simulator:
             "air_supply_m3s": self.air_supply,
             "air_demand_m3s": self.air_demand,
             "air_demand_peak_m3s": self.air_demand_peak,
+            "air_delivered_m3s": self.vod.delivered(),
+            "fan_energy_kwh": self.vod.energy_total,
+            "fan_energy_fixed_kwh": self.vod.fixed_total,
+            "vod_min_margin_m3s": self.vod.min_margin_m3s if self.vod.minutes else 0.0,
             "truck_trips": float(haul.trips),
             "truck_trips_aborted": float(haul.aborted_trips),
             "truck_maintenance_h": haul.maintenance_s / SECONDS_PER_HOUR,

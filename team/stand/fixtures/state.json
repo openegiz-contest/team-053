@@ -66,7 +66,19 @@
      "units_held_vent": "units",
      "inflow_m3h": "m3/h",
      "pumped_m3h": "m3/h",
-     "flood_volume_m3": "m3"
+     "flood_volume_m3": "m3",
+     "vod_state": "",
+     "air_delivered_m3s": "m3/s",
+     "vod_demand_m3s": "m3/s",
+     "vod_units_waiting": "units",
+     "fan_power_kw": "kW",
+     "fan_energy_today_kwh": "kWh",
+     "fan_saving_today_kwh": "kWh",
+     "fan_saving_today_kzt": "KZT",
+     "fan_energy_shift_kwh": "kWh",
+     "fan_saving_shift_kwh": "kWh",
+     "fan_energy_day_kwh": "kWh",
+     "fan_saving_day_kwh": "kWh"
     },
     "design_capacity_ktpa": 1000,
     "working_days": 360,
@@ -86,7 +98,19 @@
     "units_held_vent": 0.0,
     "inflow_m3h": 197.0,
     "pumped_m3h": 0.0,
-    "flood_volume_m3": 0.0
+    "flood_volume_m3": 0.0,
+    "vod_state": "demand",
+    "air_delivered_m3s": 312.2,
+    "vod_demand_m3s": 297.4,
+    "vod_units_waiting": 0.0,
+    "fan_power_kw": 1021.1,
+    "fan_energy_today_kwh": 2049.3,
+    "fan_saving_today_kwh": 638.7,
+    "fan_saving_today_kzt": 22356.0,
+    "fan_energy_shift_kwh": 2049.3,
+    "fan_saving_shift_kwh": 638.7,
+    "fan_energy_day_kwh": 21573.3,
+    "fan_saving_day_kwh": 5306.7
    }
   },
   "kz.sekis:lvl-p320": {
@@ -121,8 +145,8 @@
    },
    "f": {
     "state": "ventilation",
-    "air_flow_m3s": 24.2,
-    "air_required_m3s": 22.5,
+    "air_flow_m3s": 12.6,
+    "air_required_m3s": 0.0,
     "diesel_kw": 0.0,
     "water_inflow_m3h": 29.5,
     "active_stopes": 0.0,
@@ -162,8 +186,8 @@
    },
    "f": {
     "state": "mined_out",
-    "air_flow_m3s": 24.2,
-    "air_required_m3s": 22.5,
+    "air_flow_m3s": 12.6,
+    "air_required_m3s": 0.0,
     "diesel_kw": 0.0,
     "water_inflow_m3h": 29.5,
     "active_stopes": 0.0,
@@ -203,8 +227,8 @@
    },
    "f": {
     "state": "mined_out",
-    "air_flow_m3s": 24.2,
-    "air_required_m3s": 22.5,
+    "air_flow_m3s": 12.6,
+    "air_required_m3s": 0.0,
     "diesel_kw": 0.0,
     "water_inflow_m3h": 29.5,
     "active_stopes": 0.0,
@@ -244,8 +268,8 @@
    },
    "f": {
     "state": "production",
-    "air_flow_m3s": 32.2,
-    "air_required_m3s": 29.9,
+    "air_flow_m3s": 38.0,
+    "air_required_m3s": 36.2,
     "diesel_kw": 123.0,
     "water_inflow_m3h": 29.5,
     "active_stopes": 1.0,
@@ -285,8 +309,8 @@
    },
    "f": {
     "state": "production",
-    "air_flow_m3s": 32.2,
-    "air_required_m3s": 29.9,
+    "air_flow_m3s": 38.0,
+    "air_required_m3s": 36.2,
     "diesel_kw": 123.0,
     "water_inflow_m3h": 19.7,
     "active_stopes": 1.0,
@@ -326,8 +350,8 @@
    },
    "f": {
     "state": "production",
-    "air_flow_m3s": 80.2,
-    "air_required_m3s": 74.5,
+    "air_flow_m3s": 84.8,
+    "air_required_m3s": 80.8,
     "diesel_kw": 866.0,
     "water_inflow_m3h": 19.7,
     "active_stopes": 1.0,
@@ -367,9 +391,9 @@
    },
    "f": {
     "state": "production",
-    "air_flow_m3s": 80.5,
-    "air_required_m3s": 74.8,
-    "diesel_kw": 871.0,
+    "air_flow_m3s": 46.8,
+    "air_required_m3s": 44.6,
+    "diesel_kw": 263.0,
     "water_inflow_m3h": 19.7,
     "active_stopes": 1.0,
     "ore_today_t": 266.2
@@ -407,8 +431,8 @@
    },
    "f": {
     "state": "development",
-    "air_flow_m3s": 24.2,
-    "air_required_m3s": 22.5,
+    "air_flow_m3s": 30.2,
+    "air_required_m3s": 28.8,
     "diesel_kw": 0.0,
     "water_inflow_m3h": 19.7,
     "active_stopes": 0.0,
@@ -1515,8 +1539,8 @@
    },
    "f": {
     "state": "in_service",
-    "air_flow_m3s": 150.0,
-    "air_velocity_ms": 13.8
+    "air_flow_m3s": 145.4,
+    "air_velocity_ms": 13.4
    }
   },
   "kz.sekis:shaft-vs2": {
@@ -1544,8 +1568,8 @@
    },
    "f": {
     "state": "in_service",
-    "air_flow_m3s": 70.0,
-    "air_velocity_ms": 6.5
+    "air_flow_m3s": 67.9,
+    "air_velocity_ms": 6.3
    }
   },
   "kz.sekis:shaft-vs3": {
@@ -1630,8 +1654,8 @@
    },
    "f": {
     "state": "in_service",
-    "air_flow_m3s": 51.0,
-    "air_velocity_ms": 9.1
+    "air_flow_m3s": 49.5,
+    "air_velocity_ms": 8.8
    }
   },
   "kz.sekis:raise-vhv-tu2": {
@@ -1658,8 +1682,8 @@
    },
    "f": {
     "state": "in_service",
-    "air_flow_m3s": 51.0,
-    "air_velocity_ms": 9.1
+    "air_flow_m3s": 49.5,
+    "air_velocity_ms": 8.8
    }
   },
   "kz.sekis:raise-vhv-exhaust": {
@@ -1684,8 +1708,8 @@
    },
    "f": {
     "state": "in_service",
-    "air_flow_m3s": 322.0,
-    "air_velocity_ms": 30.0
+    "air_flow_m3s": 312.2,
+    "air_velocity_ms": 29.0
    }
   },
   "kz.sekis:fan-vs1": {
@@ -1703,20 +1727,23 @@
     "units": {
      "state": "",
      "air_flow_m3s": "m3/s",
+     "duty_setpoint_m3s": "m3/s",
      "pressure": "Pa",
      "power_kw": "kW"
     },
     "model": "ВОД-16П",
     "duty_m3s": 150,
+    "duty_min_m3s": 75,
     "duty_max_m3s": 150,
     "pressure_pa": 2500,
     "link_airway": "kz.sekis:shaft-vs1"
    },
    "f": {
     "state": "running",
-    "air_flow_m3s": 150.0,
-    "pressure": 2500.0,
-    "power_kw": 500.0
+    "air_flow_m3s": 145.4,
+    "duty_setpoint_m3s": 145.4,
+    "pressure": 2350.6,
+    "power_kw": 455.8
    }
   },
   "kz.sekis:fan-ug-p320": {
@@ -1734,11 +1761,13 @@
     "units": {
      "state": "",
      "air_flow_m3s": "m3/s",
+     "duty_setpoint_m3s": "m3/s",
      "pressure": "Pa",
      "power_kw": "kW"
     },
     "model": "AL18-4500V",
     "duty_m3s": 102,
+    "duty_min_m3s": 51,
     "duty_max_m3s": 102,
     "pressure_pa": 2500,
     "link_airway": [
@@ -1748,9 +1777,10 @@
    },
    "f": {
     "state": "running",
-    "air_flow_m3s": 102.0,
-    "pressure": 2500.0,
-    "power_kw": 340.0
+    "air_flow_m3s": 98.9,
+    "duty_setpoint_m3s": 98.9,
+    "pressure": 2350.6,
+    "power_kw": 310.0
    }
   },
   "kz.sekis:fan-vs2": {
@@ -1768,20 +1798,23 @@
     "units": {
      "state": "",
      "air_flow_m3s": "m3/s",
+     "duty_setpoint_m3s": "m3/s",
      "pressure": "Pa",
      "power_kw": "kW"
     },
     "model": "Korfmann AL17-2000",
     "duty_m3s": 70,
+    "duty_min_m3s": 63,
     "duty_max_m3s": 88,
     "pressure_pa": 3000,
     "link_airway": "kz.sekis:shaft-vs2"
    },
    "f": {
     "state": "running",
-    "air_flow_m3s": 70.0,
-    "pressure": 3000.0,
-    "power_kw": 280.0
+    "air_flow_m3s": 67.9,
+    "duty_setpoint_m3s": 67.9,
+    "pressure": 2820.7,
+    "power_kw": 255.3
    }
   },
   "kz.sekis:fan-vpv": {
@@ -1799,11 +1832,13 @@
     "units": {
      "state": "",
      "air_flow_m3s": "m3/s",
+     "duty_setpoint_m3s": "m3/s",
      "pressure": "Pa",
      "power_kw": "kW"
     },
     "model": "unspecified",
     "duty_m3s": 105,
+    "duty_min_m3s": 52.5,
     "duty_max_m3s": 105,
     "pressure_pa": 2500,
     "link_airway": "kz.sekis:raise-vpv"
@@ -1811,6 +1846,7 @@
    "f": {
     "state": "planned",
     "air_flow_m3s": 0.0,
+    "duty_setpoint_m3s": 0.0,
     "pressure": 0.0,
     "power_kw": 0.0
    }
@@ -1830,11 +1866,13 @@
     "units": {
      "state": "",
      "air_flow_m3s": "m3/s",
+     "duty_setpoint_m3s": "m3/s",
      "pressure": "Pa",
      "power_kw": "kW"
     },
     "model": "unspecified",
     "duty_m3s": 240,
+    "duty_min_m3s": 120,
     "duty_max_m3s": 240,
     "pressure_pa": 2500,
     "link_airway": "kz.sekis:shaft-vs3"
@@ -1842,6 +1880,7 @@
    "f": {
     "state": "planned",
     "air_flow_m3s": 0.0,
+    "duty_setpoint_m3s": 0.0,
     "pressure": 0.0,
     "power_kw": 0.0
    }
@@ -3037,12 +3076,12 @@
    "f": {
     "state": "balanced",
     "mine_water_m3h": 197.0,
-    "site_use_m3h": 63.7,
+    "site_use_m3h": 64.6,
     "plant_supply_m3h": 128.2,
     "reclaim_m3h": 0.0,
     "extra_intake_m3h": 0.0,
     "deficit_m3h": 0.0,
-    "discharge_m3h": 5.1
+    "discharge_m3h": 4.2
    }
   },
   "kz.sekis:pond-upper": {
@@ -3138,10 +3177,10 @@
    },
    "f": {
     "state": "normal",
-    "discharge_m3h": 5.1,
+    "discharge_m3h": 4.2,
     "intake_m3h": 0.0,
     "tss_mgl": 2.02,
-    "permit_use_pct": 2.3
+    "permit_use_pct": 1.9
    }
   },
   "kz.sekis:mon-sekisovka": {
@@ -3247,7 +3286,7 @@
     "grade": 2.05,
     "inflow_tph": 151.3,
     "outflow_tph": 124.1,
-    "days_of_feed": 550.7
+    "days_of_feed": 33.67
    }
   },
   "kz.sekis:plant-line-1": {
@@ -3603,6 +3642,7 @@
      "inflow_factor": "factor",
      "grade_gpt": "g/t",
      "line_down": "line no.",
+     "vod_enabled": "flag",
      "revision": "",
      "label": ""
     }
@@ -3623,6 +3663,7 @@
     "inflow_factor": 1.0,
     "grade_gpt": 2.05,
     "line_down": 0.0,
+    "vod_enabled": 1.0,
     "revision": 0.0,
     "label": "Базовый режим"
    }
@@ -3683,7 +3724,7 @@
     "gold_gain_koz_year": 0.0,
     "air_demand_m3s": 317.2,
     "water_deficit_m3h": 0.0,
-    "discharge_m3h": 14.5,
+    "discharge_m3h": 4.2,
     "tailings_years_left": 3.4,
     "stockpile_days_left": 564.0,
     "report_revision": 0.0

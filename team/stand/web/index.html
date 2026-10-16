@@ -51,6 +51,7 @@
 
   <nav class="topnav" aria-label="Разделы">
     <a href="#scenarios">Сценарии</a>
+    <a href="#vod">Вентиляция</a>
     <a href="#advisor-plan">Лестница мер</a>
     <a href="#twins">Двойники</a>
     <a href="#calibration">Калибровка</a>
@@ -121,6 +122,7 @@
 
           <div>
             <h3 class="group">Нарушения</h3>
+            <p class="sc-note" id="sc-flood-note" hidden></p>
             <div class="sc-toggles">
               <button type="button" class="btn toggle" data-preset="close_tu2" data-knob="tu2_closed" data-on="1"
                       data-label-off="Закрыть уклон ТУ-2" data-label-on="Открыть уклон ТУ-2" aria-pressed="false">Закрыть уклон ТУ-2</button>
@@ -169,6 +171,14 @@
 
     </div>
   </div>
+
+  <section class="card wide vod" id="vod" aria-labelledby="vod-title">
+    <header class="card-head">
+      <h2 id="vod-title">Вентиляция по потребности</h2>
+      <span class="card-meta" id="vod-meta">—</span>
+    </header>
+    <div class="card-body" id="vod-body"></div>
+  </section>
 
   <section class="card wide" id="advisor-plan" aria-labelledby="plan-title">
     <header class="card-head">

@@ -58,10 +58,20 @@ class Dewatering:
         self._was_available = True
         #: Water delivered to the ponds in the last minute, levelled over the pump cycle (m3).
         self.levelled_m3 = 0.0
+        #: Time compression of the water stored underground during a flood episode (spec 2.7).
+        self.flood_compression = float(p("water.flood_compression"))
 
     def available_main(self) -> int:
         p = self.sim.p
         return max(0, int(p("water.ps_p150.pumps")) - self.sim.cap_state.pumps_failed_p150)
+
+    def compression(self) -> float:
+        """How much faster than the mine clock the water stored underground (both sumps and the
+        flooded workings) changes: ``water.flood_compression`` while ps-p150 is out of action or
+        water stands in the workings, else 1 (spec 2.7). Flows stay on the mine clock."""
+        if self.available_main() == 0 or self.flood > 0.0:
+            return self.flood_compression
+        return 1.0
 
     def _in_band(self) -> float:
         """Water held in the pumping bands of both sumps, m3."""
@@ -72,10 +82,17 @@ class Dewatering:
         return main + lower
 
     def minute(self, dt_s: float) -> float:
-        """Advance the cascade by ``dt_s``; returns the water delivered to the ponds, m3."""
+        """Advance the cascade by ``dt_s``; returns the water delivered to the ponds, m3.
+
+        During a flood episode (``compression() > 1``) the volumes stored underground move by
+        the inflow and pumping of ``compression()`` minutes in this one; the water delivered to
+        the ponds, the totals and the published flows stay those of one minute (m3/h on the mine
+        clock), and the hours to overflow count on the mine clock."""
         p = self.sim.p
         spec = self.sim.dewater_spec          # cap.Dewatering for the current knobs
-        hours = dt_s / SECONDS_PER_HOUR
+        clock_hours = dt_s / SECONDS_PER_HOUR
+        k = self.compression()
+        hours = clock_hours * k               # hours of inflow and pumping the storage sees
 
         # Lead and lag control. ps-m050: one pump from start1 down to stop; the standby joins at
         # start_standby and drops out when the level is back under start1.
@@ -132,10 +149,11 @@ class Dewatering:
         # is pumped (the bands are taken as they are when the station is back).
         band = self._in_band()
         available = self.available_main() > 0
-        if available and self._was_available:
+        delivered = out_main / k               # what reaches the ponds in this minute of the mine clock
+        if available and self._was_available and k == 1.0:
             self.levelled_m3 = max(0.0, out_main + band - self.in_band)
         else:
-            self.levelled_m3 = out_main
+            self.levelled_m3 = delivered
         self.in_band = band
         self._was_available = available
 
@@ -143,14 +161,14 @@ class Dewatering:
         self.in_lower = (lower_in + spill) / hours
         self.out_main = out_main / hours
         self.out_lower = out_lower / hours
-        self.net_main = (self.v_main - before_main) / hours
-        self.net_lower = (self.v_lower - before_lower) / hours
-        self.inflow_total += lower_in + upper_in
-        self.pumped_total += out_main
+        self.net_main = (self.v_main - before_main) / clock_hours
+        self.net_lower = (self.v_lower - before_lower) / clock_hours
+        self.inflow_total += (lower_in + upper_in) / k
+        self.pumped_total += delivered
         low = self.v_main if self.v_main < self.v_lower else self.v_lower
         if low < self.min_sump:
             self.min_sump = low
-        return out_main
+        return delivered
 
     def flooded_levels(self) -> Tuple[str, ...]:
         return tuple(name for name, threshold in self.flood_thresholds if self.flood > threshold)

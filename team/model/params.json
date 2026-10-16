@@ -97,7 +97,7 @@
   "decline.length_factor": {
     "value": 1.15,
     "unit": "-",
-    "source": "ASSUMPTION: curves and passing bays; decline lengths are not published (facts file section C)"
+    "source": "ASSUMPTION: curves, passing bays and turnouts on the ramp line; decline lengths are not published (facts file section C). With it a ramp is 1/sin 8 deg x 1.15 = 8.26 m long per vertical metre. FACT D1 'Decline No.1, advance' gives 230 linear metres from -34 to -50 masl, 14.4 m per vertical metre: the reported development metres also count turnouts, passing bays, stubs (sumps, electrical cut-outs, remuck bays) and the access to the new level, which add length but no depth (16 m of depth take 132 m of ramp at 8.26 m/vm; the other 98 m are such development). The same report counts 100 m of development on Decline No.2 with no change of depth (FACT D1 'Decline No.2, development completed'). The factor is not raised to 14.4 x sin 8 deg = 2.0: the haulage formula and haul.K_HAUL are calibrated with it (check C3), and a truck drives the ramp, not the stubs"
   },
   "decline.bay_spacing_vm": {"value": 25, "unit": "m of elevation", "source": "ASSUMPTION: a passing bay about every 200 m of ramp"},
   "decline.bay_wait_slots": {
@@ -356,6 +356,41 @@
     "unit": "kind of unit held at each turn, repeated",
     "source": "ASSUMPTION: order of the holding rule of spec 2.6: the truck with the highest number, the next truck, then the LHD with the highest number, and again; the simulator and the analytic ventilation capacity both use it"
   },
+  "vent.vsd_min_share": {
+    "value": 0.5,
+    "unit": "share of duty_m3s",
+    "source": "ASSUMPTION: the lowest duty of a main fan without a published range (VOD-16P at VS1, AL18-4500V at +320 m, the planned fans VPV and VS3) under variable-speed control is half its design duty (motor cooling and stall margin); FACT A5 gives a range only for the VS2 fan (vent.fan_vs2.duty_min_m3s). Sets the registry attribute duty_min_m3s of those fans"
+  },
+  "vent.leakage_share": {
+    "value": 0.2,
+    "unit": "share of vent.q_base",
+    "source": "ASSUMPTION: a fifth of the base air (36 of 180 m3/s) leaks or flows through the open levels not in use (the ventilation level +320 m and the backfilled +250 m and +200 m) and short-circuits between intake and return; those levels are shown with this leakage and no requirement. The rest of the base air is shared equally by the levels in production or development. Mine leakage is not published"
+  },
+  "vod.margin_pct": {
+    "value": 5,
+    "unit": "% of the air demand",
+    "source": "ASSUMPTION: ventilation on demand sets the fans to the air demand of the units in work (vent.q_base + vent.q_diesel x kW, the norm of the hold rule) plus a control margin of 5 % for measurement error and leakage variation, between the lowest duty of the fans in service and their design duty (duty_m3s); it never exceeds the design duty, so the supply of the hold rule and of the advisor is unchanged"
+  },
+  "vod.ramp_pct_per_min": {
+    "value": 5,
+    "unit": "% of duty_m3s per minute",
+    "source": "ASSUMPTION: under ventilation on demand a main fan changes its flow by at most 5 % of its design duty per minute, so that the network pressure settles and doors and regulators are not slammed; from the lowest duty to the design duty in about 10 minutes"
+  },
+  "vod.min_on_min": {
+    "value": 30,
+    "unit": "min",
+    "source": "ASSUMPTION: minimum on-time of ventilation on demand: the setpoint comes down only after the demand has stayed below it for 30 minutes, so the fans do not hunt with every truck trip or short pause"
+  },
+  "vod.pre_vent_min": {
+    "value": 15,
+    "unit": "min",
+    "source": "ASSUMPTION: ventilation on demand raises the duty to the demand of the next productive block 15 minutes before it starts (time for fresh air to reach the far faces through 2-3 km of workings at 2-4 m/s), so that no unit waits for air when the block begins"
+  },
+  "vod.tariff_kzt_kwh": {
+    "value": 35,
+    "unit": "KZT/kWh, excl. VAT",
+    "source": "ASSUMPTION: price of electricity for the mine (supply at 6-110 kV) in 2027, used to value the energy saved by ventilation on demand. No tariff for legal entities of the East Kazakhstan supplier TOO Shygysenergotrade for 2025-2027 was found in public sources; regional tariffs for legal entities from 1 June 2024 were 32.60 KZT/kWh in Zhetysu region and 40.56 KZT/kWh excl. VAT in Akmola region (https://bizmedia.kz/2024-05-24-v-zhetisu-snizili-stoimost-elektroenergii-dlya-biznesa/); 35 KZT/kWh lies between them"
+  },
   "water.inflow_m3h": {
     "value": 197,
     "unit": "m3/h",
@@ -409,8 +444,26 @@
     "unit": "% sump level",
     "source": "ASSUMPTION: the standby pump starts at 90 % sump level (spec 2.7)"
   },
-  "water.flood_threshold_m050_m3": {"value": 300, "unit": "m3", "source": "ASSUMPTION: flood volume above which level -50 m is flooded"},
-  "water.flood_threshold_000_m3": {"value": 1500, "unit": "m3", "source": "ASSUMPTION: flood volume above which level 0 m is flooded"},
+  "water.flood_threshold_m050_m3": {
+    "value": 14960,
+    "unit": "m3",
+    "source": "ASSUMPTION: level -50 m counts as flooded when its workings are full: (level drive 640 m + access from decline TU1 80 m + three stope crosscuts of 37 m; schematic layout of spec 4.2, model/geometry.json) = 831 m x 18.0 m2 (water.flood_section_m2) = 14 958 m3. The -50 m stopes are in preparation and have no open void"
+  },
+  "water.flood_threshold_000_m3": {
+    "value": 44930,
+    "unit": "m3",
+    "source": "ASSUMPTION: level 0 m counts as flooded when the water has filled the -50 m workings (14 958 m3), the declines between -50 m and 0 m (TU1 50 m and TU2 34 m of depth at 8.26 m of ramp per vertical metre: 694 m x 18 m2 = 12 494 m3) and the 0 m workings (level drive 670 m + accesses from TU1 80 m and TU2 110 m + three crosscuts of 37 m = 971 m x 18 m2 = 17 478 m3): 44 930 m3. The voids of the open 0 m stopes lie above the level floor and fill only after the level is flooded"
+  },
+  "water.flood_section_m2": {
+    "value": 18.0,
+    "unit": "m2",
+    "source": "ASSUMPTION: the level drives, accesses and crosscuts are taken with the section of the transport declines, 18.0 m2 (FACT A2 'Transport decline TU1: cross-section in clear / slope'); their own sections are not published. Used to size the flood thresholds"
+  },
+  "water.flood_compression": {
+    "value": 24,
+    "unit": "x mine clock",
+    "source": "ASSUMPTION: display time compression, stated on the Stand: while ps-p150 is out of action or water stands in the workings, the water stored underground (both sumps and the flooded workings) changes 24 times faster than the mine clock, so one hour on the Stand is a day of inflow. At 197 m3/h the sumps overflow 18 minutes after the failure (7.3 h of inflow), level -50 m floods after 3.5 h (83 h of inflow) and level 0 m after 9.8 h (235 h of inflow). Flows (inflow, pumping, delivery to the ponds) and everything on the surface keep the mine clock; outside such an episode the factor is 1"
+  },
   "water.pump_efficiency": {"value": 0.7, "unit": "-", "source": "ASSUMPTION: pump efficiency for the power formula"},
   "water.pump_head_factor": {"value": 1.1, "unit": "-", "source": "ASSUMPTION: head loss factor in the pump power formula (spec 2.7)"},
   "water.head_ps_p150_m": {"value": 280, "unit": "m", "source": "ASSUMPTION: head from +150 to +430 (elevations from FACT A2)"},

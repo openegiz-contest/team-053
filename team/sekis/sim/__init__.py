@@ -50,6 +50,13 @@ Ventilation (spec 2.6)
     the advisor's bar tell the same story. ``held_trucks`` and ``held_lhds`` name the units held.
     A held truck is not counted among the trucks working its decline (``trucks_on_decline``).
 
+Ventilation on demand (spec 3.5)
+    ``vod`` (``sekis.sim.vod.Vod``) sets the duty of the main fans every simulated minute from
+    the air demand of the units in work, between their lowest and their design duty, with a ramp
+    limit, a minimum on-time and pre-ventilation before each productive block; a unit enters work
+    only when its air is there. The knob ``vod_enabled`` (1 by default) switches it; at 0 the fans
+    run at their design duty. The hold rule works on the design supply (``air_supply``) as before.
+
 Scenario (spec 3.1, 3.3)
     ``apply_scenario(knobs) -> list of changed knob names``
         ``knobs`` maps knob names to plain values or to the Ditto shape
@@ -142,7 +149,21 @@ What the displayed values mean
       ``tonnes_today``, ``plant_line.milled_today_t``) are totals since the start of shift A
       (08:00) and are not restarted by a scenario change.
     * ``mine.air_demand_m3s`` is the demand of the units in service that are not held;
-      ``diesel_kw_active`` is the engine power running at this moment.
+      ``diesel_kw_active`` is the engine power running at this moment. ``mine.air_supply_m3s``
+      is the design supply of the fans in service (the hold rule's); ``air_delivered_m3s`` what
+      the fans deliver now under ventilation on demand and ``vod_demand_m3s`` the demand of the
+      units in work it is set for. Fan ``air_flow_m3s``, ``pressure`` and ``power_kw`` are the
+      values now (pressure with the square, power with the cube of the flow); the energy features
+      of the mine count since 08:00 (``_today``), since the shift began (``_shift``) and over the
+      last 24 hours (``_day``), the saving against the fans at their design duty.
+    * Level air: levels in production or development (or with units on them) carry the
+      requirement of the units working there and get it times delivered / demand; the open levels
+      not in use carry leakage and need nothing; planned and flooded levels get none
+      (``capacity.level_air``).
+    * Flood episode: while ps-p150 is out of action or water stands in the workings, the water
+      stored underground (sumps and flood volume) changes ``water.flood_compression`` (24) times
+      faster than the mine clock; flows and the surface keep the mine clock. Levels flood at the
+      volumes of their workings (``water.flood_threshold_*``).
     * ``haul_truck.decline`` is the decline the truck works through (``none`` when parked);
       ``chainage_m`` is metres from the portal along the drawn decline, 0 off the decline.
     * ``pump_station.hours_to_overflow`` is 0 when the sump is not rising or already full.

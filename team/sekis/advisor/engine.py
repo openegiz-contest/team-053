@@ -25,6 +25,13 @@ Steady state. The KPIs of the report (water deficit and discharge, stockpile flo
 long-run values of the selected regime: the rate the chain sustains, with the water the pumps
 deliver on average. The twins show live values (1-hour water means, rates restarted on a knob
 change, see ``sekis.sim``), which approach these values after the transient.
+
+Water on the basis of the twins (decision 11.4). The water KPIs (deficit, discharge, share of the
+permit) are taken at the rates the simulator runs at: the mine hoists the smallest of its links
+over the working days (every simulated day is one), and the plant draws water for the feed it
+wants, its capacity (the mean over the planned line stops) or nothing once the tailings storage
+is full. ``water_regime`` gives the same balance with every line running, the value the live
+1-hour means show between the line stops; the report carries both.
 """
 
 from __future__ import annotations
@@ -360,10 +367,35 @@ class Advisor:
                          "text": wording.grade_condition(state.grade_gpt, base_grade, res)})
         if state.inflow_factor > 1:
             rows.append({"knob": "inflow_factor", "value": state.inflow_factor, "base": 1.0,
-                         "text": wording.inflow_condition(self.model, self.names, res)})
+                         "text": wording.inflow_condition(self.model, self.names, res, *self.water_regime(res))})
         return rows
 
     # --- figures of one state ----------------------------------------------------------------
+
+    def regime_rates(self, res: cap.Result) -> Dict[str, float]:
+        """The rates the simulator runs a state at, t/h: ``mine_ktpa`` and ``hoist_tph`` (the
+        smallest mine link over the working days, 24 h a day), ``plant_tph`` (the plant capacity
+        as a mean over its planned line stops) and ``all_lines_tph`` (every line of that capacity
+        running); both plant rates are 0 when the tailings storage is full."""
+        model, p = self.model, self.model.p
+        mine_ktpa = min(res.capacity_ktpa[link] for link in MINE_LINKS)
+        hoist_tph = mine_ktpa * cap.KILO / (p("regime.working_days") * cap.HOURS_PER_DAY)
+        plant_tph = res.capacity_ktpa["plant"] * cap.KILO / model.hours_per_year
+        if res.tailings.free_t <= 0:
+            plant_tph = 0.0
+        return {"mine_ktpa": mine_ktpa, "hoist_tph": hoist_tph, "plant_tph": plant_tph,
+                "plant_ktpa": plant_tph * model.hours_per_year / cap.KILO,
+                "all_lines_tph": plant_tph / p("plant.availability")}
+
+    def water_regime(self, res: cap.Result) -> Tuple[cap.WaterBalance, cap.WaterBalance]:
+        """Water balance of the state at the rates of ``regime_rates``: (mean over the line
+        stops, every line running). Mine water is what the pumps deliver in steady state; the
+        deficit is the water the wanted feed and the site miss, the discharge the surplus."""
+        rates = self.regime_rates(res)
+        pumped, m_water = res.dewatering.pumped_m3h, res.state.m_water
+        mean = cap.water_balance(self.model, rates["hoist_tph"], rates["plant_tph"], pumped, m_water)
+        lines = cap.water_balance(self.model, rates["hoist_tph"], rates["all_lines_tph"], pumped, m_water)
+        return mean, lines
 
     def stockpile_flow(self, res: cap.Result, stockpile_t: float) -> Dict[str, Any]:
         """ROM stockpile in the steady state of ``res``.
@@ -375,13 +407,10 @@ class Advisor:
         runs working days only), as ``capacity.stockpile_days_left`` counts them.
         """
         model, p = self.model, self.model.p
-        mine_ktpa = min(res.capacity_ktpa[link] for link in MINE_LINKS)
-        hoist_tph = mine_ktpa * cap.KILO / (p("regime.working_days") * cap.HOURS_PER_DAY)
-        plant_tph = res.capacity_ktpa["plant"] * cap.KILO / model.hours_per_year
+        rates = self.regime_rates(res)
+        mine_ktpa, hoist_tph, plant_tph = rates["mine_ktpa"], rates["hoist_tph"], rates["plant_tph"]
         water = cap.water_balance(model, hoist_tph, plant_tph, res.dewatering.pumped_m3h, res.state.m_water)
         feed_tph = min(plant_tph, water.feed_limit_tph)
-        if res.tailings.free_t <= 0:
-            feed_tph = 0.0
         feed_ktpa = feed_tph * model.hours_per_year / cap.KILO
         mine_tpd = mine_ktpa * cap.KILO / p("regime.working_days")
         plant_tpd = feed_ktpa * cap.KILO / p("regime.plant_days")
@@ -394,6 +423,7 @@ class Advisor:
     def kpi(self, res: cap.Result, stockpile_t: float) -> Dict[str, Any]:
         """KPI values of an evaluated state, rounded for display; ``None`` marks "no limit"."""
         stock = self.stockpile_flow(res, stockpile_t)
+        water, lines = self.water_regime(res)
         return {
             "gold_koz_year": _finite(res.gold.oz_per_year / cap.KILO, 2),
             "gold_gain_koz_year": _finite((res.gold.oz_per_year - self.baseline.gold.oz_per_year) / cap.KILO, 2),
@@ -405,10 +435,14 @@ class Advisor:
             "air_used_m3s": _finite(res.air.used_m3s, 1),
             "air_spare_m3s": _finite(res.air.spare_m3s, 1),
             "units_held_vent": len(res.air.held_trucks) + len(res.air.held_lhds),
-            "water_deficit_m3h": _finite(res.water.deficit_m3h, 1),
-            "discharge_m3h": _finite(res.water.discharge_m3h, 1),
+            "water_deficit_m3h": _finite(water.deficit_m3h, 1),
+            "discharge_m3h": _finite(water.discharge_m3h, 1),
             "permit_m3h": self.model.p("water.permit_m3h"),
-            "permit_use_pct": _finite(res.water.permit_use_pct, 1),
+            "permit_use_pct": _finite(water.permit_use_pct, 1),
+            "water_deficit_all_lines_m3h": _finite(lines.deficit_m3h, 1),
+            "discharge_all_lines_m3h": _finite(lines.discharge_m3h, 1),
+            "permit_use_all_lines_pct": _finite(lines.permit_use_pct, 1),
+            "water_basis": wording.water_basis(self.regime_rates(res)),
             "tailings_free_kt": _finite(res.tailings.free_t / cap.KILO, 0),
             "tailings_years_left": _finite(res.tailings.years_left, 1),
             "stockpile_t": _finite(stockpile_t, 0),
@@ -509,7 +543,7 @@ class Advisor:
                 "measures_needed": len(plan.steps), "flooded_levels": tuple(res.dewatering.flooded_levels),
                 "held_trucks": tuple(res.air.held_trucks), "held_lhds": tuple(res.air.held_lhds),
                 "pumps_total": pumps_total, "pumps_available": pumps_total - state.pumps_failed_p150,
-                "permit_exceeded": res.water.permit_state == "exceeded",
+                "permit_exceeded": self.water_regime(res)[0].permit_state == "exceeded",
                 "kpi": self.kpi(res, inputs.stockpile_t)}
 
     def effects(self, before: Optional[Inputs], after: Inputs) -> Dict[str, Any]:

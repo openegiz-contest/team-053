@@ -370,6 +370,9 @@ class Haulage:
         if not sim.productive:
             trk.state = "shift_break"
             return False
+        if not sim.vod.admits(trk):        # ventilation on demand: wait until the fans have ramped up
+            trk.state = "held_vent"
+            return False
         stope = sim.mining.dispatch(trk.payload_t, ramp)
         if stope is None:
             trk.state = "queue_load"       # waits at the pad for broken ore

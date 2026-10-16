@@ -68,6 +68,7 @@ SCENARIO_DEFAULTS = {
     "inflow_factor": 1.0,
     "grade_gpt": 2.05,
     "line_down": 0,
+    "vod_enabled": 1,          # ventilation on demand on (SPEC 3.5)
     "label": "Базовый режим",
 }
 

@@ -682,11 +682,31 @@ class TestFormulas(ModelCase):
         self.assertAlmostEqual(air.spare_m3s, 322 - 317.22)
         self.assertAlmostEqual(air.used_m3s, air.demand_m3s)
         self.assertAlmostEqual(cap.fan_power_kw(self.model, 150, 2500), 500.0)
-        split = cap.level_air(self.model, 322, {"lvl-p150": 439, "lvl-000": 123})
-        self.assertEqual(len(split), 8)  # the levels that are not planned
+        # level air (decision 11.4): the levels in use share the base air less the leakage and add the
+        # units working on them; the open levels not in use carry the leakage and need nothing
+        demand = 180 + 0.06 * (439 + 123)
+        split = cap.level_air(self.model, 322, demand, {"lvl-p150": 439, "lvl-000": 123})
+        self.assertEqual(len(split), 12)
+        in_use = [n for n, v in split.items() if v.use == cap.LEVEL_WORK]
+        leaking = [n for n, v in split.items() if v.use == cap.LEVEL_LEAKAGE]
+        self.assertEqual(in_use, ["lvl-p150", "lvl-p100", "lvl-p050", "lvl-000", "lvl-m050"])
+        self.assertEqual(leaking, ["lvl-p320", "lvl-p250", "lvl-p200"])
+        base = 180 * (1 - 0.2) / 5
+        self.assertAlmostEqual(split["lvl-p150"].required_m3s, base + 0.06 * 439)
+        self.assertAlmostEqual(split["lvl-p100"].required_m3s, base)
+        self.assertAlmostEqual(split["lvl-p150"].flow_m3s, (base + 0.06 * 439) * 322 / demand)
+        self.assertAlmostEqual(split["lvl-p250"].required_m3s, 0.0)
+        self.assertAlmostEqual(split["lvl-p250"].flow_m3s, 180 * 0.2 / 3 * 322 / demand)
+        self.assertEqual((split["lvl-m100"].required_m3s, split["lvl-m100"].flow_m3s), (0.0, 0.0))
+        # with only these units underground the whole delivered air is on the levels
         self.assertAlmostEqual(sum(v.flow_m3s for v in split.values()), 322)
-        self.assertAlmostEqual(split["lvl-p150"].required_m3s, 180 / 8 + 0.06 * 439)
-        self.assertAlmostEqual(split["lvl-p100"].required_m3s, 180 / 8)
+        # a flooded level gets none; a held LHD counts in its level's requirement but gets no air
+        working = 180 + 0.06 * 439          # the air is set to what the working units need
+        wet = cap.level_air(self.model, working, working, {"lvl-p150": 439}, flooded=("lvl-000",),
+                            held_kw_by_level={"lvl-p100": 263})
+        self.assertEqual((wet["lvl-000"].required_m3s, wet["lvl-000"].flow_m3s), (0.0, 0.0))
+        self.assertAlmostEqual(wet["lvl-p100"].required_m3s, 180 * 0.8 / 4 + 0.06 * 263)
+        self.assertLess(wet["lvl-p100"].flow_m3s, wet["lvl-p100"].required_m3s)
         # held units lower the demand: the simulator passes the units it lets work
         fewer = self.evaluate(active_trucks=("truck-01", "truck-05"), active_lhds=("lhd-04",))
         self.assertAlmostEqual(fewer.air.demand_m3s, 180 + 0.06 * (304 + 439 + 263))

@@ -19,7 +19,7 @@
       "To create a thing PUT /api/2/things/<thingId> with {policyId, attributes, features} taken from the entry (without _meta).",
       "_parents is a thing ID string; it is absent on the root kz.sekis:enterprise.",
       "link_* attribute values are thing IDs (string) or arrays of thing IDs. A link attribute that does not apply to a thing is absent, never null.",
-      "Every number in features is a JSON float (150.0, never 150). The string features are state, shift, decline, stope, binding_link, next_measure, label, sim_time.",
+      "Every number in features is a JSON float (150.0, never 150). The string features are state, shift, decline, stope, binding_link, next_measure, label, sim_time, vod_state.",
       "attributes.units has one key per feature of the thing; string features have unit ''.",
       "Dynamic references in string features (stope, decline) hold a thing name without the namespace (stp-p150-1, tu1), or 'none'.",
       "Feature values in this file are the baseline at simulation start: states and quantities the spec fixes (counts of active units, supply, stock, scenario defaults, reference capacities); every other number is 0.0 and is overwritten by the first simulator publish.",
@@ -60,7 +60,7 @@
       "attributes": {
         "_isType": true,
         "name": "Подземный рудник",
-        "description": "Подземный рудник: добыча, вентиляция, водоотлив и состояние смены.",
+        "description": "Подземный рудник: добыча, вентиляция (с регулированием по потребности), водоотлив и состояние смены.",
         "image": "http://localhost:8088/img/kinds/mine.svg"
       },
       "features": {
@@ -76,7 +76,19 @@
         "units_held_vent": {"properties": {"value": 0.0}},
         "inflow_m3h": {"properties": {"value": 197.0}},
         "pumped_m3h": {"properties": {"value": 0.0}},
-        "flood_volume_m3": {"properties": {"value": 0.0}}
+        "flood_volume_m3": {"properties": {"value": 0.0}},
+        "vod_state": {"properties": {"value": "full"}},
+        "air_delivered_m3s": {"properties": {"value": 322.0}},
+        "vod_demand_m3s": {"properties": {"value": 317.2}},
+        "vod_units_waiting": {"properties": {"value": 0.0}},
+        "fan_power_kw": {"properties": {"value": 1120.0}},
+        "fan_energy_today_kwh": {"properties": {"value": 0.0}},
+        "fan_saving_today_kwh": {"properties": {"value": 0.0}},
+        "fan_saving_today_kzt": {"properties": {"value": 0.0}},
+        "fan_energy_shift_kwh": {"properties": {"value": 0.0}},
+        "fan_saving_shift_kwh": {"properties": {"value": 0.0}},
+        "fan_energy_day_kwh": {"properties": {"value": 0.0}},
+        "fan_saving_day_kwh": {"properties": {"value": 0.0}}
       }
     },
     {
@@ -179,12 +191,13 @@
       "attributes": {
         "_isType": true,
         "name": "Главный вентилятор",
-        "description": "Вентилятор главного проветривания: расход, давление и потребляемая мощность.",
+        "description": "Вентилятор главного проветривания: расход, уставка расхода, давление и потребляемая мощность.",
         "image": "http://localhost:8088/img/kinds/main_fan.svg"
       },
       "features": {
         "state": {"properties": {"value": "running"}},
         "air_flow_m3s": {"properties": {"value": 150.0}},
+        "duty_setpoint_m3s": {"properties": {"value": 150.0}},
         "pressure": {"properties": {"value": 2500.0}},
         "power_kw": {"properties": {"value": 500.0}}
       }
@@ -452,6 +465,7 @@
         "inflow_factor": {"properties": {"value": 1.0}},
         "grade_gpt": {"properties": {"value": 2.05}},
         "line_down": {"properties": {"value": 0.0}},
+        "vod_enabled": {"properties": {"value": 1.0}},
         "revision": {"properties": {"value": 0.0}},
         "label": {"properties": {"value": "Базовый режим"}}
       }
@@ -485,7 +499,7 @@
         "gold_gain_koz_year": {"properties": {"value": 0.0}},
         "air_demand_m3s": {"properties": {"value": 317.2}},
         "water_deficit_m3h": {"properties": {"value": 0.0}},
-        "discharge_m3h": {"properties": {"value": 14.5}},
+        "discharge_m3h": {"properties": {"value": 4.2}},
         "tailings_years_left": {"properties": {"value": 3.4}},
         "stockpile_days_left": {"properties": {"value": 564.0}},
         "report_revision": {"properties": {"value": 0.0}}
@@ -554,7 +568,19 @@
           "units_held_vent": "units",
           "inflow_m3h": "m3/h",
           "pumped_m3h": "m3/h",
-          "flood_volume_m3": "m3"
+          "flood_volume_m3": "m3",
+          "vod_state": "",
+          "air_delivered_m3s": "m3/s",
+          "vod_demand_m3s": "m3/s",
+          "vod_units_waiting": "units",
+          "fan_power_kw": "kW",
+          "fan_energy_today_kwh": "kWh",
+          "fan_saving_today_kwh": "kWh",
+          "fan_saving_today_kzt": "KZT",
+          "fan_energy_shift_kwh": "kWh",
+          "fan_saving_shift_kwh": "kWh",
+          "fan_energy_day_kwh": "kWh",
+          "fan_saving_day_kwh": "kWh"
         },
         "design_capacity_ktpa": 1000,
         "working_days": 360,
@@ -574,7 +600,19 @@
         "units_held_vent": {"properties": {"value": 0.0}},
         "inflow_m3h": {"properties": {"value": 197.0}},
         "pumped_m3h": {"properties": {"value": 0.0}},
-        "flood_volume_m3": {"properties": {"value": 0.0}}
+        "flood_volume_m3": {"properties": {"value": 0.0}},
+        "vod_state": {"properties": {"value": "full"}},
+        "air_delivered_m3s": {"properties": {"value": 322.0}},
+        "vod_demand_m3s": {"properties": {"value": 317.2}},
+        "vod_units_waiting": {"properties": {"value": 0.0}},
+        "fan_power_kw": {"properties": {"value": 1120.0}},
+        "fan_energy_today_kwh": {"properties": {"value": 0.0}},
+        "fan_saving_today_kwh": {"properties": {"value": 0.0}},
+        "fan_saving_today_kzt": {"properties": {"value": 0.0}},
+        "fan_energy_shift_kwh": {"properties": {"value": 0.0}},
+        "fan_saving_shift_kwh": {"properties": {"value": 0.0}},
+        "fan_energy_day_kwh": {"properties": {"value": 0.0}},
+        "fan_saving_day_kwh": {"properties": {"value": 0.0}}
       }
     },
     {
@@ -1988,9 +2026,10 @@
         "kind": "main_fan",
         "type": "kz.sekis.type:main_fan",
         "_parents": "kz.sekis:shaft-vs1",
-        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "units": {"state": "", "air_flow_m3s": "m3/s", "duty_setpoint_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
         "model": "ВОД-16П",
         "duty_m3s": 150,
+        "duty_min_m3s": 75,
         "duty_max_m3s": 150,
         "pressure_pa": 2500,
         "link_airway": "kz.sekis:shaft-vs1"
@@ -1998,6 +2037,7 @@
       "features": {
         "state": {"properties": {"value": "running"}},
         "air_flow_m3s": {"properties": {"value": 150.0}},
+        "duty_setpoint_m3s": {"properties": {"value": 150.0}},
         "pressure": {"properties": {"value": 2500.0}},
         "power_kw": {"properties": {"value": 500.0}}
       }
@@ -2013,9 +2053,10 @@
         "kind": "main_fan",
         "type": "kz.sekis.type:main_fan",
         "_parents": "kz.sekis:lvl-p320",
-        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "units": {"state": "", "air_flow_m3s": "m3/s", "duty_setpoint_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
         "model": "AL18-4500V",
         "duty_m3s": 102,
+        "duty_min_m3s": 51,
         "duty_max_m3s": 102,
         "pressure_pa": 2500,
         "link_airway": ["kz.sekis:decline-tu1", "kz.sekis:decline-tu2"]
@@ -2023,6 +2064,7 @@
       "features": {
         "state": {"properties": {"value": "running"}},
         "air_flow_m3s": {"properties": {"value": 102.0}},
+        "duty_setpoint_m3s": {"properties": {"value": 102.0}},
         "pressure": {"properties": {"value": 2500.0}},
         "power_kw": {"properties": {"value": 340.0}}
       }
@@ -2038,9 +2080,10 @@
         "kind": "main_fan",
         "type": "kz.sekis.type:main_fan",
         "_parents": "kz.sekis:shaft-vs2",
-        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "units": {"state": "", "air_flow_m3s": "m3/s", "duty_setpoint_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
         "model": "Korfmann AL17-2000",
         "duty_m3s": 70,
+        "duty_min_m3s": 63,
         "duty_max_m3s": 88,
         "pressure_pa": 3000,
         "link_airway": "kz.sekis:shaft-vs2"
@@ -2048,6 +2091,7 @@
       "features": {
         "state": {"properties": {"value": "running"}},
         "air_flow_m3s": {"properties": {"value": 70.0}},
+        "duty_setpoint_m3s": {"properties": {"value": 70.0}},
         "pressure": {"properties": {"value": 3000.0}},
         "power_kw": {"properties": {"value": 280.0}}
       }
@@ -2063,9 +2107,10 @@
         "kind": "main_fan",
         "type": "kz.sekis.type:main_fan",
         "_parents": "kz.sekis:raise-vpv",
-        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "units": {"state": "", "air_flow_m3s": "m3/s", "duty_setpoint_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
         "model": "unspecified",
         "duty_m3s": 105,
+        "duty_min_m3s": 52.5,
         "duty_max_m3s": 105,
         "pressure_pa": 2500,
         "link_airway": "kz.sekis:raise-vpv"
@@ -2073,6 +2118,7 @@
       "features": {
         "state": {"properties": {"value": "planned"}},
         "air_flow_m3s": {"properties": {"value": 0.0}},
+        "duty_setpoint_m3s": {"properties": {"value": 0.0}},
         "pressure": {"properties": {"value": 0.0}},
         "power_kw": {"properties": {"value": 0.0}}
       }
@@ -2088,9 +2134,10 @@
         "kind": "main_fan",
         "type": "kz.sekis.type:main_fan",
         "_parents": "kz.sekis:shaft-vs3",
-        "units": {"state": "", "air_flow_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
+        "units": {"state": "", "air_flow_m3s": "m3/s", "duty_setpoint_m3s": "m3/s", "pressure": "Pa", "power_kw": "kW"},
         "model": "unspecified",
         "duty_m3s": 240,
+        "duty_min_m3s": 120,
         "duty_max_m3s": 240,
         "pressure_pa": 2500,
         "link_airway": "kz.sekis:shaft-vs3"
@@ -2098,6 +2145,7 @@
       "features": {
         "state": {"properties": {"value": "planned"}},
         "air_flow_m3s": {"properties": {"value": 0.0}},
+        "duty_setpoint_m3s": {"properties": {"value": 0.0}},
         "pressure": {"properties": {"value": 0.0}},
         "power_kw": {"properties": {"value": 0.0}}
       }
@@ -3633,6 +3681,7 @@
           "inflow_factor": "factor",
           "grade_gpt": "g/t",
           "line_down": "line no.",
+          "vod_enabled": "flag",
           "revision": "",
           "label": ""
         }
@@ -3653,6 +3702,7 @@
         "inflow_factor": {"properties": {"value": 1.0}},
         "grade_gpt": {"properties": {"value": 2.05}},
         "line_down": {"properties": {"value": 0.0}},
+        "vod_enabled": {"properties": {"value": 1.0}},
         "revision": {"properties": {"value": 0.0}},
         "label": {"properties": {"value": "Базовый режим"}}
       }

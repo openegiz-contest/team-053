@@ -89,7 +89,8 @@ __all__ = [
     "ramp_length_km", "haul_cycle", "haulage", "HaulCycle", "Haulage",
     "stopes", "Stopes", "development_capacity_ktpa", "centroid_after",
     "fans_running", "air_supply_m3s", "air_demand_m3s", "hold_units", "Hold", "air", "Air", "level_air", "LevelAir",
-    "fan_power_kw",
+    "LEVEL_WORK", "LEVEL_LEAKAGE", "LEVEL_NONE",
+    "fan_power_kw", "fan_pressure_pa", "fan_power_at_kw", "vod_limits_m3s", "vod_setpoint_m3s", "vod_split",
     "dewatering", "Dewatering", "pump_power_kw", "pond_treatment", "PondTreatment",
     "plant", "Plant", "PlantLine", "water_capacity_ktpa", "water_balance", "WaterBalance",
     "tailings", "Tailings", "DamFill", "recovery_pct", "gold_oz", "Gold", "stockpile_days_left",
@@ -192,10 +193,17 @@ class Lhd:
 
 @dataclass(frozen=True)
 class Fan:
-    """A main fan of the registry."""
+    """A main fan of the registry.
+
+    ``duty_m3s`` and ``pressure_pa`` are the design operating point (the supply of the hold rule);
+    ``duty_min_m3s`` is the lowest duty ventilation on demand may set and ``duty_max_m3s`` the
+    rating of the fan (spec 3.5).
+    """
     name: str
     duty_m3s: float
     pressure_pa: float
+    duty_min_m3s: float = 0.0
+    duty_max_m3s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -262,7 +270,9 @@ class Model:
         self.rigs: Tuple[str, ...] = tuple(sorted((_short(t["thingId"]) for t in by_kind["drill_rig"]), key=_number))
         self.fans: Dict[str, Fan] = {
             _short(t["thingId"]): Fan(_short(t["thingId"]), float(t["attributes"]["duty_m3s"]),
-                                      float(t["attributes"]["pressure_pa"]))
+                                      float(t["attributes"]["pressure_pa"]),
+                                      float(t["attributes"].get("duty_min_m3s", t["attributes"]["duty_m3s"])),
+                                      float(t["attributes"].get("duty_max_m3s", t["attributes"]["duty_m3s"])))
             for t in by_kind["main_fan"]}
         self.levels: Tuple[Level, ...] = tuple(sorted(
             (Level(_short(t["thingId"]), float(t["attributes"]["elevation_m"]), t["attributes"]["role"])
@@ -903,32 +913,142 @@ def air(model: Model, state: State, haul_capacity_ktpa: Optional[float] = None) 
                centroid_working_m=centroid, capacity_ktpa=capacity)
 
 
+#: Use of a level's air (``LevelAir.use``): units work there, it only carries leakage, or no air.
+LEVEL_WORK = "work"
+LEVEL_LEAKAGE = "leakage"
+LEVEL_NONE = "none"
+
+
 @dataclass(frozen=True)
 class LevelAir:
-    """Air of one level (spec 2.6), m3/s."""
+    """Air of one level (spec 2.6, decision 11.4), m3/s.
+
+    ``use`` is ``work`` (a level in production or development, or any level with units on it),
+    ``leakage`` (an open level not in use: it needs no air and carries its share of the leakage)
+    or ``none`` (planned or flooded: no air). ``required_m3s`` is the requirement of the level,
+    ``flow_m3s`` the air it gets.
+    """
     required_m3s: float
     flow_m3s: float
+    use: str = LEVEL_WORK
 
 
-def level_air(model: Model, supply_m3s: float, kw_by_level: Optional[Mapping[str, float]] = None) -> Dict[str, LevelAir]:
-    """Split the supply over the levels that are not planned (spec 2.6).
+def level_air(model: Model, delivered_m3s: float, demand_m3s: Optional[float] = None,
+              kw_by_level: Optional[Mapping[str, float]] = None, flooded: Iterable[str] = (),
+              held_kw_by_level: Optional[Mapping[str, float]] = None) -> Dict[str, LevelAir]:
+    """Air of every level (spec 2.6 as decided on 17 October, decision 11.4).
 
-    ``required = q_base / number of such levels + q_diesel x kW of the units on the level``;
-    ``flow = supply x share of the total requirement``. ``kw_by_level`` maps a level name to the
-    diesel kW on it; levels left out carry none.
+    Only levels in use get air for work: the levels whose role is production or development and
+    that are not flooded, and any other open level with units on it. Their requirement follows
+    the units working there: ``base + q_diesel x kW on the level``, where the base is the part of
+    ``vent.q_base`` that is not leakage (``1 - vent.leakage_share``), shared equally by the levels
+    in use. The open levels not in use (the ventilation level, backfilled levels) need no air and
+    carry the leakage, ``vent.leakage_share x q_base`` shared equally. Planned and flooded levels
+    get none.
+
+    The air reaches every level in the same proportion: ``flow = (requirement of the units working
+    there) x delivered / demand``, where ``demand_m3s`` is the requirement the delivered air is set
+    against (the base and the diesel units in work, ``air_demand_m3s``; by default with the kW of
+    ``kw_by_level``). Units on the declines take the rest of the delivered air, so the levels do
+    not add up to it. ``held_kw_by_level`` is the engine power of units held for lack of air whose
+    work is on a level (an LHD held at its stope): it counts in that level's requirement but gets
+    no air, so the level shows short.
     """
+    q_base, q_diesel = model.p("vent.q_base"), model.p("vent.q_diesel")
+    leak_share = model.p("vent.leakage_share")
     kw = {_short(name): value for name, value in (kw_by_level or {}).items()}
-    open_levels = [lv.name for lv in model.levels if lv.role != _ROLE_PLANNED]
-    base = model.p("vent.q_base") / len(open_levels)
-    required = {name: base + model.p("vent.q_diesel") * kw.get(name, 0.0) for name in open_levels}
-    total = sum(required.values())
-    return {name: LevelAir(required_m3s=need, flow_m3s=supply_m3s * need / total)
-            for name, need in required.items()}
+    held = {_short(name): value for name, value in (held_kw_by_level or {}).items()}
+    wet = set(_names(flooded))
+    if demand_m3s is None:
+        demand_m3s = air_demand_m3s(model, sum(kw.values()))
+    ratio = delivered_m3s / demand_m3s if demand_m3s > 0 else 0.0
+    in_use, leaking = [], []
+    for level in model.levels:
+        if level.role == _ROLE_PLANNED or level.name in wet:
+            continue
+        if level.role in (_ROLE_PRODUCTION, _ROLE_DEVELOPMENT) or kw.get(level.name, 0.0) > 0:
+            in_use.append(level.name)
+        else:
+            leaking.append(level.name)
+    base = q_base * (1.0 - leak_share) / len(in_use) if in_use else 0.0
+    leak = q_base * leak_share / len(leaking) if leaking else 0.0
+    out: Dict[str, LevelAir] = {}
+    for level in model.levels:
+        name = level.name
+        if name in in_use:
+            working = base + q_diesel * kw.get(name, 0.0)
+            out[name] = LevelAir(required_m3s=working + q_diesel * held.get(name, 0.0),
+                                 flow_m3s=working * ratio, use=LEVEL_WORK)
+        elif name in leaking:
+            out[name] = LevelAir(required_m3s=0.0, flow_m3s=leak * ratio, use=LEVEL_LEAKAGE)
+        else:
+            out[name] = LevelAir(required_m3s=0.0, flow_m3s=0.0, use=LEVEL_NONE)
+    return out
 
 
 def fan_power_kw(model: Model, air_flow_m3s: float, pressure_pa: float) -> float:
     """Fan shaft power: ``flow x pressure / efficiency`` (spec 2.6)."""
     return air_flow_m3s * pressure_pa / model.p("vent.fan_efficiency") / KILO
+
+
+def fan_pressure_pa(fan: Fan, air_flow_m3s: float) -> float:
+    """Fan pressure at a flow through the fixed airway resistance of its design point:
+    ``p = R x Q^2`` with ``R = pressure_pa / duty_m3s^2``, so ``p = pressure_pa x (Q / duty)^2``
+    (spec 3.5). Zero for a stopped fan."""
+    if air_flow_m3s <= 0 or fan.duty_m3s <= 0:
+        return 0.0
+    share = air_flow_m3s / fan.duty_m3s
+    return fan.pressure_pa * share * share
+
+
+def fan_power_at_kw(model: Model, fan: Fan, air_flow_m3s: float) -> float:
+    """Shaft power of a fan at a flow: ``fan_power_kw`` at the pressure of ``fan_pressure_pa``.
+    With the efficiency held at its design value the power follows the cube of the flow:
+    ``P = P_design x (Q / duty)^3`` (the fan laws for a speed-controlled fan on a fixed system
+    curve, spec 3.5)."""
+    return fan_power_kw(model, air_flow_m3s, fan_pressure_pa(fan, air_flow_m3s))
+
+
+def vod_limits_m3s(model: Model, fans: Iterable[str]) -> Tuple[float, float]:
+    """Lowest and highest total duty ventilation on demand may set for the given running fans:
+    the sum of their ``duty_min_m3s`` and of their design ``duty_m3s`` (spec 3.5)."""
+    chosen = [model.fans[_short(name)] for name in fans]
+    return sum(f.duty_min_m3s for f in chosen), sum(f.duty_m3s for f in chosen)
+
+
+def vod_setpoint_m3s(model: Model, demand_m3s: float, fans: Iterable[str]) -> float:
+    """Total duty of ventilation on demand for an air demand: the demand plus ``vod.margin_pct``,
+    within ``vod_limits_m3s`` (spec 3.5). At or above the design duty the fans run at it."""
+    low, high = vod_limits_m3s(model, fans)
+    wanted = demand_m3s * (1.0 + model.p("vod.margin_pct") / PERCENT)
+    return min(high, max(low, wanted))
+
+
+def vod_split(model: Model, total_m3s: float, fans: Iterable[str]) -> Dict[str, float]:
+    """Share a total duty over the running fans (spec 3.5): every fan runs at the same fraction of
+    its design duty, and a fan whose ``duty_min_m3s`` is above that fraction stays at its minimum
+    while the others take the rest. The total is clamped to ``vod_limits_m3s``."""
+    chosen = [model.fans[_short(name)] for name in fans]
+    if not chosen:
+        return {}
+    low, high = vod_limits_m3s(model, [f.name for f in chosen])
+    total = min(high, max(low, total_m3s))
+    if total >= high:
+        return {f.name: f.duty_m3s for f in chosen}
+
+    def flows(fraction: float) -> Dict[str, float]:
+        return {f.name: min(f.duty_m3s, max(f.duty_min_m3s, fraction * f.duty_m3s)) for f in chosen}
+
+    # The total is monotone in the common fraction: find it exactly between the breakpoints.
+    points = sorted({0.0, 1.0} | {f.duty_min_m3s / f.duty_m3s for f in chosen if f.duty_m3s > 0})
+    for lower, upper in zip(points, points[1:]):
+        at_upper = sum(flows(upper).values())
+        if at_upper >= total:
+            at_lower = sum(flows(lower).values())
+            span = at_upper - at_lower
+            fraction = upper if span <= 0 else lower + (upper - lower) * (total - at_lower) / span
+            return flows(fraction)
+    return flows(1.0)
 
 
 # --- dewatering and ponds ----------------------------------------------------------------------

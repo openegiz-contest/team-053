@@ -354,12 +354,21 @@ class TestSnapshot(SimCase):
                         self.assertTrue(low[axis] - 1 <= f[key] <= high[axis] + 1, f"{name}.{key} = {f[key]}")
 
     def test_level_air_and_airways_add_up(self):
-        sim = new_sim()
+        # with the fans at their design duty (ventilation on demand off) the airways carry the duties
+        sim = new_sim(vod_enabled=0)
         sim.advance(4 * 60)
         snap = sim.snapshot()
         levels = [n for n, k in KIND.items() if k == "level"]
-        self.assertAlmostEqual(sum(snap[n]["air_flow_m3s"] for n in levels), 322.0, delta=0.5)
+        # the levels get air only for the units in use and the leakage; the rest is in the declines
+        self.assertLessEqual(sum(snap[n]["air_flow_m3s"] for n in levels), 322.0 + 0.5)
         self.assertEqual(snap["lvl-m100"]["air_flow_m3s"], 0.0)
+        self.assertEqual(snap["lvl-m100"]["air_required_m3s"], 0.0)
+        for name in ("lvl-p320", "lvl-p250", "lvl-p200"):       # not in use: leakage, no requirement
+            self.assertEqual(snap[name]["air_required_m3s"], 0.0, name)
+            self.assertGreater(snap[name]["air_flow_m3s"], 0.0, name)
+        for name in ("lvl-p150", "lvl-p100", "lvl-p050", "lvl-000", "lvl-m050"):   # in use: enough air
+            self.assertGreater(snap[name]["air_required_m3s"], 0.0, name)
+            self.assertGreaterEqual(snap[name]["air_flow_m3s"], snap[name]["air_required_m3s"], name)
         self.assertEqual(snap["raise-vhv-exhaust"]["air_flow_m3s"], 322.0)
         self.assertEqual(snap["shaft-vs1"]["air_flow_m3s"], 150.0)
         self.assertEqual(snap["shaft-vs2"]["air_flow_m3s"], 70.0)
@@ -861,11 +870,12 @@ class TestScenarioKnobs(SimCase):
         self.assertEqual(sim.cap_state.m_haul, 2)
         self.assertEqual(sorted(sim.knobs), sorted(sim.default_knobs()))
 
-    def test_fifteen_knobs_of_the_spec(self):
+    def test_sixteen_knobs_of_the_spec(self):
         knobs = set(new_sim().default_knobs()) - {"revision", "label"}
         self.assertEqual(knobs, {"target_ktpa", "m_plant", "m_haul", "m_stopes", "m_vent", "m_dev", "m_water",
                                  "m_tailings", "tu1_closed", "tu2_closed", "fan_vs2_off", "pumps_failed_p150",
-                                 "inflow_factor", "grade_gpt", "line_down"})
+                                 "inflow_factor", "grade_gpt", "line_down", "vod_enabled"})
+        self.assertEqual(new_sim().default_knobs()["vod_enabled"], 1.0)   # ventilation on demand is on
 
     def test_invalid_sets_are_rejected_and_change_nothing(self):
         sim = new_sim()
@@ -1026,9 +1036,12 @@ class TestDisturbances(SimCase):
         sim.apply_scenario({"pumps_failed_p150": 3})
         first = {}
         history = []
+        sump = []                     # ps-p150 minute by minute: the sump fills within the first half hour
         for minute in range(40 * 60):
             sim.advance(1)
-            if minute % 10:
+            if minute < 30:
+                sump.append(dict(sim.snapshot()["ps-p150"]))
+            if minute % 10 and minute >= 60:       # every minute in the first hour, then every 10 minutes
                 continue
             snap = copy_snapshot(sim)
             history.append(snap)
@@ -1045,20 +1058,25 @@ class TestDisturbances(SimCase):
         self.assertEqual(early["ps-p150"]["state"], "failed")
         self.assertEqual(early["ps-p150"]["pumps_available"], 0.0)
         self.assertEqual(early["ps-p150"]["pumped_m3h"], 0.0)
-        # the sump rises and the hours to overflow count down
-        rising = [h["ps-p150"] for h in history if h["ps-p150"]["sump_level_pct"] < 100.0]
+        # the sump rises and the hours to overflow count down, on the mine clock: the water stored
+        # underground changes water.flood_compression (24) times faster during the episode
+        rising = [r for r in sump if r["sump_level_pct"] < 100.0]
         self.assertGreater(len(rising), 6)
         levels = [r["sump_level_pct"] for r in rising]
         self.assertEqual(levels, sorted(levels))
         countdown = [r["hours_to_overflow"] for r in rising if r["hours_to_overflow"] > 0]
-        self.assertGreater(countdown[0], 1.0)
-        self.assertLess(countdown[-1], 0.5)
+        self.assertGreater(countdown[0], 0.1)
+        self.assertLess(countdown[-1], 0.05)
         # order of events (hours after the failure)
         self.assertEqual(set(first), {"sump_full", "flood", "lvl-m050", "lvl-000", "ponds_empty", "plant_short"})
         self.assertLess(first["sump_full"], first["flood"])
         self.assertLess(first["flood"], first["lvl-m050"])
         self.assertLess(first["lvl-m050"], first["lvl-000"])
-        self.assertTrue(8 < first["lvl-000"] < 30, first)
+        # first water within half an hour of the mine clock (half a real minute on the Stand), -50 m after
+        # 83 h of inflow and 0 m after 235 h, shown 24 times faster: about 3.5 h and 10 h
+        self.assertLess(first["flood"], 0.5, first)
+        self.assertTrue(3.0 < first["lvl-m050"] < 4.0, first)
+        self.assertTrue(9.0 < first["lvl-000"] < 11.0, first)
         self.assertTrue(12 < first["ponds_empty"] < 30, first)
         # the pond reserve counts down in hours, then the plant slows
         reserve = [h["pond-upper"]["retention_h"] + h["pond-lower"]["retention_h"] for h in history]
@@ -1076,7 +1094,7 @@ class TestDisturbances(SimCase):
         self.assertEqual(last["enterprise"]["binding_link"], "dewatering")
         self.assertAlmostEqual(last["enterprise"]["annual_rate_ktpa"], 3 * 255.875, delta=0.1)
         self.assertEqual(last["ps-m050"]["state"], "alarm_high")
-        self.assertGreater(last["mine"]["flood_volume_m3"], 1500.0)
+        self.assertGreater(last["mine"]["flood_volume_m3"], MODEL.p("water.flood_threshold_000_m3"))
         # no truck is sent to a flooded stope
         self.assertFalse(any(abs(last[n]["elevation"]) < 0.01 and last[n]["state"] in ("loading", "queue_load")
                              for n in TRUCKS))
@@ -1085,7 +1103,7 @@ class TestDisturbances(SimCase):
         sim.advance(30)
         snap = sim.snapshot()
         self.assertEqual(snap["ps-p150"]["pumps_available"], 3.0)
-        self.assertEqual(snap["ps-p150"]["pumps_running"], 2.0)
+        self.assertGreaterEqual(snap["ps-p150"]["pumps_running"], 1.0)   # the flood drains through both sumps
         self.assertGreater(snap["plant"]["feed_tph"], 0.0)
         sim.run_days(4)
         snap = sim.snapshot()
@@ -1266,12 +1284,16 @@ class TestMeasures(SimCase):
         # up and the last lines starve (2 500 kt/yr milled over 365 days against 926 kt/yr hoisted
         # over 360 days: the opening stockpile lasts about 22 days)
         sim.run_days(math.ceil(MODEL.p("stockpile.start_t") / (2500000 / 365 - 926422 / 360)) + 3)
-        states = set()
+        states = []
         for _ in range(48):
             sim.advance(30)
             snap = sim.snapshot()
-            states.update(snap[f"plant-line-{n}"]["state"] for n in (5, 6))
-        self.assertEqual(states, {"starved"})
+            for n in (5, 6):
+                states.append(snap[f"plant-line-{n}"]["state"])
+                if states[-1] != "starved":       # only for a minute when a truck tips above the minimum
+                    self.assertEqual(states[-1], "running")
+                    self.assertGreater(snap["rom-stockpile"]["tonnes"], MODEL.p("plant.min_stockpile_t"))
+        self.assertGreaterEqual(states.count("starved"), 0.9 * len(states))
         self.assertIn(snap["rom-stockpile"]["state"], ("low", "empty"))
         self.assertEqual(snap["plant"]["state"], "starved")
         self.assertLess(snap["plant"]["feed_tph"], 200.0)
@@ -1283,7 +1305,7 @@ class TestMeasures(SimCase):
         self.assertEqual(snap["plant"]["capacity_ktpa"], 1000.0)
 
     def test_m_haul_brings_trucks_06_07_and_they_wait_for_air_until_m_vent(self):
-        sim = new_sim()
+        sim = new_sim(vod_enabled=0)          # design duties; the same story on demand is in test_vod
         sim.advance(24.5 * 60)                        # 10:00 on day 2
         sim.apply_scenario({"m_haul": 1})
         snap = sim.snapshot()
@@ -1336,7 +1358,11 @@ class TestMeasures(SimCase):
         self.assertEqual(sim.tier("truck-06"), "L")
 
     def test_m_vent_stages(self):
-        sim = new_sim(m_vent=2)
+        on_demand = new_sim(m_vent=2).snapshot()          # the baseline fleet needs half of 667 m3/s
+        self.assertEqual(on_demand["mine"]["air_supply_m3s"], 667.0)
+        self.assertLess(on_demand["mine"]["air_delivered_m3s"], 667.0)
+        self.assertEqual(on_demand["fan-vs3"]["air_flow_m3s"], 120.0)    # its lowest duty
+        sim = new_sim(m_vent=2, vod_enabled=0)
         snap = sim.snapshot()
         self.assertEqual(snap["mine"]["air_supply_m3s"], 667.0)
         self.assertEqual(snap["fan-vs3"]["state"], "running")

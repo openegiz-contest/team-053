@@ -64,7 +64,8 @@ KPI_KEYS = {
     "air_margin_pct", "air_used_m3s", "air_spare_m3s", "units_held_vent", "water_deficit_m3h", "discharge_m3h", "permit_m3h", "permit_use_pct", "tailings_free_kt",
     "tailings_years_left", "stockpile_t", "stockpile_days_left", "stockpile_mine_tpd", "stockpile_plant_tpd",
     "stockpile_net_tpd", "stockpile_trend", "dewatering_margin", "dewatering_margin_next_failure", "pumps_standby",
-    "dewatering_reserve",
+    "dewatering_reserve", "water_deficit_all_lines_m3h", "discharge_all_lines_m3h", "permit_use_all_lines_pct",
+    "water_basis",
 }
 # The opening ROM stockpile (params.json stockpile.start_t, derivation in its source) and the days it
 # lasts at the baseline draw: 1000 kt/yr over 365 days less 926.1 kt/yr over 360 days = 167 t/day.
@@ -135,7 +136,12 @@ class TestConstraintLoop(AdvisorCase):
         for target, demand in AIR_DEMAND.items():
             row = self.ladder[target]
             self.assertWithin(row["air_demand_m3s"], demand, 1.0)
-            self.assertEqual(row["water_deficit_m3h"], 0.0)
+            # water at the rates of the twins (decision 11.4): for 1000 the mine hoists 1024 kt/yr against the
+            # 1000 the plant mills, and the site water of the extra ore is 2.6 m3/h more than the mine gives
+            if target == 1000:
+                self.assertWithin(row["water_deficit_m3h"], 2.6, 0.1)
+            else:
+                self.assertEqual(row["water_deficit_m3h"], 0.0)
             self.assertGreater(row["tailings_years_left"], 3.0)
             self.assertGreaterEqual(row["discharge_m3h"], 0.0)
             self.assertLessEqual(set(KPI_KEYS), set(row))

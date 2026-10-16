@@ -185,10 +185,18 @@ const NEXT_MEASURE = {
 for (const measure of MEASURES) NEXT_MEASURE[measure.knob] = measure.name.toLowerCase();
 
 const SHIFT_RU = { A: 'Смена А', B: 'Смена Б', blast: 'Взрывные работы' };
+// mine.vod_state: ventilation on demand (spec 3.5).
+export const VOD_STATE = {
+  off: 'выключена: вентиляторы на проектном режиме',
+  demand: 'по потребности',
+  ramp: 'набор подачи',
+  full: 'полная подача: нужна вся',
+};
 const TOKENS_BY_FEATURE = {
   shift: SHIFT_RU,
   decline: { tu1: 'ТУ-1', tu2: 'ТУ-2', none: DASH },
   next_measure: NEXT_MEASURE,
+  vod_state: VOD_STATE,
 };
 const TOKENS_BY_ATTR = {
   direction: { intake: 'подача свежего воздуха', exhaust: 'исходящая струя' },
@@ -208,9 +216,16 @@ export const FEATURE_RU = {
   annual_rate_ktpa: 'Годовой темп добычи', binding_link: 'Узкое место',
   ore_hoisted_tph: 'Выдача руды, среднее за 24 ч', ore_hoisted_today_t: 'Выдано руды с 08:00',
   ore_hoisted_total_t: 'Выдано руды всего', trucks_active: 'Самосвалов в рейсе',
-  diesel_kw_active: 'Дизельная мощность в работе', air_supply_m3s: 'Подача воздуха',
+  diesel_kw_active: 'Дизельная мощность в работе', air_supply_m3s: 'Располагаемая подача воздуха',
   air_demand_m3s: 'Потребность в воздухе', air_margin_pct: 'Запас по воздуху',
   units_held_vent: 'Машин ждут воздуха', inflow_m3h: 'Приток воды',
+  vod_state: 'Вентиляция по потребности', air_delivered_m3s: 'Подаётся воздуха сейчас',
+  vod_demand_m3s: 'Потребность машин в работе (с базовой)', vod_units_waiting: 'Ждут набора подачи',
+  fan_power_kw: 'Мощность главных вентиляторов', fan_energy_today_kwh: 'Энергия вентиляторов с 08:00',
+  fan_saving_today_kwh: 'Экономия энергии с 08:00', fan_saving_today_kzt: 'Экономия с 08:00, тенге',
+  fan_energy_shift_kwh: 'Энергия вентиляторов за смену', fan_saving_shift_kwh: 'Экономия энергии за смену',
+  fan_energy_day_kwh: 'Энергия вентиляторов за 24 ч', fan_saving_day_kwh: 'Экономия энергии за 24 ч',
+  duty_setpoint_m3s: 'Уставка расхода', vod_enabled: 'Вентиляция по потребности включена',
   pumped_m3h: 'Откачка', flood_volume_m3: 'Объём затопления', air_flow_m3s: 'Расход воздуха',
   air_required_m3s: 'Требуемый расход воздуха', diesel_kw: 'Дизельная мощность на горизонте',
   water_inflow_m3h: 'Приток воды', active_stopes: 'Блоков в работе', ore_today_t: 'Руды с 08:00',
@@ -268,7 +283,8 @@ export const ATTR_RU = {
   slope_deg: 'Уклон', section_m2: 'Сечение', length_m: 'Длина',
   top_elevation_m: 'Верхняя отметка', bottom_elevation_m: 'Нижняя отметка',
   direction: 'Направление струи', model: 'Модель', duty_m3s: 'Производительность',
-  duty_max_m3s: 'Наибольшая производительность', pressure_pa: 'Давление',
+  duty_min_m3s: 'Наименьшая производительность', duty_max_m3s: 'Наибольшая производительность',
+  pressure_pa: 'Давление',
   pumps_total: 'Насосов всего', pumps_working: 'Рабочих насосов',
   pump_capacity_m3h: 'Производительность насоса', sump_volume_m3: 'Объём водосборника',
   payload_t: 'Грузоподъёмность', engine_kw: 'Мощность двигателя', bucket_t: 'Ковш',
@@ -326,6 +342,9 @@ const UNIT_RU = {
   'productive shifts': 'продуктивных смен', 'm of depth/yr': 'м глубины/год',
   't per m of depth': 'т на 1 м глубины', 'min per extra truck on the decline': 'мин на самосвал',
   'm3/s per kW': 'м³/с на 1 кВт', '% sump level': '% уровня', 'thousand m3/yr': 'тыс. м³/год',
+  'kWh': 'кВт·ч', 'KZT': '₸', 'KZT/kWh, excl. VAT': '₸/кВт·ч без НДС', 'share of duty_m3s': 'доля проектной',
+  'share of vent.q_base': 'доля базовой', '% of the air demand': '% потребности',
+  '% of duty_m3s per minute': '% проектной в минуту', 'x mine clock': 'раз быстрее часов рудника',
   '% of permit': '% разрешения', 'm3/t milled': 'м³/т', '% per g/t': '% на 1 г/т',
   't each': 'т каждая', 'messages/s': 'сообщ./с', 'percentage points': 'п.п.',
   '% of reported': '% отчёта', 'share of the baseline fleet power': 'доля мощности парка',
@@ -368,8 +387,11 @@ const FEATURE_DIGITS = {
   years_left: 1, air_margin_pct: 1, tss_out_mgl: 2, tss_mgl: 2, tss_in_mgl: 3,
   hours_to_overflow: 1, retention_h: 1, avg_cycle_min: 1, air_velocity_ms: 1,
   air_demand_m3s: 1, air_flow_m3s: 1, air_required_m3s: 1, feed_tph: 1, days_of_feed: 0,
+  air_delivered_m3s: 1, vod_demand_m3s: 1, duty_setpoint_m3s: 1, fan_power_kw: 0, fan_energy_today_kwh: 0,
+  fan_saving_today_kwh: 0, fan_saving_today_kzt: 0, fan_energy_shift_kwh: 0, fan_saving_shift_kwh: 0,
+  fan_energy_day_kwh: 0, fan_saving_day_kwh: 0,
 };
-const FLAG_FEATURES = new Set(['tu1_closed', 'tu2_closed', 'fan_vs2_off']);
+const FLAG_FEATURES = new Set(['tu1_closed', 'tu2_closed', 'fan_vs2_off', 'vod_enabled']);
 const REFERENCE_FEATURES = new Set(['stope']);
 
 /**

@@ -21,6 +21,7 @@ import { el, fmt, isNum, setText } from './panels/format.js';
 import { createHeader } from './panels/header.js';
 import { createScenarios } from './panels/scenarios.js';
 import { createTwins } from './panels/twins.js';
+import { createVod } from './panels/vod.js';
 
 const POLL_MS = 2000;
 const ADVISOR_REFRESH_MS = 30000;
@@ -47,6 +48,7 @@ let advisorModel = null;
 let advisorFetchedAt = 0;
 let polling = false;
 let failures = 0;
+let floodCompression = null;   // water.flood_compression: the flood episode runs this much faster (spec 2.7)
 // A page address may name a twin to open: /?twin=kz.sekis:truck-01
 let pendingTwin = new URLSearchParams(location.search).get('twin');
 
@@ -59,6 +61,15 @@ const assumptionsPanel = createAssumptions();
 const twinsPanel = createTwins({ onSelect: (id) => focusThing(id) });
 const scenariosPanel = createScenarios({
   onChanged: (result) => {
+    changesPanel.noteAction(result);
+    advisorFetchedAt = 0;
+    refresh();
+  },
+});
+// «Вентиляция по потребности»: its switch is a scenario change like the others (undo in «Сценарии»).
+const vodPanel = createVod({
+  onChanged: (result) => {
+    scenariosPanel.setInfo(result);
     changesPanel.noteAction(result);
     advisorFetchedAt = 0;
     refresh();
@@ -233,7 +244,9 @@ function vizSummary(state, advisor) {
     onRamp.length ? `на уклонах: ${fmt(onRamp.reduce((a, b) => a + b, 0))}` : null,
     airText,
     `приток воды: ${fmt(mine.inflow_m3h)} м³/ч`,
-    isNum(mine.flood_volume_m3) && mine.flood_volume_m3 > 0 ? `затоплено: ${fmt(mine.flood_volume_m3)} м³` : null,
+    isNum(mine.flood_volume_m3) && mine.flood_volume_m3 > 0
+      ? `затоплено: ${fmt(mine.flood_volume_m3)} м³${isNum(floodCompression) && floodCompression > 1
+        ? ` (×${fmt(floodCompression)})` : ''}` : null,
   ];
   return parts.filter(Boolean).join(' · ');
 }
@@ -247,6 +260,7 @@ function render(state) {
   changesPanel.update(state, advisorModel);
   calibrationPanel.update(advisorModel.calibration);
   twinsPanel.update(state);
+  vodPanel.update(state);
   const meta = document.getElementById('viz-meta');
   setText(meta, vizSummary(state, advisorModel));
   meta.title = meta.textContent;
@@ -319,7 +333,13 @@ function start() {
   });
   if (!EMBED) {
     getScenario().then((info) => scenariosPanel.setInfo(info)).catch(() => {});
-    getParams().then((params) => assumptionsPanel.render(params)).catch(() => assumptionsPanel.render(null));
+    getParams().then((params) => {
+      const k = params && params['water.flood_compression'];
+      floodCompression = k && isNum(k.value) ? k.value : null;
+      vodPanel.setParams(params);
+      scenariosPanel.setParams(params);
+      assumptionsPanel.render(params);
+    }).catch(() => assumptionsPanel.render(null));
   }
   refresh();
   setInterval(refresh, POLL_MS);

@@ -44,6 +44,7 @@ BUTTONS = {
     "flood": "Паводок: приток 430 м³/ч",
     "grade_drop": "Содержание 1,76 г/т",
     "line2_down": "Остановить линию № 2",
+    "vod_toggle": "Вентиляция по потребности",
     "undo": "Шаг назад",
     "reset": "Сброс",
 }
@@ -202,7 +203,7 @@ class FixtureStandTest(unittest.TestCase):
         status, info = self.client.json("/api/scenario")
         self.assertEqual(status, 200)
         self.assertEqual(info["knobs"], info["defaults"])
-        self.assertEqual(len(info["knobs"]), 15)
+        self.assertEqual(len(info["knobs"]), 16)
         self.assertEqual(info["undo_depth"], 0)
         self.assertEqual(set(info["presets"]), set(BUTTONS))
         self.assertEqual(info["label"], "Базовый режим")
@@ -601,8 +602,9 @@ class FixtureStandTest(unittest.TestCase):
     def test_all_buttons_in_russian(self):
         html = self.client.get("/")[2].decode("utf-8")
         found = dict(re.findall(r'<button[^>]*data-preset="([^"]+)"[^>]*>\s*([^<]+?)\s*<', html))
-        self.assertEqual(set(found), set(BUTTONS))
-        for preset, label in BUTTONS.items():
+        static = {k: v for k, v in BUTTONS.items() if k != "vod_toggle"}   # the VOD switch is drawn by panels/vod.js
+        self.assertEqual(set(found), set(static))
+        for preset, label in static.items():
             self.assertEqual(found[preset], label, preset)
         for panel in ("Сценарии", "Советник по расширению", "Что изменилось", "Двойники",
                       "Проверка калибровки", "Данные и допущения"):
@@ -747,7 +749,7 @@ class LiveStandTest(unittest.TestCase):
         self.assertEqual(status, 200, answer)
         self.assertEqual(len(StubDitto.puts), 1)
         written = {key: body["properties"]["value"] for key, body in StubDitto.puts[0].items()}
-        self.assertEqual(len(written), 17)                           # 15 knobs, revision, label
+        self.assertEqual(len(written), 18)                           # 16 knobs (with vod_enabled), revision, label
         self.assertEqual(written["tu2_closed"], 1.0)
         self.assertEqual(written["revision"], float(answer["revision"]))
         self.assertEqual(written["label"], "Закрыт уклон ТУ-2")

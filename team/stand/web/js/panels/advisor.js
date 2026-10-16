@@ -175,6 +175,10 @@ export function normalize(report, state) {
       deficit: k('water_deficit_m3h'), discharge: k('discharge_m3h'),
       permit: num(kpi.permit_m3h) ?? num(outfall.permit_m3h),
       permitUse: num(kpi.permit_use_pct),
+      // the same balance with every plant line running, the value the live 1-hour means show
+      // between the planned line stops (decision 11.4)
+      deficitLines: num(kpi.water_deficit_all_lines_m3h), dischargeLines: num(kpi.discharge_all_lines_m3h),
+      permitUseLines: num(kpi.permit_use_all_lines_pct), waterBasis: kpi.water_basis || '',
       tailingsYears: k('tailings_years_left'),
       // A report says null when the stockpile does not fall; the twin can only say 0.
       stockpileDays: r && r.kpi ? num(kpi.stockpile_days_left) : (twin.stockpile_days_left || null),
@@ -392,11 +396,22 @@ export function createAdvisor() {
       kpiTile('Хвосты', fmt(kpi.tailingsYears, 1), 'лет', 'до заполнения',
         isNum(kpi.tailingsYears) && kpi.tailingsYears < 3 ? 'warn' : null),
       kpiTile('Дефицит воды*', fmt(kpi.deficit, 1), 'м³/ч',
-        !isNum(kpi.deficit) ? '' : kpi.deficit > 0.05 ? 'фабрике не хватает' : 'воды хватает',
-        isNum(kpi.deficit) && kpi.deficit > 0.05 ? 'warn' : null, `Дефицит технической воды ${STEADY}`),
+        !isNum(kpi.deficit) ? '' : isNum(kpi.deficitLines) && Math.abs(kpi.deficitLines - kpi.deficit) >= 0.05
+          ? `все линии ${fmt(kpi.deficitLines, 1)}`
+          : kpi.deficit > 0.05 ? 'фабрике не хватает' : 'воды хватает',
+        isNum(kpi.deficit) && kpi.deficit > 0.05 ? 'warn' : null,
+        `Дефицит технической воды ${STEADY}, в среднем за цикл ремонтов линий`
+          + `${isNum(kpi.deficitLines) ? `; при всех линиях в работе ${fmt(kpi.deficitLines, 1)} м³/ч` : ''}`
+          + `${kpi.waterBasis ? `. Темпы: ${kpi.waterBasis}` : ''}`),
       kpiTile('Сброс в Волчевку*', fmt(kpi.discharge, 1), 'м³/ч',
-        isNum(kpi.permit) ? `${permitShare || 'разрешено ' + fmt(kpi.permit, 1)}` : '', overPermit ? 'fail' : null,
-        isNum(kpi.permit) ? `Сброс ${STEADY}; разрешено ${fmt(kpi.permit, 1)} м³/ч` : ''),
+        isNum(kpi.dischargeLines) && Math.abs(kpi.dischargeLines - kpi.discharge) >= 0.05
+          ? `все линии ${fmt(kpi.dischargeLines, 1)}`
+          : isNum(kpi.permit) ? `${permitShare || 'разрешено ' + fmt(kpi.permit, 1)}` : '', overPermit ? 'fail' : null,
+        isNum(kpi.permit) ? `Сброс ${STEADY}, в среднем за цикл ремонтов линий: ${fmt(kpi.discharge, 1)} м³/ч`
+          + `${permitShare ? ` (${permitShare})` : ''}`
+          + `${isNum(kpi.dischargeLines) ? `; при всех линиях в работе ${fmt(kpi.dischargeLines, 1)} м³/ч`
+            + `${isNum(kpi.permitUseLines) ? ` (${fmt(kpi.permitUseLines, 0)} % разрешённого)` : ''}` : ''}`
+          + `; разрешено ${fmt(kpi.permit, 1)} м³/ч${kpi.waterBasis ? `. Темпы: ${kpi.waterBasis}` : ''}` : ''),
       kpiTile('Рудный склад*', stock.value, stock.unit, stock.detail, stock.tone, stock.title));
     setText(built.steady, `* ${STEADY.charAt(0).toUpperCase() + STEADY.slice(1)} выбранного варианта; `
       + 'на двойниках — текущие значения (вода — средние за 1 ч, темпы — с момента смены сценария). '

@@ -330,17 +330,34 @@ def grade_condition(grade: float, base: float, res: cap.Result) -> str:
             f"({num(res.gold.oz_per_year / cap.KILO, 1)} {U_KOZ}).")
 
 
-def inflow_condition(model: cap.Model, names: Mapping[str, str], res: cap.Result) -> str:
-    """A flood inflow: an external condition; what it does to the pumps and to the outfall."""
-    dewatering, water = res.dewatering, res.water
+def water_basis(rates: Mapping[str, float]) -> str:
+    """The rates the water KPIs are taken at (decision 11.4), for the tooltip of the tiles."""
+    return (f"рудник {num(rates['mine_ktpa'])} {U_KTPA}, фабрика {num(rates['plant_ktpa'])} {U_KTPA} "
+            f"(в среднем с плановыми остановками линий; при всех линиях в работе "
+            f"{num(rates['all_lines_tph'], 1)} т/ч)")
+
+
+def inflow_condition(model: cap.Model, names: Mapping[str, str], res: cap.Result,
+                     water: Optional[cap.WaterBalance] = None, lines: Optional[cap.WaterBalance] = None) -> str:
+    """A flood inflow: an external condition; what it does to the pumps and to the outfall.
+
+    ``water`` and ``lines`` are the balances of ``Advisor.water_regime`` (the mean over the line
+    stops and every line running, decision 11.4); without them the balance of ``res`` is used."""
+    dewatering = res.dewatering
+    water = water or res.water
     pumps = (f"насосы главного водоотлива справляются (запас ×{num(dewatering.margin, 2)})"
              if dewatering.margin >= 1 else
              f"насосов главного водоотлива не хватает (запас ×{num(dewatering.margin, 2)})")
     water_body = names.get("water_body", "водный объект")
+    permit = model.p("water.permit_m3h")
+    discharge = (f"сброс в {water_body} в установившемся режиме в среднем {num(water.discharge_m3h, 1)} {U_M3H} "
+                 f"({num(water.permit_use_pct)} % разрешённых {num(permit, 1)} {U_M3H})")
+    if lines is not None and round(lines.discharge_m3h, 1) != round(water.discharge_m3h, 1):
+        discharge += (f", при всех линиях фабрики в работе {num(lines.discharge_m3h, 1)} {U_M3H} "
+                      f"({num(lines.permit_use_pct)} %)")
     return (f"Приток воды в рудник {num(dewatering.inflow_m3h)} {U_M3H} вместо "
             f"{num(model.p('water.inflow_m3h'))} {U_M3H} (паводок) {EM_DASH} мерами не снимается; {pumps}; "
-            f"сброс в {water_body} в установившемся режиме {num(water.discharge_m3h, 1)} {U_M3H} "
-            f"при разрешённых {num(model.p('water.permit_m3h'), 1)} {U_M3H}.")
+            f"{discharge}.")
 
 
 def apply_message(reason: str, binding: str, steps: Sequence[Any]) -> str:

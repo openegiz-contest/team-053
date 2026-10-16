@@ -94,7 +94,9 @@ export function createScenarios({ onChanged }) {
   const hint = document.getElementById('sc-next');
   const undo = document.getElementById('sc-undo');
   const measures = document.getElementById('sc-measures');
+  const floodNote = document.getElementById('sc-flood-note');
   const knobRows = {};
+  let params = null;   // model/params.json, for the statement of the flood time compression
   let busy = false;
   let undoDepth = null;
   let defaults = null;   // knob defaults from GET /api/scenario
@@ -207,17 +209,46 @@ export function createScenarios({ onChanged }) {
       row.classList.toggle('is-next', Boolean(nextLink) && measure.link === nextLink);
     }
 
+    // «Сейчас ограничивает» names the smallest link (the binding one of the bars); a disturbance
+    // the advisor removes first is named apart, «Сначала устранить», because it may relieve
+    // another link (a dead pump station relieves dewatering while haulage binds).
     const next = advisor && advisor.next;
+    const binding = advisor && advisor.binding ? advisor.links.find((link) => link.id === advisor.binding) : null;
     hint.replaceChildren();
-    if (next) {
-      hint.append('Сейчас ограничивает: ', el('b', { text: linkLabel(next.link).toLowerCase() }),
-        `. Мера: ${next.text}.`);
+    if (binding) {
+      hint.append('Сейчас ограничивает: ', el('b', { text: linkLabel(binding.id).toLowerCase() }),
+        isNum(binding.cap) ? ` (${fmt(binding.cap)} тыс. т/год).` : '.');
+    }
+    if (next && next.kind === 'disturbance') {
+      hint.append(binding ? ' ' : '', 'Сначала устранить: ', el('b', { text: linkLabel(next.link).toLowerCase() }),
+        ` — ${next.text}.`);
+    } else if (next) {
+      if (!binding) hint.append('Сейчас ограничивает: ', el('b', { text: linkLabel(next.link).toLowerCase() }), '.');
+      hint.append(` Мера: ${next.text}.`);
     } else if (advisor && advisor.hasData) {
+      if (binding) hint.append(' ');
       hint.append(isNum(advisor.target) && isNum(advisor.achievable) && advisor.achievable >= advisor.target
         ? 'Цель достигается, мер не требуется.' : 'На узком месте ступеней больше нет.');
     }
     for (const id of ['advisor_next', 'advisor_all']) {
       root.querySelector(`[data-preset="${id}"]`).disabled = Boolean(advisor && advisor.hasData && !next);
+    }
+
+    // The flood episode runs faster than the mine clock (spec 2.7, water.flood_compression): say so
+    // while the +150 m station is out or water stands in the workings.
+    if (floodNote) {
+      const mine = (things[NS + 'mine'] && things[NS + 'mine'].f) || {};
+      const station = (things[NS + 'ps-p150'] && things[NS + 'ps-p150'].f) || {};
+      const episode = station.state === 'failed' || (isNum(mine.flood_volume_m3) && mine.flood_volume_m3 > 0);
+      floodNote.hidden = !episode;
+      if (episode) {
+        const value = (id, fallback) => (params && params[id] && isNum(params[id].value) ? params[id].value : fallback);
+        const k = value('water.flood_compression', 24);
+        setText(floodNote, `Затопление показано ускоренно: вода в зумпфах и выработках прибывает в ${fmt(k)} раза `
+          + `быстрее часов рудника (час на стенде — ${k === 24 ? 'сутки' : fmt(k) + ' ч'} притока). Пороги: гор. −50 м — `
+          + `${fmt(value('water.flood_threshold_m050_m3', 14960))} м³, гор. 0 м — ${fmt(value('water.flood_threshold_000_m3', 44930))} м³; `
+          + 'приток, откачка и поверхность — по часам рудника.');
+      }
     }
 
     setText(revision, known
@@ -234,5 +265,10 @@ export function createScenarios({ onChanged }) {
     if (info.defaults) defaults = info.defaults;
   }
 
-  return { update, setInfo };
+  /** model/params.json (GET /api/params) for the texts that quote a parameter. */
+  function setParams(list) {
+    params = list && typeof list === 'object' ? list : null;
+  }
+
+  return { update, setInfo, setParams };
 }
