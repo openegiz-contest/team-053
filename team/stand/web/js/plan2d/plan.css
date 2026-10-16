@@ -1,0 +1,364 @@
+/* Plan of the mine on the satellite image (SVG). State colours come from the
+   page tokens and the stope palette of panels/dict.js; the accent marks the
+   binding link only. World strokes keep their screen width at every zoom. */
+
+.pl-root {
+  position: absolute; inset: 0; overflow: hidden;
+  background: #11161a;
+  font-family: var(--font, system-ui, "Segoe UI", Arial, sans-serif);
+  -webkit-user-select: none; user-select: none;
+
+  --pl-ink: #0b1016;
+  --pl-land: #1f2622;
+  --pl-tail: #e6dcc0;
+  --pl-water: #6fb6f0;
+  --pl-road: #cfd6dd;
+  --pl-haul: #efe4c4;
+  --pl-under: #b9c8d8;
+}
+
+.pl-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.pl-svg.dragging { cursor: grabbing; }
+.pl-svg [data-thing] { cursor: pointer; }
+.pl-svg.dragging [data-thing] { cursor: grabbing; }
+.pl-world path, .pl-world rect, .pl-world circle, .pl-world line { vector-effect: non-scaling-stroke; }
+
+/* ------------------------------------------------------------------- tones */
+
+.pl-root [data-tone="ok"] { --c: var(--ok); }
+.pl-root [data-tone="warn"] { --c: var(--warn); }
+.pl-root [data-tone="fail"] { --c: var(--fail); }
+.pl-root [data-tone="planned"] { --c: var(--planned); }
+.pl-root [data-tone="idle"] { --c: var(--idle); }
+.pl-root [data-tone="flood"] { --c: var(--flood); }
+.pl-root [data-tone="info"] { --c: var(--info); }
+
+/* ------------------------------------------------------------ image, grid */
+
+.pl-root { background: #0d1215; }
+.pl-tone { fill: var(--pl-land); }
+.pl-image { filter: saturate(0.82) brightness(0.8) contrast(1.04); }
+.pl-shade { fill: #070b10; opacity: 0.3; pointer-events: none; }
+.pl-neatline { fill: none; stroke: var(--line-strong); stroke-width: 1px; pointer-events: none; }
+.pl-root.no-image .pl-image, .pl-root.no-image .pl-shade { display: none; }
+.pl-grid { fill: none; stroke: #e9eef4; stroke-opacity: 0.12; stroke-width: 1px; pointer-events: none; }
+.pl-root.no-image .pl-grid { stroke-opacity: 0.09; }
+.pl-grid-labels text {
+  font-size: 10px; fill: var(--text-3); font-variant-numeric: tabular-nums; pointer-events: none;
+  paint-order: stroke; stroke: var(--pl-ink); stroke-width: 2.6px; stroke-opacity: 0.8; stroke-linejoin: round;
+}
+
+/* -------------------------------------------------------------------- land */
+
+.pl-zone { fill: none; stroke: #c9d2dc; stroke-opacity: 0.38; stroke-width: 1px; stroke-dasharray: 7 4; pointer-events: stroke; }
+.pl-heap { stroke: #c4b490; stroke-opacity: 0.5; stroke-width: 1px; }
+.pl-hatch { stroke: #c4b490; stroke-opacity: 0.32; stroke-width: 1.2; }
+.pl-quarry { fill: none; stroke: #c4b490; stroke-opacity: 0.5; stroke-width: 1px; stroke-dasharray: 2 3; }
+.pl-yard { fill: #e9eef4; fill-opacity: 0.05; stroke: #c9d2dc; stroke-opacity: 0.75; stroke-width: 1px; stroke-dasharray: 3 2; }
+.pl-root.no-image .pl-heap { fill-opacity: 0.6; }
+
+/* ---------------------------------------------------------------- tailings */
+
+.pl-cell { fill: var(--pl-tail); fill-opacity: 0.1; stroke: var(--pl-tail); stroke-opacity: 0.45; stroke-width: 1px; }
+.pl-facility { fill: none; stroke: var(--pl-tail); stroke-opacity: 0.6; stroke-width: 1.2px; stroke-dasharray: 9 4; pointer-events: none; }
+.pl-dam-fill { fill: var(--pl-tail); pointer-events: none; }
+.pl-dam { fill: transparent; stroke: var(--pl-tail); stroke-opacity: 0.75; stroke-width: 1.3px; }
+.pl-dam[data-state="active"] { stroke: var(--ok); stroke-opacity: 1; stroke-width: 1.8px; }
+.pl-dam[data-state="full"] { stroke: var(--fail); stroke-opacity: 1; stroke-width: 1.8px; }
+.pl-dam[data-state="planned"] { stroke: var(--planned); stroke-opacity: 0.95; stroke-dasharray: 6 4; }
+
+/* ------------------------------------------------------------------- water */
+
+.pl-river, .pl-stream { fill: none; stroke: var(--pl-water); stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+.pl-river { stroke-width: 2.4px; }
+.pl-stream { stroke-width: 1.7px; }
+.pl-pond { fill: var(--flood); fill-opacity: 0.6; stroke: #a9d6ff; stroke-width: 1px; }
+
+/* --------------------------------------------------------------------- pit */
+
+.pl-pit path { fill: none; pointer-events: none; }
+.pl-pit .rim { stroke: #f4f7fa; stroke-width: 1.7px; stroke-linejoin: round; }
+.pl-pit .bench { stroke: #e9eef4; stroke-opacity: 0.3; stroke-width: 0.8px; }
+.pl-pit .floor { stroke: #e9eef4; stroke-opacity: 0.55; stroke-width: 1px; stroke-dasharray: 3 3; }
+
+/* ------------------------------------------------------------------- roads */
+
+.pl-road-case, .pl-road, .pl-haul-case, .pl-haul { fill: none; stroke-linejoin: round; stroke-linecap: round; pointer-events: none; }
+.pl-road-case { stroke: var(--pl-ink); stroke-opacity: 0.5; stroke-width: 3px; }
+.pl-road { stroke: var(--pl-road); stroke-opacity: 0.6; stroke-width: 1.1px; }
+.pl-haul-case { stroke: var(--pl-ink); stroke-opacity: 0.85; stroke-width: 5.4px; }
+.pl-haul { stroke: var(--pl-haul); stroke-width: 2.8px; }
+.pl-pipe { fill: none; stroke-width: 1.3px; stroke-linecap: round; stroke-dasharray: 1 3.5; }
+.pl-pipe.water-supply, .pl-pipe.intake, .pl-pipe.discharge { stroke: #8fcbff; stroke-opacity: 0.9; }
+.pl-pipe.tailings { stroke: var(--pl-tail); stroke-opacity: 0.85; }
+.pl-pipe.conveyor { stroke: #f4f7fa; stroke-opacity: 0.75; stroke-dasharray: 6 2; stroke-width: 1.5px; }
+.pl-root.no-image .pl-road { stroke-opacity: 0.45; }
+
+/* ------------------------------------------------------------------- plant */
+
+.pl-plant { fill: var(--info); fill-opacity: 0.12; stroke: var(--c, var(--info)); stroke-width: 1.5px; stroke-linejoin: round; }
+.pl-line .box { fill: var(--pl-ink); fill-opacity: 0.72; stroke: var(--c, var(--text-3)); stroke-width: 1px; }
+.pl-line .fill { fill: var(--c, var(--text-3)); opacity: 0.6; pointer-events: none; }
+.pl-line[data-state="planned"] .box { fill-opacity: 0.25; stroke: var(--planned); stroke-dasharray: 3 2; }
+.pl-rom .pad { fill: #e9eef4; fill-opacity: 0.05; stroke: #c9d2dc; stroke-opacity: 0.75; stroke-width: 1px; stroke-dasharray: 3 2; }
+.pl-rom .heap { fill: var(--bar); fill-opacity: 0.9; stroke: var(--c, var(--text-2)); stroke-width: 1.3px; }
+
+/* ------------------------------------------------------------- underground */
+
+.pl-root.no-under .pl-under { display: none; }
+.pl-backfill { fill: #a87650; fill-opacity: 0.22; stroke: none; pointer-events: none; }
+.pl-drive { fill: none; stroke: var(--pl-under); stroke-width: 1.8px; stroke-dasharray: 8 3; pointer-events: none; }
+.pl-drive.design { stroke: var(--planned); stroke-width: 1.2px; stroke-dasharray: 2 4; }
+.pl-link { fill: none; stroke: var(--pl-under); stroke-width: 1.1px; stroke-dasharray: 4 2.5; pointer-events: none; }
+.pl-link.design { stroke: var(--planned); stroke-dasharray: 2 4; }
+.pl-root[data-zoom="far"] .pl-link, .pl-root[data-zoom="far"] .pl-airlink, .pl-root[data-zoom="far"] .pl-decline .nodes { display: none; }
+.pl-airlink { fill: none; stroke: #d3dbe4; stroke-opacity: 0.45; stroke-width: 1px; stroke-dasharray: 2 3; pointer-events: none; }
+.pl-airlink.design { stroke: var(--planned); }
+.pl-decline { --c: var(--ok); }
+.pl-decline[data-state="closed"] { --c: var(--fail); }
+.pl-decline .way { fill: none; stroke: var(--c); stroke-width: 3px; stroke-dasharray: 9 4; stroke-linecap: butt; }
+.pl-decline .node { stroke: var(--c); stroke-width: 1.4px; }
+.pl-decline .node.design { stroke: var(--planned); }
+
+/* ------------------------------------------------------ point symbols */
+
+.pl-hit { fill: none; stroke: transparent; stroke-width: 12px; pointer-events: stroke; }
+.pl-hit.edge { stroke-width: 8px; }
+.pl-hit-fill { fill: transparent; stroke: none; pointer-events: all; }
+
+.pl-shaft .rim { fill: var(--pl-ink); stroke: var(--c, #f4f7fa); stroke-width: 1.7px; }
+.pl-shaft .core { fill: var(--c, #f4f7fa); }
+.pl-shaft[data-state="planned"] .rim { stroke-dasharray: 2.2 1.8; fill: rgba(11, 16, 22, 0.55); }
+.pl-shaft[data-state="planned"] .core { opacity: 0.5; }
+
+.pl-fan .disc { fill: var(--c, var(--text-3)); stroke: var(--pl-ink); stroke-width: 1.2px; }
+.pl-fan .blades { fill: none; stroke: var(--pl-ink); stroke-width: 1.4px; }
+.pl-fan .cross { display: none; fill: none; stroke: #fff; stroke-width: 1.6px; stroke-linecap: round; }
+.pl-fan[data-state="failed"] .disc { fill: var(--fail); }
+.pl-fan[data-state="failed"] .blades { display: none; }
+.pl-fan[data-state="failed"] .cross { display: inline; }
+.pl-fan[data-state="planned"] .disc { fill: var(--pl-ink); stroke: var(--planned); stroke-dasharray: 2 1.6; }
+.pl-fan[data-state="planned"] .blades { stroke: var(--planned); }
+
+.pl-raise .rim { fill: var(--pl-ink); stroke: var(--c, var(--pl-under)); stroke-width: 1.4px; }
+.pl-raise .arrow { fill: none; stroke: var(--c, var(--pl-under)); stroke-width: 1.4px; stroke-linecap: round; stroke-linejoin: round; }
+.pl-raise[data-state="planned"] .rim { stroke-dasharray: 2 1.6; }
+
+.pl-portal { --c: var(--ok); }
+.pl-portal[data-state="closed"] { --c: var(--fail); }
+.pl-portal .arch { fill: var(--c); stroke: var(--pl-ink); stroke-width: 1.2px; stroke-linejoin: round; }
+.pl-portal .mouth { fill: var(--pl-ink); }
+.pl-portal .bar { display: none; stroke: #fff; stroke-width: 2px; stroke-linecap: round; }
+.pl-portal[data-state="closed"] .bar { display: inline; }
+
+.pl-monitor .pin { fill: var(--c, var(--idle)); stroke: var(--pl-ink); stroke-width: 1.3px; stroke-linejoin: round; }
+.pl-monitor .alarm { fill: none; stroke: none; }
+.pl-monitor[data-tone="fail"] .alarm { stroke: var(--fail); stroke-width: 2px; transform-box: fill-box; transform-origin: center; animation: pl-alarm 1.4s ease-out infinite; }
+
+.pl-pump .box { fill: var(--pl-ink); stroke: var(--c, var(--flood)); stroke-width: 1.4px; }
+.pl-pump .drop { fill: var(--flood); }
+.pl-pump[data-state="planned"] .box { stroke: var(--planned); stroke-dasharray: 2 1.6; }
+.pl-pump[data-state="planned"] .drop { fill: var(--planned); }
+
+.pl-stopes .frame { fill: var(--pl-ink); fill-opacity: 0.78; stroke: var(--pl-under); stroke-opacity: 0.55; stroke-width: 1px; }
+.pl-stopes .stripe { stroke-width: 0.8px; fill-opacity: 0.9; }
+.pl-stopes .stripe[data-state="planned"] { stroke-dasharray: 2 1.5; stroke-opacity: 0.8; }
+.pl-stopes .stripe[data-state="standby"] { fill-opacity: 0.5; }
+.pl-stopes .tag { font-size: 9px; fill: var(--text-2); text-anchor: end; cursor: pointer; }
+.pl-stopes .tag[data-state="flooded"] { fill: var(--flood); font-weight: 700; }
+.pl-stopes .tag[data-state="planned"] { fill: var(--text-3); }
+
+/* ------------------------------------------------------------------ units */
+
+.pl-unit .body { fill: var(--pl-ink); stroke: #f4f7fa; stroke-width: 1.3px; }
+.pl-unit .cab { fill: #f4f7fa; }
+.pl-unit[data-load="loaded"] .body { fill: #f4f7fa; stroke: var(--pl-ink); stroke-width: 1px; }
+.pl-unit[data-load="loaded"] .cab { fill: #8a9bb0; }
+.pl-unit.lhd .body, .pl-unit.drill_rig .body { fill: var(--surface-3); stroke: var(--text-2); stroke-width: 1px; }
+.pl-unit .ring { fill: none; stroke: none; }
+.pl-unit[data-ring="warn"] .ring { stroke: var(--warn); stroke-width: 1.8px; }
+.pl-unit[data-ring="fail"] .ring { stroke: var(--fail); stroke-width: 1.8px; }
+.pl-unit .no {
+  font-size: 10px; font-weight: 600; fill: var(--text); font-variant-numeric: tabular-nums; pointer-events: none;
+  paint-order: stroke; stroke: var(--pl-ink); stroke-width: 2.6px; stroke-linejoin: round;
+}
+.pl-unit[data-state="parked"] { opacity: 0.75; }
+.pl-unit[data-state="parked"] .no { display: none; }
+.pl-unit.near[data-state="parked"] .no { display: inline; font-size: 9px; }
+.pl-unit.pl-under { opacity: 0.72; }
+.pl-unit.pl-under .body { stroke-dasharray: 2 1.2; }
+
+/* ------------------------------------------------------------------ labels */
+
+.pl-label { pointer-events: none; }
+.pl-label[data-thing] { pointer-events: auto; }
+.pl-label text {
+  font-variant-numeric: tabular-nums; white-space: pre;
+  paint-order: stroke; stroke: var(--pl-ink); stroke-width: 3px; stroke-opacity: 0.88; stroke-linejoin: round;
+}
+.pl-label .name { font-size: 12px; font-weight: 600; fill: var(--text); }
+.pl-label .value { font-size: 11px; fill: var(--text-2); }
+.pl-label[data-tone="fail"] .value { fill: var(--fail-text); font-weight: 600; }
+.pl-label[data-tone="warn"] .value { fill: var(--warn); }
+.pl-label.under .name { fill: var(--pl-under); font-weight: 500; font-style: italic; }
+.pl-label.place .name { font-size: 13px; font-weight: 500; font-style: italic; fill: #f2efe6; letter-spacing: 0.02em; }
+.pl-label.quiet .name { font-size: 11px; font-weight: 400; font-style: italic; fill: #d9ccab; }
+.pl-label.tag .name { font-size: 10.5px; }
+.pl-label .track { fill: var(--pl-ink); fill-opacity: 0.85; stroke: var(--text-3); stroke-width: 0.8px; }
+.pl-label .bar { fill: var(--pl-tail); }
+.pl-label[data-tone="fail"] .bar { fill: var(--fail); }
+.pl-root.no-under .pl-label.under { display: none; }
+.pl-flow {
+  font-size: 11px; font-style: italic; fill: #a9d6ff; pointer-events: none;
+  paint-order: stroke; stroke: var(--pl-ink); stroke-width: 2.8px; stroke-opacity: 0.85; stroke-linejoin: round;
+}
+
+/* ----------------------------------------------------------- scale bar */
+
+.pl-scale rect.a { fill: #f4f7fa; }
+.pl-scale rect.b { fill: var(--pl-ink); stroke: #f4f7fa; stroke-width: 1px; }
+.pl-scale text {
+  font-size: 10.5px; fill: var(--text-2); font-variant-numeric: tabular-nums;
+  paint-order: stroke; stroke: var(--pl-ink); stroke-width: 2.6px; stroke-linejoin: round;
+}
+
+/* ------------------------------------------------- hover, selection, bind */
+
+.pl-svg .hl { filter: brightness(1.4); }
+.pl-svg .pl-dam.sel, .pl-svg .pl-plant.sel, .pl-svg .pl-pond.sel, .pl-svg .pl-facility.sel { stroke: #fff; stroke-width: 2.6px; stroke-opacity: 1; }
+.pl-svg .pl-decline.sel .way { stroke-width: 4.4px; }
+.pl-svg .pl-stopes .tag.sel { fill: #fff; font-weight: 700; }
+.pl-svg .pl-stopes .stripe.sel { stroke: #fff; stroke-width: 1.6px; }
+.pl-svg .pl-line.sel .box, .pl-svg .pl-rom.sel .heap { stroke: #fff; stroke-width: 2px; }
+.pl-svg g.sel:not(.pl-decline):not(.pl-line):not(.pl-rom) { filter: drop-shadow(0 0 2.5px rgba(255, 255, 255, 0.9)); }
+.pl-select { fill: none; stroke: #fff; stroke-width: 1.5px; stroke-dasharray: 3 2.5; pointer-events: none; }
+
+/* The binding link, where it is a surface object: a thin accent outline or glow. */
+.pl-svg .pl-haul-case.bind { stroke: var(--accent); stroke-opacity: 0.38; stroke-width: 7px; }
+.pl-svg .pl-pipe.bind { stroke: var(--accent); stroke-opacity: 0.95; }
+.pl-svg .pl-plant.bind, .pl-svg .pl-dam.bind, .pl-svg .pl-facility.bind, .pl-svg .pl-pond.bind { stroke: var(--accent); stroke-opacity: 1; stroke-width: 2px; }
+.pl-svg g.bind { filter: drop-shadow(0 0 2.5px var(--accent)); }
+
+.pl-pulse { fill: none; stroke: #fff; stroke-width: 1.6px; pointer-events: none; transform-box: fill-box; transform-origin: center; animation: pl-pulse 1.7s ease-out 1 forwards; }
+.pl-pulse.locate { animation-duration: 1.2s; }
+
+@keyframes pl-pulse { 0% { transform: scale(0.6); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+@keyframes pl-alarm { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-monitor[data-tone="fail"] .alarm { animation: none; }
+  .pl-pulse { animation-duration: 0.01s; }
+}
+
+/* ---------------------------------------------------- HTML furniture */
+
+.pl-bar { position: absolute; left: 8px; top: 8px; right: 270px; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; z-index: 2; pointer-events: none; }
+.pl-bar > * { pointer-events: auto; }
+.pl-chip, .pl-go, .pl-zoom button {
+  height: 24px; padding: 0 9px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: rgba(18, 25, 33, 0.9); color: var(--text-2);
+  font: 12px/1 var(--font, system-ui, sans-serif);
+}
+.pl-chip:hover, .pl-go:hover, .pl-zoom button:hover { color: var(--text); background: var(--surface-3); }
+.pl-chip::before {
+  content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; vertical-align: 0;
+  border-radius: 2px; border: 1px solid var(--text-3);
+}
+.pl-chip[aria-pressed="true"] { color: var(--text); background: rgba(32, 43, 55, 0.95); }
+.pl-chip[aria-pressed="true"]::before { background: var(--info); border-color: var(--info); }
+.pl-sep { width: 1px; height: 16px; margin: 0 3px; background: var(--line-strong); }
+.pl-status {
+  margin-left: 4px; padding: 4px 8px; border-radius: 4px; font-size: 11.5px; color: var(--text-2);
+  background: rgba(11, 16, 22, 0.78); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.pl-status:empty { display: none; }
+
+.pl-right { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 2; }
+.pl-north {
+  display: flex; flex-direction: column; align-items: center; width: 34px; padding: 4px 0 3px; border-radius: 6px;
+  background: rgba(11, 16, 22, 0.78); border: 1px solid var(--line); color: var(--text); font-size: 11px; font-weight: 700;
+}
+.pl-north-mark .l { fill: #f4f7fa; }
+.pl-north-mark .r { fill: none; stroke: #f4f7fa; stroke-width: 1; stroke-linejoin: round; }
+
+.pl-legend {
+  width: 232px; border-radius: 6px; background: rgba(11, 16, 22, 0.86); border: 1px solid var(--line);
+  font-size: 11.5px; color: var(--text-2);
+}
+.pl-legend-toggle {
+  display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 6px 10px; cursor: pointer;
+  background: none; border: 0; color: var(--text); font: 600 12px/1 var(--font, system-ui, sans-serif);
+}
+.pl-legend-toggle::after { content: "▴"; color: var(--text-3); font-size: 10px; }
+.pl-legend-toggle[aria-expanded="false"]::after { content: "▾"; }
+.pl-legend-body { padding: 0 10px 8px; }
+.pl-legend-body[hidden] { display: none; }
+.pl-legend h4 { margin: 6px 0 3px; font-size: 10.5px; font-weight: 600; color: var(--text-3); letter-spacing: 0.02em; }
+.pl-legend ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.pl-legend li { display: flex; align-items: center; gap: 7px; line-height: 15px; }
+.pl-legend li svg { flex: none; }
+.pl-legend-stopes { grid-template-columns: 1fr 1fr; margin-top: 4px !important; column-gap: 8px; }
+.pl-legend-stopes li { gap: 5px; font-size: 11px; }
+.pl-legend-stopes i { flex: none; width: 12px; height: 8px; border-radius: 1px; background: var(--c); }
+.pl-legend-stopes i[data-state="planned"] { background: none; border: 1px dashed var(--c); }
+.pl-legend-bind { margin-top: 6px !important; }
+.pl-root.no-under .pl-legend .under, .pl-root.no-under .pl-legend-stopes { display: none; }
+.pl-root:not(.has-bind) .pl-legend-bind { display: none; }
+
+.lg-haul-case { stroke: var(--pl-ink); stroke-width: 5.4; fill: none; }
+.lg-haul { stroke: var(--pl-haul); stroke-width: 2.8; fill: none; }
+.lg-road { stroke: var(--pl-road); stroke-opacity: 0.8; stroke-width: 1.2; fill: none; }
+.lg-water { stroke: var(--pl-water); stroke-width: 2; fill: none; }
+.lg-pond { fill: var(--flood); fill-opacity: 0.6; stroke: #a9d6ff; }
+.lg-dam-a { fill: var(--pl-tail); fill-opacity: 0.2; stroke: var(--pl-tail); stroke-opacity: 0.7; }
+.lg-dam-b { fill: var(--pl-tail); fill-opacity: 0.7; stroke: var(--ok); }
+.lg-plant { fill: var(--info); fill-opacity: 0.12; stroke: var(--info); }
+.lg-line { fill: var(--ok); fill-opacity: 0.6; stroke: var(--ok); stroke-width: 0.8; }
+.lg-fan rect { fill: var(--ok); stroke: var(--pl-ink); }
+.lg-fan circle { fill: none; stroke: var(--pl-ink); stroke-width: 1.3; }
+.lg-shaft .rim { fill: var(--pl-ink); stroke: var(--ok); stroke-width: 1.5; }
+.lg-shaft .core { fill: var(--ok); }
+.lg-portal { fill: var(--ok); stroke: var(--pl-ink); }
+.lg-monitor { fill: var(--ok); stroke: var(--pl-ink); }
+.lg-truck { fill: var(--pl-ink); stroke: #f4f7fa; stroke-width: 1.2; }
+.lg-truck.loaded { fill: #f4f7fa; }
+.lg-ring { fill: none; stroke-width: 1.6; }
+.lg-ring.warn { stroke: var(--warn); }
+.lg-ring.fail { stroke: var(--fail); }
+.lg-decline { stroke: var(--ok); stroke-width: 3; stroke-dasharray: 6 3; fill: none; }
+.lg-decline.closed { stroke: var(--fail); }
+.lg-drive { stroke: var(--pl-under); stroke-width: 1.5; stroke-dasharray: 5 2.5; fill: none; }
+.lg-pump { fill: var(--pl-ink); stroke: var(--flood); stroke-width: 1.4; }
+.lg-bind { stroke: var(--accent); stroke-width: 3; fill: none; filter: drop-shadow(0 0 2px var(--accent)); } /* .bind legend */
+
+.pl-zoom { position: absolute; right: 8px; bottom: 28px; display: flex; gap: 4px; z-index: 2; }
+.pl-zoom button { min-width: 26px; padding: 0 8px; }
+.pl-attr {
+  position: absolute; right: 8px; bottom: 5px; z-index: 2; max-width: calc(100% - 300px);
+  padding: 2px 7px; border-radius: 3px; background: rgba(11, 16, 22, 0.72);
+  font-size: 10.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pl-utm {
+  position: absolute; left: 10px; bottom: 5px; z-index: 2; padding: 2px 6px; border-radius: 3px;
+  background: rgba(11, 16, 22, 0.6); font-size: 10.5px; color: var(--text-3);
+}
+
+/* ---------------------------------------------------------------- card */
+
+.pl-card {
+  position: absolute; z-index: 3; left: 0; top: 0; width: max-content; min-width: 200px; max-width: 310px;
+  padding: 8px 10px 7px; pointer-events: none;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  font: 12px/1.35 var(--font, system-ui, sans-serif); color: var(--text-2);
+}
+.pl-card[hidden] { display: none; }
+.pl-card-kind { font-size: 11px; color: var(--text-3); }
+.pl-card-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.pl-card-state { display: flex; align-items: center; gap: 6px; margin: 2px 0 5px; color: var(--text); }
+.pl-card-state i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--idle)); }
+.pl-card dl { margin: 0; display: grid; grid-template-columns: auto auto; gap: 1px 12px; }
+.pl-card dt { color: var(--text-3); }
+.pl-card dd { margin: 0; text-align: right; color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pl-card-note { margin-top: 5px; font-size: 11px; color: var(--text-3); }
+.pl-card-hint { margin-top: 5px; padding-top: 4px; border-top: 1px solid var(--line); font-size: 11px; color: var(--text-3); }

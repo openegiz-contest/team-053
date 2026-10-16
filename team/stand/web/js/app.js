@@ -1,10 +1,11 @@
-// Stand page: owns fetching and hands the data to the panels and to the two
-// view modules. View contract (spec 4.6): a view module exports
+// Stand page: owns fetching and hands the data to the panels and to the three
+// view modules (3D scene, long section, plan). View contract (spec 4.6): a view module exports
 // mount(container, geometry) -> { update(state), focus(thingId), dispose() };
 // update() is called with the unchanged answer of GET /api/state every 2 s.
 // If scene3d.mount throws, the section is mounted in the scene's container.
 // A view whose container is hidden by the view switch gets no update() until it
-// is shown again; then it gets the latest state at once.
+// is shown again; then it gets the latest state at once. The plan («План») has
+// a mode of its own; ?view=plan (or scene, section, both) opens a mode.
 //
 // A view reports a click on an object with a bubbling DOM event:
 //   container.dispatchEvent(new CustomEvent('sekis:select',
@@ -23,17 +24,20 @@ import { createTwins } from './panels/twins.js';
 
 const POLL_MS = 2000;
 const ADVISOR_REFRESH_MS = 30000;
-const VIEW_MODULES = { scene3d: './scene3d/index.js', section2d: './section2d/index.js' };
+const VIEW_MODULES = { scene3d: './scene3d/index.js', section2d: './section2d/index.js', plan2d: './plan2d/index.js' };
 const VIEW_TEXT = {
   scene3d: ['3D-сцена рудника', 'модуль сцены не подключён'],
   section2d: ['Продольный разрез рудника', 'модуль разреза не подключён'],
+  plan2d: ['План рудника', 'модуль плана не подключён'],
 };
+const MODE_NAMES = { plan: 'plan2d', scene: 'scene3d', section: 'section2d' };
 const EMBED = { '/embed/scene': 'scene3d', '/embed/section': 'section2d' }[location.pathname] || null;
 
 const viewsBox = document.getElementById('views');
 const containers = {
   scene3d: document.getElementById('view-scene3d'),
   section2d: document.getElementById('view-section2d'),
+  plan2d: document.getElementById('view-plan2d'),
 };
 const mounted = [];   // { name, container, instance }
 
@@ -65,6 +69,12 @@ const scenariosPanel = createScenarios({
 
 function setMode(mode) {
   viewsBox.dataset.mode = mode;
+  // The plan fills the view area alone; the scene and the section share it.
+  if (containers.plan2d) {
+    containers.plan2d.hidden = mode !== 'plan2d';
+    containers.scene3d.hidden = mode === 'plan2d';
+    containers.section2d.hidden = mode === 'plan2d';
+  }
   for (const button of document.querySelectorAll('.viz .seg button')) {
     button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
   }
@@ -100,7 +110,7 @@ async function mountInto(module, name, geometry) {
 }
 
 async function mountViews(geometry) {
-  const wanted = EMBED ? [EMBED] : ['scene3d', 'section2d'];
+  const wanted = EMBED ? [EMBED] : ['scene3d', 'section2d', 'plan2d'];
   if (!geometry) {
     for (const name of wanted) placeholder(name, 'геометрия сцены не получена');
     return;
@@ -127,11 +137,12 @@ async function mountViews(geometry) {
     }
   }
   if (sectionInScene) {      // one section is enough: the second container is not used
-    setMode('scene3d');
-    document.querySelector('.viz .seg').hidden = true;
-    return;
-  }
-  if (wanted.includes('section2d')) {
+    if (viewsBox.dataset.mode !== 'plan2d') setMode('scene3d');
+    for (const button of document.querySelectorAll('.viz .seg button')) {
+      if (button.dataset.mode === 'both' || button.dataset.mode === 'section2d') button.hidden = true;
+      if (button.dataset.mode === 'scene3d') button.textContent = 'Продольный разрез';
+    }
+  } else if (wanted.includes('section2d')) {
     if (!section) {
       placeholder('section2d');
     } else {
@@ -140,6 +151,19 @@ async function mountViews(geometry) {
       } catch (error) {
         console.warn('section2d.mount failed', error);
         placeholder('section2d', 'разрез недоступен');
+      }
+    }
+  }
+  if (wanted.includes('plan2d') && containers.plan2d) {
+    const plan = await loadModule('plan2d');
+    if (!plan) {
+      placeholder('plan2d');
+    } else {
+      try {
+        await mountInto(plan, 'plan2d', geometry);
+      } catch (error) {
+        console.warn('plan2d.mount failed', error);
+        placeholder('plan2d', 'план недоступен');
       }
     }
   }
@@ -156,7 +180,7 @@ function eachView(action, except, shownOnly) {
   }
 }
 
-/** Select a twin everywhere: the table row, the card and both views. */
+/** Select a twin everywhere: the table row, the card and every view. */
 function focusThing(thingId, sourceContainer) {
   twinsPanel.select(thingId, { scroll: true });
   if (thingId) eachView((view) => view.focus && view.focus(thingId), sourceContainer);
@@ -269,13 +293,17 @@ function start() {
     document.documentElement.dataset.embed = EMBED;
     setMode(EMBED);
   } else {
-    setMode(window.innerHeight >= 900 && window.innerWidth >= 1500 ? 'both' : 'scene3d');
+    const asked = new URLSearchParams(location.search).get('view');
+    const mode = MODE_NAMES[asked] || asked;
+    setMode(['both', 'scene3d', 'section2d', 'plan2d'].includes(mode) ? mode
+      : window.innerHeight >= 900 && window.innerWidth >= 1500 ? 'both' : 'scene3d');
     document.querySelector('.viz .seg').addEventListener('click', (event) => {
       const button = event.target.closest('button[data-mode]');
       if (button) setMode(button.dataset.mode);
     });
   }
   for (const [name, container] of Object.entries(containers)) {
+    if (!container) continue;
     placeholder(name, 'загрузка');
     if ('ResizeObserver' in window) {   // the current size of each mount container, for the views
       new ResizeObserver(() => {

@@ -70,13 +70,16 @@
           <button type="button" data-mode="both" aria-pressed="true">Сцена и разрез</button>
           <button type="button" data-mode="scene3d" aria-pressed="false">3D-сцена</button>
           <button type="button" data-mode="section2d" aria-pressed="false">Продольный разрез</button>
+          <button type="button" data-mode="plan2d" aria-pressed="false">План</button>
         </div>
         <span class="card-meta" id="viz-meta">—</span>
       </header>
       <div class="views" id="views" data-mode="both">
-        <!-- Mount containers of the two view modules (view contract, spec 4.6). -->
+        <!-- Mount containers of the view modules (view contract, spec 4.6). -->
         <div class="view" id="view-scene3d" data-view="scene3d" role="group" aria-label="3D-сцена рудника"></div>
         <div class="view" id="view-section2d" data-view="section2d" role="group" aria-label="Продольный разрез рудника"></div>
+        <!-- The plan on the satellite image fills the area on its own (shown only in its mode). -->
+        <div class="view" id="view-plan2d" data-view="plan2d" role="group" aria-label="План рудника на космическом снимке" style="grid-row: 1 / -1" hidden></div>
       </div>
       <footer class="viz-note">
         <span>Поверхность — рельеф Copernicus DEM и снимок Sentinel-2 (30.09.2026), объекты — OpenStreetMap; подземные выработки: отметки и сечения по документам, план — схема</span>
