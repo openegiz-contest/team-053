@@ -20,7 +20,8 @@ import { buildTables } from './tables.js';
 import { createCard } from './card.js';
 import { createViewport } from './viewport.js';
 
-const LAYERS = ['grid', 'back', 'bands', 'stopes', 'drives', 'air', 'water', 'declines', 'units', 'labels', 'over'];
+// The declines lie under the stopes: their zigzag crosses the stope columns in projection.
+const LAYERS = ['grid', 'back', 'bands', 'declines', 'stopes', 'drives', 'air', 'water', 'units', 'labels', 'over'];
 const MOBILE = new Set(['haul_truck', 'lhd', 'drill_rig']);
 const RINGED = new Set([...MOBILE, 'main_fan', 'pump_station', 'monitoring_point', 'settling_pond']);
 const MAX_PULSES = 14;
@@ -236,6 +237,13 @@ export async function mount(container, geometry) {
     const at = selected ? registry.get(selected) : null;
     const kind = selected && lastState && lastState.things[selected] ? lastState.things[selected].kind : M.kinds[selected];
     for (const node of (selected && elements.get(selected)) || []) node.classList.add('sel');
+    // A selected truck lights the decline it is on.
+    const truck = selected && lastState && lastState.things[selected];
+    const on = truck && truck.kind === 'haul_truck' && truck.f && typeof truck.f.decline === 'string' ? NS + 'decline-' + truck.f.decline : null;
+    for (const node of sheet.querySelectorAll('.sx-decline.lit')) {
+      if (node.getAttribute('data-thing') !== on) node.classList.remove('lit');
+    }
+    for (const node of (on && elements.get(on)) || []) node.classList.add('lit');
     if (!at || !RINGED.has(kind)) {
       selectRing.setAttribute('visibility', 'hidden');
       return;

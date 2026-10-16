@@ -40,6 +40,9 @@ const DAM_CREST = 6;     // m: crest width
 const DAM_STEP = 25;     // m: the faces follow the ground in pieces of at most this length
 const UNNUMBERED_BUND = 2;   // m: the crest of a cell without a dam number above the highest ground of its outline
 const POND_SHARE = 0.45;     // the pond on a tailings fill: the outline shrunk to this share about its centre
+const PORTAL = [16, 9, 12];      // m: the portal box of a decline
+const BAY = [18, 6, 9];          // m: a passing bay
+const TURN_BOX = [10, 6, 11];    // m: a turn or a level access
 
 /**
  * The embankment of a tailings cell: a flat crest DAM_CREST wide inside the
@@ -268,6 +271,15 @@ export function buildStatics(geometry, palette, live, terrain) {
     if (Array.isArray(pit.floor_outline) && pit.floor_outline.length > 2) {
       lines.use(null, palette.scene('pitFloor')).outline(pit.floor_outline, pit.floor + 0.6);
     }
+    if (Array.isArray(pit.rim) && pit.rim.length > 2) {
+      // One of the orientation labels of the scene: over the north rim, beyond the workings.
+      const north = pit.rim.reduce((best, p) => (p[p.length - 1] < best[best.length - 1] ? p : best), pit.rim[0]);
+      const [x, z] = [north[0], north[north.length - 1]];
+      places.push({
+        id: 'place:pit', name: 'Карьер', line: `отработан · дно ${elevationText(pit.floor)} м`,
+        position: [x, groundAt(x, z) + 14, z], orient: true,
+      });
+    }
   }
   const plantId = Object.keys(objects).find((id) => objects[id].kind === 'plant') || null;
   for (const [name, item] of Object.entries(scenery)) {
@@ -381,18 +393,13 @@ export function buildStatics(geometry, palette, live, terrain) {
       spheres.set(id, { center: o.center, radius: Math.max(...o.size) * 0.6 });
       anchors.set(id, [o.center[0], o.center[1] + o.size[1] / 2, o.center[2]]);
     } else if (o.kind === 'decline' && Array.isArray(o.points)) {
+      // The portal stands with the workings; the drive itself, its bays and
+      // turns are drawn apart, behind the stopes (buildDeclines).
       const bottom = live.bottom(id);
       const { above, below } = cutAtElevation(o.points, bottom);
       solid.use(id, palette.tone('ok'));
-      if (above.length > 1) solid.tube(above, o.width || 4.5, o.height || 4);
-      const built = [];
       for (const node of o.nodes || []) {
-        if (!Array.isArray(node.at)) continue;
-        if (node.elevation >= bottom - 0.5) {
-          const size = node.type === 'portal' ? [16, 9, 12] : node.type === 'bay' ? [18, 6, 9] : [10, 6, 11];
-          solid.box(node.at, size);
-          built.push(node.at);
-        }
+        if (node.type === 'portal' && Array.isArray(node.at) && node.elevation >= bottom - 0.5) solid.box(node.at, PORTAL);
       }
       if (below.length > 1) ghost.path(below);
       const shown = above.length > 1 ? above : o.points;
@@ -582,4 +589,35 @@ export function buildStatics(geometry, palette, live, terrain) {
     solid: solid.build(), fills: fills.build(), ghost: ghost.build(), lines: lines.build(), ruler: ruler.build(),
     rulerAt, pick, spheres, anchors, paths, gauges, frame, xray, places,
   };
+}
+
+/**
+ * The declines down to their faces, apart from the other workings so that
+ * they can be drawn behind the stopes and in two weights. `looks` maps a
+ * decline id to { color, strong }: a strong decline (the «Уклоны» preset, a
+ * closed decline, a decline or a truck on it selected) is a tube with its bays
+ * and turns; the others are a thin line in a quiet colour. Returns { mesh, lines }
+ * (built geometry: the tubes, keyed by decline id, and the thin lines).
+ */
+export function buildDeclines(geometry, live, looks) {
+  const tubes = new MeshBuilder();
+  const thin = new LineBuilder();
+  for (const [id, o] of Object.entries(geometry.objects || {})) {
+    if (o.kind !== 'decline' || !Array.isArray(o.points)) continue;
+    const look = looks.get(id);
+    if (!look) continue;
+    const bottom = live.bottom(id);
+    const { above } = cutAtElevation(o.points, bottom);
+    if (!look.strong) {
+      if (above.length > 1) thin.use(id, look.color).path(above);
+      continue;
+    }
+    tubes.use(id, look.color);
+    if (above.length > 1) tubes.tube(above, o.width || 4.5, o.height || 4);
+    for (const node of o.nodes || []) {
+      if (!Array.isArray(node.at) || node.type === 'portal' || node.elevation < bottom - 0.5) continue;
+      tubes.box(node.at, node.type === 'bay' ? BAY : TURN_BOX);
+    }
+  }
+  return { mesh: tubes.build(), lines: thin.build() };
 }

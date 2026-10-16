@@ -55,7 +55,18 @@ function normalizeStep(step) {
     inService: step.in_service_text || '',
     inServiceWhen: step.in_service_when || '',
     inServiceYear: num(step.in_service_year),
+    // a step whose trucks or LHDs wait for the air they need: when its lead time would have allowed it
+    deferredWhen: step.deferred_when || '',
+    inHorizon: step.in_horizon !== false,
   };
+}
+
+// When a step of the ladder is in service, in parts the line may break between: «сразу», «с 2028»,
+// «с 2028» + «ждёт воздуха с II пол. 2027».
+function serviceWhen(step) {
+  if (step.kind === 'disturbance') return ['сразу'];
+  if (!step.inHorizon) return ['не вводится:', 'технике не хватит воздуха'];
+  return [`с ${step.inServiceWhen}`].concat(step.deferredWhen ? [`ждёт воздуха с ${step.deferredWhen}`] : []);
 }
 
 function normalizeLinks(report, twin) {
@@ -121,7 +132,7 @@ function normalizeHorizon(h) {
     first: h.first_year ?? null, last: h.last_year ?? null, target: num(h.target_ktpa),
     label: h.label || '', text: h.text || '',
     reached: h.reached_year ?? null, heldTo: h.held_to_year ?? null, holds: Boolean(h.holds),
-    lostYear: h.lost_year ?? null,
+    lostYear: h.lost_year ?? null, bestYear: h.best_year ?? null, best: num(h.best_ktpa),
     rows: h.rows.map((row) => ({
       year: row.year, achievable: num(row.achievable_ktpa), mined: num(row.mined_ktpa),
       binding: row.binding_link || null, met: Boolean(row.target_met), mineLink: row.mine_link || null,
@@ -133,7 +144,8 @@ function normalizeHorizon(h) {
     })),
     schedule: (h.schedule || []).map((e) => ({
       time: num(e.time), when: e.when_short || '', link: e.link, kind: e.kind || '', origin: e.origin || '',
-      text: e.text || '', inService: e.in_service_text || '',
+      text: e.text || '', inService: e.in_service_text || '', deferredWhen: e.deferred_from_short || '',
+      inHorizon: e.in_horizon !== false,
     })),
     runs: (h.binding_runs && h.binding_runs.text) || '',
     depthRule: (h.depth_rule && h.depth_rule.text) || '',
@@ -505,9 +517,11 @@ export function createPlan() {
         style: step.kind === 'disturbance' ? 'color: var(--warn)' : null }),
       el('span', { class: 'num', text: isNum(step.capBefore) ? ` ${fmt(step.capBefore)} → ` : ' → ' }),
       el('span', { text: step.text }),
-      step.inServiceWhen ? el('span', { class: 'num', style: 'color: var(--text); white-space: nowrap',
-        text: ` · ${step.kind === 'disturbance' ? 'сразу' : 'с ' + step.inServiceWhen}` }) : null)));
-    const later = h ? h.schedule.filter((e) => e.origin === 'horizon') : [];
+      // the space before each part stays outside its no-wrap span, so the line may break there
+      step.inServiceWhen ? serviceWhen(step).map((part) => [' ', el('span', { class: 'num',
+        style: `color: ${step.deferredWhen || !step.inHorizon ? 'var(--warn)' : 'var(--text)'}; white-space: nowrap`,
+        text: `· ${part}` })]) : null)));
+    const later = h ? h.schedule.filter((e) => e.origin === 'horizon' && e.inHorizon) : [];
     const list = el('ol', { class: 'rung-steps', style: 'border-top: 1px solid var(--line)' },
       steps.length ? steps : el('li', {}, el('span', { text: 'меры к 2027 г. не нужны' })));
     if (!later.length) return list;
@@ -516,7 +530,7 @@ export function createPlan() {
         el('div', { style: 'color: var(--text-3); font-size: 11px', text: 'Добавляется по ходу горизонта (глубина, заполнение хвостов):' }),
         later.map((e) => el('div', { style: 'display: grid; grid-template-columns: 76px minmax(0, 1fr)',
           title: `${e.text}; ${e.inService}` },
-        el('span', { class: 'num', style: 'color: var(--text)', text: e.when }),
+        el('span', { class: 'num', style: `color: ${e.deferredWhen ? 'var(--warn)' : 'var(--text)'}`, text: e.when }),
         el('div', {}, el('b', { style: 'font-weight: 600', text: linkLabel(e.link) }),
           el('span', { style: 'color: var(--text-2)', text: ` ${shortText(e.text)}` }))))));
   }
@@ -526,7 +540,8 @@ export function createPlan() {
     const current = row.target === currentTarget;
     const tone = holdTone(h);
     const facts = h ? [
-      ['Достигается', h.reached ? `${h.reached} г.` : 'нет'],
+      h.reached ? ['Достигается', `${h.reached} г.`]
+        : ['Ближе всего', isNum(h.best) ? `${h.bestYear} г.: ${withUnit(fmt(h.best), 'тыс. т')}` : 'нет'],
       ['Самосвалов к ' + h.last + ' г.', h.beyond ? `${fmt(h.trucksEnd)} (сверх реестра ${fmt(h.beyond)})` : fmt(h.trucksEnd)],
       ['Золото за 10 лет', withUnit(fmt(row.economics ? row.economics.totals.gold : null, 1), 'тыс. унц.')],
       ['Воздух, весь парк*', withUnit(fmt(row.airDemand, 0), 'м³/с')],
@@ -594,7 +609,10 @@ export function createPlan() {
     const notes = [el('span', {}, 'Число перед стрелкой: пропускная способность узкого места до шага, тыс. т/год, '
       + 'при глубине 2027 г.; после шага — с какого времени мера в работе. «Ремонт» — устранение нарушения, оно идёт раньше мер расширения.'),
     el('span', {}, 'Клетки годов: зелёная — цель выполнена, оранжевая — ниже цели, красная — фабрике некуда складировать хвосты. '
-      + 'По ходу горизонта советник добавляет самосвалы по мере углубления и ёмкость хвостов по мере заполнения.'),
+      + 'По ходу горизонта советник добавляет самосвалы по мере углубления '
+      + 'и ступени хвостохранилища по мере заполнения. '
+      + 'Самосвалы и ПДМ вводятся, когда на них хватает воздуха: до ввода вентиляторов ВПВ и ВС-3 мера ждёт, '
+      + 'даже если срок её ввода прошёл («ждёт воздуха с …» — когда она была бы готова по сроку ввода).'),
     el('span', {}, `* ${STEADY}. Экономика: прирост золота к базе по цене реализации и AISC первого полугодия 2026 г., `
       + 'минус налог на прибыль; капзатраты — опубликованные компанией и отдельно оценочные (не опубликовано); '
       + 'окупаемость не указывается для цели, которая не удерживается до 2036 г.')];

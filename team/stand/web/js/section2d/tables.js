@@ -81,6 +81,7 @@ export function buildTables(ctx) {
     const value = lines === 3 ? text(nameX, nameY + lineH, '', { class: 'sx-value' })
       : text(L.left.valueX, nameY, '', { class: 'sx-value', 'text-anchor': 'end' });
     const sub = lines > 1 ? text(nameX, base(level.e), '', { class: 'sx-sub' }) : null;
+    const subRoom = L.left.valueX - nameX;
     const g = S('g', { class: 'sx-label sx-row sx-obj', 'data-thing': level.id, 'data-kind': 'level' },
       S('rect', { class: 'sx-hit-fill', x: rx + 2, y: nameY - F, width: L.left.valueX - rx - 2, height: base(level.e) - nameY + F * 1.3 }),
       S('circle', { class: 'dot', cx: L.left.nameX + F * 0.3, cy: nameY - F * 0.34, r: F * 0.25 }),
@@ -92,12 +93,17 @@ export function buildTables(ctx) {
       const short = air !== 'ok';
       const tone = f.state === 'flooded' ? 'flood' : f.state === 'planned' ? 'planned' : short ? 'warn' : 'idle';
       set(g, { 'data-tone': tone });
+      // The level's own air: what it gets now (the value) and what its units in work need.
       const flow = withUnit(fmt(f.air_flow_m3s, 1), 'м³/с');
       const role = stateLabel(f.state, 'level');
       if (sub) {
         setText(value, flow);
+        const need = isNum(f.air_required_m3s) && f.air_required_m3s > 0 ? fmt(f.air_required_m3s, 1) : null;
         const lack = lines === 3 ? 'мало воздуха' : `мало воздуха: нужно ${fmt(f.air_required_m3s, 1)}`;
-        setText(sub, short ? lack : lines === 3 && f.state === 'mined_out' ? 'отработан' : role);
+        const plain = lines === 3 && f.state === 'mined_out' ? 'отработан' : role;
+        setText(sub, short ? lack : need
+          ? fitting([`${role} · нужно ${need}`, `нужно ${withUnit(need, 'м³/с')}`, `нужно ${need}`], subRoom, (content) => m(content))
+          : plain);
       } else {
         setText(value, f.state === 'flooded' ? role : flow);
       }
@@ -290,19 +296,37 @@ export function buildTables(ctx) {
       const f = thing.f;
       set(g, { 'data-tone': stateTone(f.state, 'mine') });
       const state = stateLabel(f.state, 'mine');
-      const air = `воздух ${fmt(f.air_demand_m3s, 0)} из ${withUnit(fmt(f.air_supply_m3s, 0), 'м³/с')}`;
+      // Air as it is now (ventilation on demand): what the fans deliver and what the
+      // units in work need; not the whole fleet against the design supply, which in
+      // a blast window would read as a near shortage.
+      const vod = isNum(f.air_delivered_m3s) && isNum(f.vod_demand_m3s);
+      const delivered = fmt(vod ? f.air_delivered_m3s : f.air_supply_m3s, 0);
+      const needed = fmt(vod ? f.vod_demand_m3s : f.air_demand_m3s, 0);
+      const air = `воздух: подаётся ${delivered}, нужно машинам в работе ${withUnit(needed, 'м³/с')}`;
+      const airShort = `воздух: подаётся ${delivered}, нужно ${withUnit(needed, 'м³/с')}`;
+      const airTight = `воздух ${delivered}, нужно ${withUnit(needed, 'м³/с')}`;
       const held = f.units_held_vent > 0 ? `ждут воздуха: ${fmt(f.units_held_vent)}` : null;
       const flood = f.flood_volume_m3 > 0 ? `затоплено ${withUnit(fmt(f.flood_volume_m3), 'м³')}` : null;
       const inflow = `приток ${withUnit(fmt(f.inflow_m3h), 'м³/ч')}`;
       const pumped = `откачка ${withUnit(fmt(f.pumped_m3h), 'м³/ч')}`;
       const join = (lists) => lists.map((parts) => parts.filter(Boolean).join(' · '));
       if (second) {
-        setText(value, fitting(join([[state, air, held], [state, held || air], [held || state]]), room, (content) => m(content)));
-        setText(second, fitting(join([[inflow, pumped, flood], [flood || inflow, pumped], [flood || pumped]]),
-          R.x1 - R.x0, (content) => m(content)));
+        // The state and the air on the first line, the water on the second; where the
+        // first line is too narrow for both, the state moves down to the water.
+        const fits = (content) => m(content) <= room;
+        const withState = join([[state, air, held], [state, airShort, held]]).find(fits);
+        const wide = R.x1 - R.x0;
+        setText(value, withState || fitting(join([[airShort, held], [airShort], [airTight, held], [airTight], [held || state]]),
+          room, (content) => m(content)));
+        setText(second, fitting(join(withState
+          ? [[inflow, pumped, flood], [flood || inflow, pumped], [flood || pumped]]
+          : [[state, inflow, pumped, flood], [state, flood || inflow, pumped], [state, flood || pumped], [state]]),
+        wide, (content) => m(content)));
       } else {
-        setText(value, fitting(join([[state, air, held, inflow, pumped, flood], [state, air, held, flood || inflow],
-          [state, held || flood || air], [flood || held || state]]), room, (content) => m(content)));
+        setText(value, fitting(join([[state, air, held, inflow, pumped, flood], [state, airShort, held, inflow, pumped, flood],
+          [state, airShort, held, flood || inflow], [state, airTight, held], [state, held || flood || airTight],
+          [flood || held || state]]), room,
+        (content) => m(content)));
       }
     });
   }

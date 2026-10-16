@@ -1,5 +1,6 @@
 // Top bar: enterprise name, simulated clock and shift, the live rates, the air
-// state, the ore stockpile, the binding link and the freshness of the data.
+// now (delivered against the demand of the units in work), the ore stockpile, the
+// binding link and the freshness of the data.
 //
 // The three rates share one basis so that they can be set side by side: ore
 // hoisted (enterprise.ore_mined_tpd), plant feed (enterprise.ore_milled_tpd) and
@@ -30,11 +31,11 @@ function buildPulse() {
         el('dt', { text: 'Питание фабрики' }), value('hdr-feed', 'т/сут')),
       el('div', { class: 'pulse-item', id: 'hdr-gold-item' },
         el('dt', { text: 'Золото' }), value('hdr-gold', 'унц./сут'))));
-  // Air: the caption line carries the demand against the supply.
+  // Air: the value is the air delivered now, the caption line the demand of the units in work.
   const air = el('div', { class: 'pulse-group pulse-air', id: 'hdr-air-item' },
     el('p', { class: 'pulse-cap', id: 'hdr-air-more' }),
     el('dl', { class: 'pulse-row' }, el('div', { class: 'pulse-item' },
-      el('dt', { id: 'hdr-air-label', text: 'Запас по воздуху' }),
+      el('dt', { id: 'hdr-air-label', text: 'Подаётся воздуха' }),
       el('dd', {}, el('span', { id: 'hdr-air', class: 'num', text: DASH }), ' ', el('small', { id: 'hdr-air-unit' })))));
   const stock = el('div', { class: 'pulse-group pulse-stock', id: 'hdr-stock-item' },
     el('dl', { class: 'pulse-row' }, el('div', { class: 'pulse-item' },
@@ -68,8 +69,17 @@ export function createHeader() {
       ? [el('span', { class: 'brand-kind', text: match[1] }), match[2]] : [name]));
   }
 
+  // Air now: what the main fans deliver (ventilation on demand) against what the units in
+  // work need. The design supply of the fans and the demand of the whole fleet are the
+  // figures of the hold rule; they are named as such and shown only where they are meant.
   function updateAir(things, advisor) {
     const air = airStatus(things, advisor);
+    const now = [
+      isNum(air.delivered) ? `Главные вентиляторы подают сейчас ${fmt(air.delivered, 1)} м³/с` : '',
+      isNum(air.inWork) ? `машинам в работе нужно ${fmt(air.inWork, 1)} м³/с` : '',
+    ].filter(Boolean).join('; ');
+    const vod = air.vod === 'off' ? ' (вентиляция по потребности выключена).'
+      : air.vod ? ' (вентиляция по потребности).' : '.';
     nodes.airItem.dataset.tone = air.short ? 'warn' : '';
     if (air.short) {
       setText(nodes.airLabel, 'Воздуха не хватает');
@@ -78,23 +88,25 @@ export function createHeader() {
         : 'ограничение');
       setText(nodes.airUnit, '');
       setText(nodes.airMore, isNum(air.fleetDemand) && isNum(air.supply)
-        ? `парку нужно ${fmt(air.fleetDemand, 0)} м³/с, подача ${fmt(air.supply, 0)}` : '');
+        ? `всему парку нужно ${fmt(air.fleetDemand, 0)} м³/с, вентиляторы дают до ${fmt(air.supply, 0)}` : '');
       const who = heldUnitsText(air.counts);
       nodes.airItem.title = [
         isNum(air.fleetDemand) ? `Потребность всего парка: ${fmt(air.fleetDemand, 1)} м³/с.` : '',
-        isNum(air.supply) ? `Подача: ${fmt(air.supply, 1)} м³/с.` : '',
+        isNum(air.supply) ? `Проектная подача исправных вентиляторов: ${fmt(air.supply, 1)} м³/с.` : '',
         air.held > 0 ? `Ждут воздуха: ${who || countText(air.held, FORMS.unit)}.` : '',
-        isNum(air.workingDemand) ? `Потребность работающих машин: ${fmt(air.workingDemand, 1)} м³/с.` : '',
+        now ? now + vod : '',
       ].filter(Boolean).join(' ');
     } else {
-      setText(nodes.airLabel, 'Запас по воздуху');
-      setText(nodes.air, fmt(air.margin, 1, { sign: true }));
-      setText(nodes.airUnit, isNum(air.margin) ? '%' : '');
-      setText(nodes.airMore, isNum(air.workingDemand) && isNum(air.supply)
-        ? `нужно ${fmt(air.workingDemand, 0)} м³/с, подача ${fmt(air.supply, 0)}` : '');
-      nodes.airItem.title = isNum(air.workingDemand) && isNum(air.supply)
-        ? `Потребность работающих машин: ${fmt(air.workingDemand, 1)} м³/с при подаче ${fmt(air.supply, 1)} м³/с; `
-          + 'все машины парка работают, ни одна не ждёт воздуха.' : '';
+      setText(nodes.airLabel, 'Подаётся воздуха');
+      setText(nodes.air, fmt(air.delivered, 0));
+      setText(nodes.airUnit, isNum(air.delivered) ? 'м³/с' : '');
+      setText(nodes.airMore, isNum(air.inWork) ? `нужно машинам в работе ${fmt(air.inWork, 0)} м³/с` : '');
+      nodes.airItem.title = [
+        now ? now + vod : '',
+        isNum(air.supply) && isNum(air.workingDemand)
+          ? `На проектном режиме вентиляторы дают ${fmt(air.supply, 1)} м³/с; всем машинам парка в работе `
+            + `на полной нагрузке нужно ${fmt(air.workingDemand, 1)} м³/с, ни одна не ждёт воздуха.` : '',
+      ].filter(Boolean).join(' ');
     }
   }
 

@@ -487,11 +487,16 @@ class Advisor:
     def _with_service(steps: List[Dict[str, Any]], schedule: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Step dicts with the time each would really be in service (spec 3.4, section 11 item 3):
         ``lead_years``, ``in_service_year`` (2027.5 = 1 July 2027), ``in_service_when`` («II пол.
-        2027») and ``in_service_text``. ``schedule`` lists the entries of the steps in their order."""
+        2027») and ``in_service_text``; for a step whose trucks or LHDs wait for the air they need
+        (spec 3.4 step 5.3), ``deferred_from`` and ``deferred_when``: the time its lead time
+        allowed, else ``None``; ``in_horizon`` false for a step that is not in service by the end
+        of the horizon. ``schedule`` lists the entries of the steps in their order."""
         out = []
         for step, entry in zip(steps, schedule):
             out.append(dict(step, lead_years=entry["lead_years"], in_service_year=entry["time"],
-                            in_service_when=entry["when_short"], in_service_text=entry["in_service_text"]))
+                            in_service_when=entry["when_short"], in_service_text=entry["in_service_text"],
+                            deferred_from=entry["deferred_from"], deferred_when=entry["deferred_from_short"],
+                            in_horizon=entry["in_horizon"]))
         return out
 
     def _horizon(self, start: cap.State, target: float, stockpile_t: float) -> Dict[str, Any]:

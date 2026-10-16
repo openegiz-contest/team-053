@@ -291,6 +291,39 @@ class SceneModule(unittest.TestCase):
             server.shutdown()
             server.server_close()
 
+    def test_calm_defaults(self):
+        # Review round 3: the scene opens on the whole mine, labels few twins by
+        # default, draws the declines quiet and behind the stopes, and keeps the
+        # x-ray backdrop in a light warm grey.
+        index = read(os.path.join(SCENE_DIR, "index.js")).decode("utf-8")
+        self.assertIn("const DEFAULT_VIEW = 'mine';", index)
+        self.assertIn("let presetId = VIEWS[query.get('view')] ? query.get('view') : DEFAULT_VIEW;", index)
+        for preset in ("mine", "declines", "vent", "water", "plant"):
+            self.assertRegex(index, rf"\n  {preset}: {{ target: ")
+        # Labels: the default set, the rest only under the pointer or close to the camera.
+        self.assertIn("const LABEL_NEAR_M = ", index)
+        self.assertIn("const ORIENTATION = new Set(['decline', 'plant', 'tailings_facility']);", index)
+        self.assertIn("if (!selected && !hovered && !alarm && !core && distance > LABEL_NEAR_M) continue;", index)
+        self.assertIn("F(NS + 'advisor').binding_link", index)
+        statics = read(os.path.join(SCENE_DIR, "statics.js")).decode("utf-8")
+        self.assertIn("id: 'place:pit', name: 'Карьер'", statics)
+        # Declines: their own meshes, drawn first and without depth (behind the stopes), strong only when they matter.
+        self.assertIn("export function buildDeclines(geometry, live, looks)", statics)
+        self.assertNotIn("solid.tube(above", statics)
+        self.assertIn("const declineMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic({ depthWrite: false }));", index)
+        self.assertIn("declineMesh.renderOrder = -1;", index)
+        self.assertIn("backdrop.renderOrder = -2;", index)
+        self.assertIn("const strong = presetId === 'declines' || tone === 'fail' || selected || id === truckDecline;", index)
+        # The level label names what the level gets and what its units need.
+        texts = read(os.path.join(SCENE_DIR, "texts.js")).decode("utf-8")
+        self.assertIn("`подаётся ${fmt(f.air_flow_m3s, 1)} · нужно ${unit(f.air_required_m3s, 1, 'м³/с')}`", texts)
+        palette = read(os.path.join(SCENE_DIR, "palette.js")).decode("utf-8")
+        for name in ("soil", "soilDeep"):
+            hex_value = re.search(rf"\n  {name}: '#([0-9a-f]{{6}})'", palette).group(1)
+            channels = [int(hex_value[i:i + 2], 16) for i in (0, 2, 4)]
+            self.assertGreaterEqual(min(channels), 0x34, name)                 # not a dark brown
+            self.assertLessEqual(max(channels) - min(channels), 0x10, name)    # a grey, warm at most
+
     def test_ui_text_is_russian(self):
         text = read(os.path.join(SCENE_DIR, "ui.js")).decode("utf-8")
         for preset in ("Рудник", "Уклоны", "Вентиляция", "Водоотлив", "Фабрика и хвосты"):

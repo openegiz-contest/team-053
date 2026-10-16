@@ -409,28 +409,79 @@ def when_short(time: float, first: float) -> str:
     return f"II пол. {year}" if time - year > _EPS else str(year)
 
 
-def in_service_text(time: float, lead: float, first: float) -> str:
-    """«в работе с середины 2027 г. (срок ввода 0,5 года, решение не позднее начала 2027 г.)»."""
+def in_service_text(time: float, lead: float, first: float, earliest: Optional[float] = None,
+                    waits: str = "", inside: bool = True, last_year: Optional[int] = None) -> str:
+    """«в работе с середины 2027 г. (срок ввода 0,5 года, решение не позднее начала 2027 г.)».
+
+    A unit measure that waited for air (``earliest``: the time its lead time allowed) says so and
+    names the fans that came into service with it (``waits``); one that never enters service
+    within the horizon (``inside`` false) says that it is not brought in.
+    """
     if lead <= _EPS:
         return f"сразу, с {_moment(time)}: операционное действие"
-    return (f"в работе с {_moment(time)} (срок ввода {years_phrase(lead)}, решение не позднее "
+    if not inside:
+        return (f"в {int(first + _EPS)}{DASH}{last_year} гг. не вводится: её техника ждала бы воздуха, "
+                f"а рудник выдавал бы не больше (по сроку ввода {years_phrase(lead)} {EM_DASH} "
+                f"с {_moment(earliest if earliest is not None else time)})")
+    text = (f"в работе с {_moment(time)} (срок ввода {years_phrase(lead)}, решение не позднее "
             f"{_moment(time - lead)})")
+    if earliest is not None:
+        text += (f"; по сроку ввода {EM_DASH} с {_moment(earliest)}, но до {_moment(time)} её техника ждала бы "
+                 f"воздуха, а рудник выдавал бы не больше")
+        if waits:
+            text += f"; вместе с ней в работу вводится: {waits}"
+    return text
 
 
-def storage_stage_text(before: cap.Result, after: cap.Result, size_t: float) -> str:
-    """The second tailings stage, which no document of the company describes."""
-    return (f"вторая ступень хвостохранилища после новой карты: {num(size_t / cap.KILO)} тыс. т "
+def fan_names(names: Mapping[str, str], fans: Sequence[str]) -> str:
+    """Registry names of fans inside a sentence: «вентилятор ВПВ»; empty for no fan."""
+    return _names(names, fans) if fans else ""
+
+
+#: Ordinal words of the tailings stages, counted from the new cell (1): nominative and genitive.
+_ORDINAL = ("первая", "вторая", "третья", "четвёртая", "пятая", "шестая", "седьмая")
+_ORDINAL_GEN = ("первой", "второй", "третьей", "четвёртой", "пятой", "шестой", "седьмой")
+
+
+def _ordinal(position: int, words: Sequence[str] = _ORDINAL) -> str:
+    return words[position - 1] if 1 <= position <= len(words) else f"{position}-я"
+
+
+def storage_stage_name(position: int) -> str:
+    """A tailings stage by its position from the new cell (1): «новая карта хвостохранилища»,
+    «вторая ступень хвостохранилища», «третья ступень хвостохранилища»."""
+    if position <= 1:
+        return "новая карта хвостохранилища"
+    return f"{_ordinal(position)} ступень хвостохранилища"
+
+
+def storage_stage_text(before: cap.Result, after: cap.Result, size_t: float, stage: int = 1) -> str:
+    """A tailings stage beyond the new cell (``stage`` 1: the second, 2: the third), which no
+    document of the company describes."""
+    position = stage + 1
+    after_what = "новой карты" if position == 2 else _ordinal(position - 1, _ORDINAL_GEN)
+    return (f"{storage_stage_name(position)} после {after_what}: {num(size_t / cap.KILO)} тыс. т "
             f"(допущение, проект не опубликован; свободная ёмкость {num(before.tailings.free_t / cap.KILO)} "
             f"{ARROW} {num(after.tailings.free_t / cap.KILO)} тыс. т)")
 
 
-def horizon_note(link: str, shown: Optional[int], mine: Optional[int], crossed: Sequence[Any]) -> str:
-    """Why a year of the horizon falls short because of storage, and the declines whose design
-    bottom the centroid passes that year; empty otherwise."""
+def horizon_note(link: str, shown: Optional[int], mine: Optional[int], crossed: Sequence[Any],
+                 storage_next: Optional[int] = None, short_kt: int = 0, stages: Sequence[Any] = ()) -> str:
+    """Notes of a year of the horizon: the tailings stages that come into service that year and
+    when they had to be decided; why the year falls short because of storage and which stage is
+    missing (``storage_next``, its position from the new cell) with the ore it kept back
+    (``short_kt``); the declines whose design bottom the centroid passes that year. Empty when
+    there is nothing to say. ``stages`` lists (position, time, decided, assumed) of the stages."""
     parts = []
+    for position, time, decided, assumed in stages:
+        parts.append(f"нужна {storage_stage_name(position)}: в работе с {_moment(time)}, решение не позднее "
+                     f"{_moment(decided)}" + (" (допущение, проект не опубликован)" if assumed else ""))
     if link == "tailings":
-        parts.append("фабрика стоит: нет ёмкости хвостохранилища" if not shown else
-                     f"хвостохранилище заполнено в этом году: переработано {num(shown)} тыс. т")
+        missing = f"нужна {storage_stage_name(storage_next or 1)}"
+        if short_kt > 0:
+            missing += f" (не хватило места для хвостов ≈{num(short_kt)} тыс. т руды)"
+        parts.append(f"фабрика стоит: нет ёмкости хвостохранилища, {missing}" if not shown else
+                     f"хвостохранилище заполнено в этом году: переработано {num(shown)} тыс. т, {missing}")
     for label, bottom in crossed:
         parts.append(f"центр добычи ниже проектного дна уклона {label} ({num(bottom)} м): формула откатки "
                      f"считает горизонт доступным")
@@ -453,7 +504,7 @@ def binding_runs(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
 
 _FAILURE_RU = {
     "ventilation": "воздуха на новые самосвалы не хватает, а все ступени вентиляции уже введены (ствол ВС-3)",
-    "tailings": "ёмкость хвостохранилища исчерпана: нужна ёмкость сверх второй ступени",
+    "tailings": "ёмкость хвостохранилища исчерпана",
     "plant": "мощность фабрики на последней ступени",
     "stopes": "все ступени очистного фронта уже введены",
     "development": "проходка уклонов на последней ступени",
@@ -471,21 +522,32 @@ def hold_label(hold: Mapping[str, Any], last_year: int) -> str:
 
 
 def hold_text(target: float, hold: Mapping[str, Any], last_year: int, row: Optional[Mapping[str, Any]],
-              pending: Optional[Mapping[str, Any]]) -> str:
-    """One sentence on when the target is reached, how long it holds and what ends it."""
+              pending: Optional[Mapping[str, Any]], storage_next: Optional[int] = None) -> str:
+    """One sentence on when the target is reached, how long it holds and what ends it.
+
+    ``storage_next`` is the position (from the new cell) of the tailings stage that would be
+    needed next, named when storage ends the run."""
     head = f"Цель {num(target)} {U_KTPA}"
     reason = ""
     if row is not None:
         reason = (f"узкое место {EM_DASH} {row['binding_link_name'].lower()} "
                   f"({num(row['achievable_ktpa'])} тыс. т за год)")
-        if hold.get("failure_link"):
+        if hold.get("failure_link") == "tailings" and storage_next:
+            reason += f": ёмкость хвостохранилища исчерпана, нужна {storage_stage_name(storage_next)}"
+        elif hold.get("failure_link"):
             reason += f": {_FAILURE_RU.get(hold['failure_link'], link_lower(hold['failure_link']))}"
         elif pending:
             reason += f": мера ещё не введена {EM_DASH} {pending['text']} ({pending['in_service_text']})"
     if hold["reached_year"] is None:
-        return f"{head} не достигается до {last_year} г.: {reason}."
+        closest = f"ближе всего в {row['year']} г., " if row is not None else ""
+        return f"{head} не достигается до {last_year} г.: {closest}{reason}."
     text = f"{head} достигается в {hold['reached_year']} г. и держится до {hold['held_to_year']} г."
     if hold["holds"]:
+        if hold.get("failure_link"):   # the mine fell short before the end and the ROM stockpile made it up
+            why = _FAILURE_RU.get(hold["failure_link"], link_lower(hold["failure_link"]))
+            until = "в" if hold["failure_year"] >= last_year else "до"
+            text += (f" С {hold['failure_year']} г. рудник выдаёт меньше цели, {num(hold['failure_ktpa'])} {U_KTPA}: "
+                     f"{why}; {until} {last_year} г. фабрику добирает рудный склад.")
         return text
     text += f" В {hold['lost_year']} г. {reason}."
     if hold.get("again_year"):
@@ -514,12 +576,12 @@ def storage_horizon_note(stages: Sequence[Mapping[str, Any]], runs_out: Optional
         parts = []
         for stage in stages:
             what = ("новая карта" if stage["kind"] == "measure"
-                    else "вторая ступень (допущение, проект не опубликован)")
+                    else f"{_ordinal(stage['stage'] + 1)} ступень (допущение, проект не опубликован)")
             parts.append(f"{what} {EM_DASH} в работе с {_moment(stage['time'])} (решение не позднее "
                          f"{_moment(stage['decided'])})")
         text = "Хвостохранилище: " + "; ".join(parts) + "."
     if runs_out is not None:
-        text += f" В {runs_out} г. ёмкость кончается: нужна ёмкость сверх второй ступени"
+        text += f" В {runs_out} г. ёмкость кончается: нужна {storage_stage_name(len(stages) + 1)}"
         if short_kt > 0:
             text += f" (до {last_year} г. ещё ≈{num(short_kt)} тыс. т)"
         return text + "."
@@ -587,12 +649,15 @@ def economics_item(row: Mapping[str, Any]) -> Dict[str, Any]:
     text = (f"Цель {target} {U_KTPA}: {horizon['label']}; за {econ['first_year']}{DASH}{econ['last_year']} гг. "
             f"золота {'+' if totals['gain_koz'] > 0 else ''}{num(totals['gain_koz'], 1)} тыс. унц. к базе, маржа "
             f"после налога {num(totals['margin_after_tax_usd_m'], 1)} {U_USD_M}")
+    payback = after["payback_text"].rstrip(".")
+    if after["payback_reason"] != "paid_back":     # «окупается в 2029 г.» stands alone
+        payback = f"окупаемость {payback}"
     if econ["capex_disclosed"]:
         text += (f", капитальные затраты ≈{num(econ['capex_usd_m'])} {U_USD_M} (по расчёту компании, 3-й кв. "
                  f"2025 г.), чистая приведённая стоимость {num(after['npv_usd_m'], 1)} {U_USD_M} при "
-                 f"{num(econ['discount_rate_pct'])} %; окупаемость {after['payback_text'].rstrip('.')}.")
+                 f"{num(econ['discount_rate_pct'])} %; {payback}.")
     else:
-        text += f"; капитальные затраты не раскрыты; окупаемость {after['payback_text'].rstrip('.')}."
+        text += f"; капитальные затраты не раскрыты; {payback}."
     return _item("economics", "Экономика цели", U_USD_M, None, after["npv_usd_m"], NEUTRAL, text)
 
 

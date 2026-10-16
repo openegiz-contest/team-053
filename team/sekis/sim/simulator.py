@@ -16,7 +16,7 @@ from .mining import Mining
 from .params import Params
 from .surface import Dewatering, Plant, UNBOUNDED, Water
 from .timebase import Calendar, SECONDS_PER_DAY, SECONDS_PER_HOUR, parse_epoch
-from .traffic import Haulage, P_MAINT
+from .traffic import Haulage, P_MAINT, P_TO_PAD
 from .vod import Vod
 
 PERCENT = 100.0
@@ -311,7 +311,7 @@ class Simulator:
         for key, ramp in self.haul.ramps.items():
             ramp.closed = bool(getattr(state, f"{key}_closed"))
         self.haul.set_in_service([truck.name for truck in cap.active_trucks(model, state)], now)
-        self.haul.rehome()
+        self.haul.rehome(float(now))
         # stopes, LHDs, rigs
         self.mining.configure(len(cap.producing_stopes(model, state)),
                               [lhd.name for lhd in cap.active_lhds(model, state)],
@@ -402,6 +402,15 @@ class Simulator:
             self._vod_waiting_lhds = vod.waiting_lhds
             self.mining.set_held_lhds(self.held_lhds + self._vod_waiting_lhds)
 
+    def stand_minutes(self, mine_hours: float) -> float:
+        """Hours of the mine clock as minutes of the real clock at the compression ``speedup``
+        (the minutes a viewer of the Stand waits), rounded to 0.1 and kept between 0.1 and 999;
+        0 stands for "nothing to wait for"."""
+        if mine_hours <= 0.0 or self.speedup <= 0.0:
+            return 0.0
+        minutes = mine_hours * SECONDS_PER_HOUR / self.speedup / SECONDS_PER_MINUTE
+        return round(min(UNBOUNDED, max(0.1, minutes)), 1)
+
     def mine_state(self) -> str:
         if self.air_supply < self.p("vent.q_base"):
             return "evacuation"                 # the fans cannot carry even the base demand
@@ -463,7 +472,8 @@ class Simulator:
                 "inflow_m3h": round(self.dewater_spec.inflow_m3h, 1),
                 "pumped_m3h": round(self.water.r_mine.per_hour(), 1),
                 "flood_volume_m3": round(self.dewater.flood, 1),
-                **self.vod.mine_features()}
+                **self.vod.mine_features(),
+                "flood_eta_min": self.stand_minutes(self.dewater.hours_to_next_flooded_level())}
 
     def _air_by_level(self) -> Tuple[Dict[str, cap.LevelAir], Dict[str, float]]:
         """Air of the levels (``capacity.level_air``): the units working on each level now, the
@@ -572,17 +582,22 @@ class Simulator:
             tss = self.water.pond_features()[-1]["tss_out_mgl"] if permit.discharge_m3h > 0 else 0.0
             return {"state": self.water.outfall_state, "discharge_m3h": round(permit.discharge_m3h, 1),
                     "intake_m3h": 0.0, "tss_mgl": round(tss, 3),
-                    "permit_use_pct": round(permit.permit_use_pct, 1)}
+                    "permit_use_pct": round(permit.permit_use_pct, 1),
+                    "minutes_to_permit": self.stand_minutes(self.water.hours_to_permit())}
         return {"state": "normal", "discharge_m3h": 0.0,
-                "intake_m3h": round(self.water.r_intake.per_hour(), 1), "tss_mgl": 0.0, "permit_use_pct": 0.0}
+                "intake_m3h": round(self.water.r_intake.per_hour(), 1), "tss_mgl": 0.0, "permit_use_pct": 0.0,
+                "minutes_to_permit": 0.0}
 
     def _f_haul_truck(self, name: str) -> Dict[str, Any]:
         truck = self.haul.by_name[name]
         x, y, z, chainage, speed = self.haul.locate(truck, self.t)
         on_decline = chainage > 0.0 or truck.state in ("descending", "hauling_up", "waiting_bay")
+        decline = truck.ramp.key if truck.in_service and truck.ramp is not None else "none"
+        if decline != "none" and truck.phase == P_TO_PAD and truck.load_t <= 0.0:
+            decline = self.decline_of[name]     # empty on the way to the pad: the decline of its next trip
         return {"state": truck.state, "payload": round(truck.load_t, 1),
                 "grade": round(truck.grade if truck.load_t > 0 else 0.0, 3), "speed": round(speed, 1),
-                "decline": truck.ramp.key if truck.in_service and truck.ramp is not None else "none",
+                "decline": decline,
                 "chainage_m": round(chainage, 1) if on_decline else 0.0, "elevation": round(y, 1),
                 "pos_x": round(x, 1), "pos_y": round(y, 1), "pos_z": round(z, 1),
                 "trips_today": float(truck.trips_today), "tonnes_today": round(truck.tonnes_today, 1)}

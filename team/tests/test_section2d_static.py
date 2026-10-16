@@ -103,6 +103,28 @@ class SectionFilesTest(unittest.TestCase):
                     self.assertNotRegex(literal, phrase, f"{path}: {literal!r}")
         self.assertGreater(seen, 60)
 
+    def test_calm_sheet(self):
+        # Review round 3: declines under the stopes and quiet by default; no floating
+        # label that repeats a table cell, a fan label or the legend; the mine row shows
+        # the air delivered now against the demand of the units in work.
+        index = read(os.path.join(SECTION_DIR, "index.js"))
+        layers = re.search(r"const LAYERS = \[(.*?)\];", index).group(1)
+        order = re.findall(r"'(\w+)'", layers)
+        self.assertLess(order.index("declines"), order.index("stopes"))
+        css = read(os.path.join(SECTION_DIR, "section.css"))
+        self.assertIn(".sx-decline { --c: color-mix(in srgb, var(--ok) 58%, var(--sx-bg));", css)
+        self.assertIn(".sx-decline.lit", css)
+        underground = read(os.path.join(SECTION_DIR, "underground.js"))
+        self.assertNotIn("карьер (в проекции)", underground)
+        self.assertNotIn("stope.short, { class: 'sx-tag' }", underground)
+        self.assertIn("if (roomy && !fanned) {", underground)
+        tables = read(os.path.join(SECTION_DIR, "tables.js"))
+        self.assertIn("isNum(f.air_delivered_m3s) && isNum(f.vod_demand_m3s)", tables)
+        self.assertIn("`воздух: подаётся ${delivered}, нужно машинам в работе ${withUnit(needed, 'м³/с')}`", tables)
+        self.assertNotIn("`воздух ${fmt(f.air_demand_m3s, 0)} из ${withUnit(fmt(f.air_supply_m3s, 0), 'м³/с')}`", tables)
+        card = read(os.path.join(SECTION_DIR, "card.js"))
+        self.assertIn("mine: ['air_delivered_m3s', 'vod_demand_m3s',", card)
+
     def test_tokens_come_from_the_page(self):
         css = read(os.path.join(SECTION_DIR, "section.css"))
         for token in ("--ok", "--warn", "--fail", "--planned", "--idle", "--flood", "--text"):

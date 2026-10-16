@@ -264,12 +264,88 @@ class Haulage:
         self.active = fleet
         self._warming = False
 
-    def rehome(self) -> None:
-        """Trucks standing at the surface take the decline the scenario gives them at once; a
-        truck on a trip keeps its decline until it is back at the pad."""
+    def rehome(self, now: float) -> None:
+        """Trucks standing at the surface take the decline the scenario gives them at once. A
+        truck on a trip keeps its decline until it is back at the pad, except that no truck
+        enters a closed decline (spec 2.4). When a decline closes:
+
+        * a truck on the surface road to its portal turns round where it is and drives back to
+          the ROM pad, where it is dispatched through the open decline; one waiting at the
+          portal does the same (``_enter_down``);
+        * an empty truck going down turns back at the next node it reaches (the bay it waits in,
+          the next bay or the level access) and climbs out empty;
+        * an empty truck on a level (tramming to the stope or queueing) gives up its load and
+          climbs out empty;
+        * a truck being loaded finishes, and every truck climbing carries on up to the portal.
+
+        Every trip given up is booked as an aborted trip.
+        """
         for trk in self.trucks:
             if trk.phase in (P_PARKED, P_PAD, P_MAINT):
                 trk.ramp = self.ramps[self.sim.decline_of[trk.name]]
+            elif trk.ramp is not None and trk.ramp.closed:
+                if trk.phase == P_TO_PORTAL:
+                    self._turn_round(trk, now)
+                elif trk.phase == P_LEVEL_IN:
+                    span = trk.t_next - trk.t0
+                    driven = min(1.0, max(0.0, (now - trk.t0) / span)) if span > 0 else 1.0
+                    self._abort(trk, now)
+                    trk.t0 = float(now) - (1.0 - driven) * self.level_s   # back from where it is
+                    trk.t_next = trk.t0 + self.level_s
+                elif trk.phase in (P_QUEUE_DELAY, P_QUEUE):
+                    self._abort(trk, now)
+
+    def _turn_round(self, trk: Truck, now: float) -> None:
+        """A truck on the surface road to a closed portal drives back to the pad empty, from the
+        point it has reached (the road is the same both ways, at the empty speed)."""
+        span = trk.t_next - trk.t0
+        driven = min(1.0, max(0.0, (now - trk.t0) / span)) if span > 0 else 1.0
+        self._give_up(trk)
+        trk.phase = P_TO_PAD
+        trk.state = "surface_haul"
+        trk.waiting = False
+        trk.t0 = float(now) - (1.0 - driven) * trk.ramp.surface_empty_s
+        trk.t_next = trk.t0 + trk.ramp.surface_empty_s
+
+    def _give_up(self, trk: Truck) -> None:
+        """Release the stope of a trip the truck gives up before it reached the loading point."""
+        stope = trk.stope
+        if stope is not None:
+            if trk in stope.queue:
+                stope.queue.remove(trk)
+            stope.committed -= trk.payload_t
+            stope.assigned -= 1
+        self.aborted_trips += 1
+        trk.load_t = 0.0
+        trk.grade = 0.0
+
+    def _leave_closed(self, trk: Truck, now: float) -> None:
+        """A truck that would go down a closed decline turns back: at the portal it drives back
+        to the pad, in a bay or at a level access it frees the waiting slot and climbs out."""
+        ramp = trk.ramp
+        start = self._fresh(trk, now)
+        if trk.wait_since >= 0.0:
+            waited = start - trk.wait_since
+            self.bay_wait_s += waited
+            if waited > self.max_bay_wait_s:
+                self.max_bay_wait_s = waited
+            trk.wait_since = -1.0
+        self._give_up(trk)
+        i = trk.node
+        trk.t_ready = start
+        if i == 0:
+            trk.phase = P_TO_PAD
+            trk.state = "surface_haul"
+            trk.waiting = False
+            trk.t0 = start
+            trk.t_next = start + ramp.surface_empty_s
+            return
+        ramp.slot[i] = None
+        ramp.slot_free[i] = start
+        trk.seg = -1
+        trk.phase = P_UP_WAIT
+        trk.state = "hauling_up"
+        trk.waiting = True
 
     def _park(self, trk: Truck) -> None:
         trk.in_service = False
@@ -405,6 +481,9 @@ class Haulage:
 
     def _enter_down(self, trk: Truck, now: float) -> bool:
         ramp = trk.ramp
+        if ramp.closed:                      # no truck enters a closed decline
+            self._leave_closed(trk, now)
+            return True
         i = trk.node
         if ramp.up_count[i] == 0 and ramp.slot[i + 1] is None:
             entered = max(trk.t_ready, ramp.up_clear[i], ramp.slot_free[i + 1])
@@ -454,7 +533,7 @@ class Haulage:
     def _start_loading(self, trk: Truck, now: float) -> bool:
         stope = trk.stope
         sim = self.sim
-        if not stope.open_for_loading():
+        if not stope.open_for_loading() or trk.ramp.closed:
             self._abort(trk, now)
             return True
         if stope.queue[0] is not trk or stope.loading is not None:
@@ -473,7 +552,7 @@ class Haulage:
         return True
 
     def _abort(self, trk: Truck, now: float) -> None:
-        """The stope closed (air hold, flood, retired): the truck returns empty."""
+        """The stope closed (air hold, flood, retired) or the decline did: the truck returns empty."""
         stope = trk.stope
         if trk in stope.queue:
             stope.queue.remove(trk)
@@ -502,7 +581,7 @@ class Haulage:
                 self.conflicts += 1
             trk.node = i + 1
             trk.seg = -1
-            if trk.node == trk.target:
+            if trk.node == trk.target and not ramp.closed:
                 ramp.slot[trk.node] = None
                 ramp.slot_free[trk.node] = t
                 trk.phase = P_LEVEL_IN

@@ -627,6 +627,16 @@
     "unit": "years from the decision to service",
     "source": "ASSUMPTION: upper end of the 1-2 years of a new cell (ladder.m_tailings.lead_years): a second cell on new ground or a raise of an operating cell; not published"
   },
+  "tsf.measure_X3_t": {
+    "value": 6000000,
+    "unit": "t",
+    "source": "ASSUMPTION: NOT PUBLISHED: third tailings stage after the second (tsf.measure_X2_t; a further cell or a raise), added by the advisor's horizon by the same rule as the second when the second stage would be full before the end of the horizon, so that the plant of the 2.0 and 2.5 Mtpa targets does not stop for want of storage; sized like the new cell and the second stage (tsf.measure_X1_t) for want of any published design and costed like them (econ.tsf_capex_usd_per_t). The company reports only the expansion of dams 2 and 3 (FACT D1 'Tailings Dams 2 and 3'). Analytic only: the stage has no twin"
+  },
+  "tsf.measure_X3_lead_years": {
+    "value": 2.0,
+    "unit": "years from the decision to service",
+    "source": "ASSUMPTION: as the second stage (tsf.measure_X2_lead_years): the upper end of the 1-2 years of a new cell (ladder.m_tailings.lead_years); not published"
+  },
   "gold.g_per_oz": {
     "value": 31.1035,
     "unit": "g/oz",

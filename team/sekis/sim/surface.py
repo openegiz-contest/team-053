@@ -173,6 +173,28 @@ class Dewatering:
     def flooded_levels(self) -> Tuple[str, ...]:
         return tuple(name for name, threshold in self.flood_thresholds if self.flood > threshold)
 
+    def hours_to_next_flooded_level(self) -> float:
+        """Hours of the mine clock until the next level floods (``flood_thresholds`` in order),
+        0 when no level is threatened. A level is threatened while the inflow exceeds what the
+        pumps can send up (``capacity.Dewatering.flood_rate_m3h``); the free volume of both sumps
+        and the flood volume still missing to the next threshold fill at that surplus. The
+        storage moves ``flood_compression`` times faster than the mine clock once the episode is
+        on (``compression()``); before that only the sumps fill, at the mine clock, since water
+        in the workings starts the episode."""
+        threshold = next((volume for _, volume in self.flood_thresholds if self.flood <= volume), None)
+        if threshold is None:
+            return 0.0
+        surplus = self.sim.dewater_spec.flood_rate_m3h     # inflow the pumps cannot send up
+        if surplus <= EPS:
+            return 0.0
+        sumps_free = max(0.0, self.sump_main - self.v_main) + max(0.0, self.sump_lower - self.v_lower)
+        to_threshold = max(0.0, threshold - self.flood)
+        k = self.flood_compression
+        if self.compression() > 1.0:
+            return (sumps_free + to_threshold) / surplus / k
+        return sumps_free / surplus + to_threshold / surplus / k
+
+
     def station_features(self, name: str) -> Dict[str, Any]:
         sim = self.sim
         p = sim.p
@@ -410,6 +432,33 @@ class Water:
                              "tss_out_mgl": round(out, 3), "sludge_t_year": round(max(0.0, sludge), 2)})
             concentration = out
         return features
+
+    def hours_to_permit(self) -> float:
+        """Hours of the mine clock until the outfall exceeds the permit, 0 when it is over the
+        permit already or will not get there.
+
+        Once the ponds are full the outfall carries the steady surplus of the mine water the
+        pumps sustain (``Dewatering.pumped_m3h`` of ``capacity.dewatering``) over the draw. If
+        that surplus is above the permit, the time is the time the ponds take to fill (their free
+        volume at the surplus of the pumps' delivery now over the draw, or at the steady surplus
+        while the pumps are between runs) plus the time the rolling mean of the outfall
+        (``water.rolling_window_h``) takes to climb from its value now to the permit."""
+        sim = self.sim
+        p = sim.p
+        if self.outfall_state == "exceeded":
+            return 0.0
+        draw = self.r_draw.per_hour()
+        steady = sim.dewater_spec.pumped_m3h - draw
+        permit = float(p("water.permit_m3h"))
+        if steady <= permit + EPS:
+            return 0.0
+        fill_h = 0.0
+        free = self.volumes[0] + self.volumes[1] - self.stored[0] - self.stored[1]
+        if free > EPS:
+            filling = sim.dewater.out_main - draw     # delivery now, m3 per hour of the mine clock
+            fill_h = free / (filling if filling > EPS else steady)
+        climb_h = float(p("water.rolling_window_h")) * max(0.0, permit - self.r_discharge.per_hour()) / steady
+        return fill_h + climb_h
 
     def reserve_hours(self) -> float:
         """Hours the stored pond water covers the present draw."""

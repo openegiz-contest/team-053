@@ -88,7 +88,8 @@
         "fan_energy_shift_kwh": {"properties": {"value": 0.0}},
         "fan_saving_shift_kwh": {"properties": {"value": 0.0}},
         "fan_energy_day_kwh": {"properties": {"value": 0.0}},
-        "fan_saving_day_kwh": {"properties": {"value": 0.0}}
+        "fan_saving_day_kwh": {"properties": {"value": 0.0}},
+        "flood_eta_min": {"properties": {"value": 0.0}}
       }
     },
     {
@@ -257,7 +258,8 @@
         "discharge_m3h": {"properties": {"value": 0.0}},
         "intake_m3h": {"properties": {"value": 0.0}},
         "tss_mgl": {"properties": {"value": 0.0}},
-        "permit_use_pct": {"properties": {"value": 0.0}}
+        "permit_use_pct": {"properties": {"value": 0.0}},
+        "minutes_to_permit": {"properties": {"value": 0.0}}
       }
     },
     {
@@ -580,7 +582,8 @@
           "fan_energy_shift_kwh": "kWh",
           "fan_saving_shift_kwh": "kWh",
           "fan_energy_day_kwh": "kWh",
-          "fan_saving_day_kwh": "kWh"
+          "fan_saving_day_kwh": "kWh",
+          "flood_eta_min": "min"
         },
         "design_capacity_ktpa": 1000,
         "working_days": 360,
@@ -612,7 +615,8 @@
         "fan_energy_shift_kwh": {"properties": {"value": 0.0}},
         "fan_saving_shift_kwh": {"properties": {"value": 0.0}},
         "fan_energy_day_kwh": {"properties": {"value": 0.0}},
-        "fan_saving_day_kwh": {"properties": {"value": 0.0}}
+        "fan_saving_day_kwh": {"properties": {"value": 0.0}},
+        "flood_eta_min": {"properties": {"value": 0.0}}
       }
     },
     {
@@ -3284,7 +3288,7 @@
         "kind": "monitoring_point",
         "type": "kz.sekis.type:monitoring_point",
         "_parents": "kz.sekis:water",
-        "units": {"state": "", "discharge_m3h": "m3/h", "intake_m3h": "m3/h", "tss_mgl": "mg/l", "permit_use_pct": "%"},
+        "units": {"state": "", "discharge_m3h": "m3/h", "intake_m3h": "m3/h", "tss_mgl": "mg/l", "permit_use_pct": "%", "minutes_to_permit": "min"},
         "water_body": "ручей Волчевка",
         "permit_m3h": 218.8,
         "permit_ref": "Эмиссионное разрешение 2020 г., выпуск № 1"
@@ -3294,7 +3298,8 @@
         "discharge_m3h": {"properties": {"value": 0.0}},
         "intake_m3h": {"properties": {"value": 0.0}},
         "tss_mgl": {"properties": {"value": 0.0}},
-        "permit_use_pct": {"properties": {"value": 0.0}}
+        "permit_use_pct": {"properties": {"value": 0.0}},
+        "minutes_to_permit": {"properties": {"value": 0.0}}
       }
     },
     {
@@ -3308,7 +3313,7 @@
         "kind": "monitoring_point",
         "type": "kz.sekis.type:monitoring_point",
         "_parents": "kz.sekis:water",
-        "units": {"state": "", "discharge_m3h": "m3/h", "intake_m3h": "m3/h", "tss_mgl": "mg/l", "permit_use_pct": "%"},
+        "units": {"state": "", "discharge_m3h": "m3/h", "intake_m3h": "m3/h", "tss_mgl": "mg/l", "permit_use_pct": "%", "minutes_to_permit": "min"},
         "water_body": "р. Секисовка"
       },
       "features": {
@@ -3316,7 +3321,8 @@
         "discharge_m3h": {"properties": {"value": 0.0}},
         "intake_m3h": {"properties": {"value": 0.0}},
         "tss_mgl": {"properties": {"value": 0.0}},
-        "permit_use_pct": {"properties": {"value": 0.0}}
+        "permit_use_pct": {"properties": {"value": 0.0}},
+        "minutes_to_permit": {"properties": {"value": 0.0}}
       }
     },
     {

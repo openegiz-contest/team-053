@@ -179,7 +179,7 @@ export function createTerrain(block) {
 // for the labels, so that hidden workings are not picked or labelled through
 // opaque ground.
 
-export const XRAY_EDGE = [30, 330];   // m of line of sight inside the ellipsoid
+export const XRAY_EDGE = [20, 520];   // m of line of sight inside the ellipsoid (a wide, soft rim)
 export const XRAY_ALPHA = 0.34;       // opacity of the ground at the heart of the window
 export const XRAY_LIGHT = [1.22, 0.025];   // inside the window: colour * gain + lift
 

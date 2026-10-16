@@ -361,11 +361,14 @@ class TestFeatures(RegistryCase):
         self.assertEqual(feats("enterprise"), ["sim_time", "sim_day", "shift", "ore_mined_tpd", "ore_milled_tpd",
                                                "gold_poured_oz_day", "gold_poured_total_oz", "annual_rate_ktpa",
                                                "binding_link"])
-        self.assertEqual(len(feats("mine")), 25)   # 13 of spec 1.2 and 12 of ventilation on demand (spec 3.5)
+        # 13 of spec 1.2, 12 of ventilation on demand (spec 3.5) and the flood countdown
+        self.assertEqual(len(feats("mine")), 26)
         self.assertEqual(feats("mine")[13:], ["vod_state", "air_delivered_m3s", "vod_demand_m3s", "vod_units_waiting",
                                               "fan_power_kw", "fan_energy_today_kwh", "fan_saving_today_kwh",
                                               "fan_saving_today_kzt", "fan_energy_shift_kwh", "fan_saving_shift_kwh",
-                                              "fan_energy_day_kwh", "fan_saving_day_kwh"])
+                                              "fan_energy_day_kwh", "fan_saving_day_kwh", "flood_eta_min"])
+        self.assertEqual(feats("monitoring_point"), ["state", "discharge_m3h", "intake_m3h", "tss_mgl",
+                                                     "permit_use_pct", "minutes_to_permit"])
         self.assertEqual(feats("main_fan"), ["state", "air_flow_m3s", "duty_setpoint_m3s", "pressure", "power_kw"])
         self.assertEqual(len(feats("level")), 7)
         self.assertEqual(len(feats("stope")), 8)

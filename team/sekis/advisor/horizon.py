@@ -13,15 +13,25 @@ epoch. The horizon asks whether a target can be *held* over 2027-2036 and in whi
    and with the storage left? If not, it runs the constraint loop again at those conditions and
    decides further measures so that each is in service at the start of the step, never before
    its lead time after the epoch. Beyond the stages of the knobs the loop has one more truck at
-   a time (``State.extra_trucks``: the haulage that keeps pace with depth) and the second
-   tailings stage (``State.tailings_extra_t``, ``tsf.measure_X2_t``). When the loop runs out of
-   stages, the target cannot be held from that step on, and the measures that would not raise
-   the rate are not bought.
-3. In each step the mine hoists what its links allow (at the mid depth of the step), the plant
+   a time (``State.extra_trucks``: the haulage that keeps pace with depth) and the second and
+   third tailings stages (``State.tailings_extra_t``, ``tsf.measure_X2_t``, ``tsf.measure_X3_t``).
+   When the loop runs out of stages, the target cannot be held from that step on, and the
+   measures that would not raise the rate are not bought.
+3. Admission of units. A measure that brings diesel units into service (a stage of ``m_haul``
+   or ``m_stopes``, a depth truck) enters service at its time only if the air in service admits
+   its units: the hold rule of spec 2.6 parks whole units in a fixed order, so trucks or LHDs
+   that came before the fan they need would wait for air and park units of the base fleet, and
+   the chain would hoist less. Of the unit measures due in a step the planner brings in the set
+   (stages in order) with which the hold rule parks no further unit and the mine hoists no less,
+   choosing the most ore the plant in service can take, then the most measures; the others wait
+   for the next step (``Entry.earliest`` keeps the time their lead time allowed, ``Entry.waits``
+   the fans that came with them). So no step of a plan hoists less than the same mine without
+   those measures, and a measure whose units would wait for air to the end is not bought.
+4. In each step the mine hoists what its links allow (at the mid depth of the step), the plant
    mills what its links, the storage left and the ROM stockpile allow, the stockpile takes the
    difference (it is not refilled beyond its opening tonnage), the centroid drops by the ore
    hoisted (``capacity.centroid_after``) and the dams fill with the ore milled.
-4. ``economics`` values the extra gold against a reference, the mine as it is (no expansion
+5. ``economics`` values the extra gold against a reference, the mine as it is (no expansion
    measure, no disturbance) with only the storage it needs to keep running, at the price and
    AISC of ``params.json``, less the corporate income tax on the extra margin, with the
    published capex and, apart, the assumed costs of trucks and storage.
@@ -33,6 +43,7 @@ Standard library only.
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
@@ -45,7 +56,17 @@ __all__ = ["Horizon", "Entry", "DEPTH_TRUCK", "STORAGE", "ORIGIN_LADDER", "ORIGI
 
 #: Kinds of schedule entry beyond the ``measure`` and ``disturbance`` of ``engine``.
 DEPTH_TRUCK = "depth_truck"   # one more truck beyond the m_haul stage (State.extra_trucks)
-STORAGE = "storage"           # the second tailings stage (State.tailings_extra_t)
+STORAGE = "storage"           # a tailings stage beyond the new cell (State.tailings_extra_t)
+
+#: Measure knobs whose stages bring diesel units (trucks, LHDs) into service; with the depth
+#: trucks they are admitted only when the air admits their units (module docstring, item 3).
+UNIT_KNOBS = ("m_haul", "m_stopes")
+
+#: Parameters of the tailings stages beyond the new cell, in the order they are built:
+#: (storage, lead time). ``Entry.stage`` of a storage entry is its position here, from 1.
+STORAGE_STAGES = (("tsf.measure_X2_t", "tsf.measure_X2_lead_years"),
+                  ("tsf.measure_X3_t", "tsf.measure_X3_lead_years"))
+TONNE_EPS = 1.0   # comparison of storage tonnages, t; not a model number
 
 #: Why an entry is on the schedule.
 ORIGIN_CURRENT = "current"    # a stage of the current knob set
@@ -64,9 +85,14 @@ class Entry:
 
     ``time`` is the start of service in years (2027.5 = 1 July 2027), ``lead_years`` the time
     from the decision to service, so ``decided = time - lead_years``. ``stage`` is the new stage
-    of ``knob`` (a measure), the count of extra trucks after the entry (a depth truck) or 1 (the
-    storage stage). ``trucks`` and ``storage_t`` are the trucks and the storage it adds (for the
-    capex). ``changes`` are the knob changes of the Stand, empty for the horizon measures.
+    of ``knob`` (a measure), the count of extra trucks after the entry (a depth truck) or the
+    position of the storage stage in ``STORAGE_STAGES`` (1: the second tailings stage, 2: the
+    third). ``trucks`` and ``storage_t`` are the trucks and the storage it adds (for the capex).
+    ``changes`` are the knob changes of the Stand, empty for the horizon measures.
+
+    ``earliest`` is set for a unit measure that waited beyond its lead time because its units
+    would have waited for air (module docstring, item 3): the time its lead time allowed.
+    ``waits`` names, in Russian, the ventilation stage that came into service with it, if any.
     """
     time: float
     lead_years: float
@@ -79,10 +105,22 @@ class Entry:
     text: str
     trucks: int = 0
     storage_t: float = 0.0
+    earliest: Optional[float] = None
+    waits: str = ""
 
     @property
     def decided(self) -> float:
         return self.time - self.lead_years
+
+    @property
+    def units(self) -> bool:
+        """True for a measure that brings diesel units into service (module docstring, item 3)."""
+        return self.kind == DEPTH_TRUCK or (self.kind == MEASURE and self.knob in UNIT_KNOBS)
+
+    @property
+    def group(self) -> str:
+        """Entries of one group come into service in the order of their stages."""
+        return self.knob if self.kind == MEASURE else self.kind
 
 
 @dataclass(frozen=True)
@@ -195,6 +233,16 @@ class Horizon:
             changes["line_down"] = 0     # the line stopped for repair is not built yet at this time
         return base.replace(**knobs, **changes, extra_trucks=extra, tailings_extra_t=storage, flooded_levels=flooded)
 
+    def storage_stages_built(self, extra_t: float) -> int:
+        """How many stages of ``STORAGE_STAGES`` the storage beyond the registry, ``extra_t``, holds."""
+        built, total = 0, 0.0
+        for size_id, _ in STORAGE_STAGES:
+            total += float(self.model.p(size_id))
+            if extra_t + TONNE_EPS < total:
+                break
+            built += 1
+        return built
+
     # --- what one stage adds ---------------------------------------------------------------
 
     def _adds(self, knob: str, from_stage: int, to_stage: int) -> Tuple[int, float]:
@@ -291,14 +339,16 @@ class Horizon:
                          text=wording.measure_text(self.model, self.adv.names, link, res, after),
                          lead_years=float(p("ladder.depth_trucks.lead_years")), result=after, trucks=1)
         if link == "tailings" and state.m_tailings >= cap.knob_max(self.model, "m_tailings"):
-            if state.tailings_extra_t > 0:
+            stage = self.storage_stages_built(state.tailings_extra_t) + 1
+            if stage > len(STORAGE_STAGES):
                 return None
-            new = state.replace(tailings_extra_t=float(p("tsf.measure_X2_t")))
+            size_id, lead_id = STORAGE_STAGES[stage - 1]
+            size = float(p(size_id))
+            new = state.replace(tailings_extra_t=state.tailings_extra_t + size)
             after = self._physical(cap.evaluate(self.model, new))
-            return _Move(kind=STORAGE, link=link, knob=None, stage=1, changes={},
-                         text=wording.storage_stage_text(res, after, p("tsf.measure_X2_t")),
-                         lead_years=float(p("tsf.measure_X2_lead_years")), result=after,
-                         storage_t=float(p("tsf.measure_X2_t")))
+            return _Move(kind=STORAGE, link=link, knob=None, stage=stage, changes={},
+                         text=wording.storage_stage_text(res, after, size, stage),
+                         lead_years=float(p(lead_id)), result=after, storage_t=size)
         found = self.adv.next_step(res)
         if found is None:
             return None
@@ -324,6 +374,73 @@ class Horizon:
         if achievable_rounded(res) >= need:
             return moves, None
         return moves[:best_count], res
+
+    # --- admission of units (module docstring, item 3) ---------------------------------------
+
+    def _admit(self, base: cap.State, entries: List[Entry], time: float, depth: float, placed: float,
+               need: float) -> None:
+        """Bring in the unit measures due at ``time`` whose units the air admits; defer the rest.
+
+        Every set of the due unit measures that keeps the stages of each group in order is
+        evaluated with the measures already in service, at ``depth`` and ``placed``. A set is
+        admissible when the hold rule parks no unit that it does not park without the set and the
+        mine hoists no less. Of those, the set kept gives the most ore the plant in service can
+        take (the mine links, at most ``need``, rounded to 1 kt/yr), then has the most measures.
+        The measures left out move to the next step; ``entries`` is changed in place.
+        """
+        due = [index for index, entry in enumerate(entries) if entry.units and abs(entry.time - time) < EPS]
+        if not due:
+            return
+        groups: Dict[str, List[int]] = {}
+        for index in due:
+            groups.setdefault(entries[index].group, []).append(index)
+        order = {knob: rank for rank, knob in enumerate(cap.KNOBS)}
+        keys = sorted(groups, key=lambda key: order.get(key, len(order)))
+        for key in keys:
+            groups[key].sort(key=lambda index: entries[index].stage)
+        skip = set(due)
+        fixed = [entry for index, entry in enumerate(entries) if index not in skip and entry.time <= time + EPS]
+        # Depth trucks are trucks beyond the fleet of the m_haul stages: none before every stage is in.
+        haul_later = any(e.kind == MEASURE and e.knob == "m_haul" and e.time > time + EPS for e in entries)
+        best: Optional[Tuple[Tuple[int, int], Tuple[int, ...]]] = None
+        floor: Optional[Tuple[int, int]] = None      # rate and held units without any due measure
+        for counts in itertools.product(*(range(len(groups[key]) + 1) for key in keys)):
+            size = dict(zip(keys, counts))
+            if size.get(DEPTH_TRUCK) and (haul_later or size.get("m_haul", 0) < len(groups.get("m_haul", ()))):
+                continue
+            chosen = [entries[index] for key, count in zip(keys, counts) for index in groups[key][:count]]
+            res = self._evaluate(self.state_at(base, fixed + chosen, time), depth, placed)
+            rate = cap.round_kt(min(min(res.capacity_ktpa[link] for link in MINE_LINKS), need))
+            held = len(res.air.held_trucks) + len(res.air.held_lhds)
+            if floor is None:                        # the first set is the empty one
+                floor = (rate, held)
+            if held > floor[1] or rate < floor[0]:
+                continue
+            score = (rate, len(chosen))
+            if best is None or score > best[0]:      # ties: the first set in KNOBS order wins
+                best = (score, counts)
+        admitted = {index for key, count in zip(keys, best[1]) for index in groups[key][:count]}
+        for index in due:
+            entry = entries[index]
+            if index in admitted:
+                if entry.earliest is not None:
+                    entries[index] = replace(entry, waits=self._air_entering(entries, time))
+                continue
+            entries[index] = replace(entry, time=time + self.dt,
+                                     earliest=entry.time if entry.earliest is None else entry.earliest)
+
+    def _air_entering(self, entries: Sequence[Entry], time: float) -> str:
+        """The fans a ventilation stage or repair brings into service at ``time``, in Russian."""
+        fans: List[str] = []
+        stages = self.model.p("ladder.m_vent.fans")
+        for entry in entries:
+            if entry.link != "ventilation" or abs(entry.time - time) >= EPS:
+                continue
+            if entry.kind == MEASURE:
+                fans += [fan for fan in stages[entry.stage] if fan not in stages[entry.stage - 1]]
+            elif entry.kind == DISTURBANCE and entry.knob == "fan_vs2_off":
+                fans.append("fan-vs2")
+        return wording.fan_names(self.adv.names, fans)
 
     # --- one step of the mine ----------------------------------------------------------------
 
@@ -363,14 +480,14 @@ class Horizon:
         base = self._base(start)
         after: Dict[str, float] = {}
         entries: List[Entry] = []
-        sequence: List[Entry] = []
+        sequence: List[int] = []     # positions in ``entries`` of the steps of the sequence
         if not reference:
             entries += self._current_entries(start, after)
             plan = self.adv.plan(start, target)
-            sequence = [self._entry(step, self.t0, ORIGIN_LADDER, after) for step in plan.steps]
-            entries += sequence
-            entries += self._repairs(start, {e.knob for e in sequence if e.kind == DISTURBANCE})
-        run = _Run(target_ktpa=target, reference=reference, entries=entries, flows=[], sequence=sequence)
+            sequence = list(range(len(entries), len(entries) + len(plan.steps)))
+            entries += [self._entry(step, self.t0, ORIGIN_LADDER, after) for step in plan.steps]
+            entries += self._repairs(start, {entries[i].knob for i in sequence if entries[i].kind == DISTURBANCE})
+        run = _Run(target_ktpa=target, reference=reference, entries=entries, flows=[])
         centroid = p("stope.centroid_baseline_m") if start.centroid_m is None else start.centroid_m
         placed, stock = start.tailings_placed_t, stockpile_t
         for index in range(self.years * self.per_year):
@@ -391,10 +508,12 @@ class Horizon:
                 entries += [self._entry(move, time, ORIGIN_HORIZON, after) for move in moves]
                 if failed is not None:
                     run.failures.append((time, failed.binding_link, achievable_rounded(failed)))
-                actual = self.state_at(base, entries, time)
+            self._admit(base, entries, time, look_depth, placed, need)
+            actual = self.state_at(base, entries, time)
             flow = self._flow(time, actual, centroid, placed, stock, stockpile_t)
             run.flows.append(flow)
             centroid, placed, stock = flow.centroid_m, flow.placed_t, flow.stock_t
+        run.sequence = [entries[i] for i in sequence]
         entries.sort(key=lambda e: e.time)   # stable: entries of one time keep the order they were decided in
         return run
 
@@ -406,6 +525,7 @@ class Horizon:
         rows: List[Dict[str, Any]] = []
         gold_total = 0.0
         bottoms = {key: p(f"decline.{key}.design_bottom_m") for key in model.declines}
+        stages = self._storage_entries(run)
         for year_index in range(self.years):
             year = self.adv.first_year + year_index
             part = run.flows[year_index * self.per_year:(year_index + 1) * self.per_year]
@@ -422,6 +542,10 @@ class Horizon:
             start_centroid = part[0].centroid_m + part[0].mined_t / p("dev.t_per_vm")
             crossed = [key for key, bottom in bottoms.items() if start_centroid >= bottom > last.centroid_m]
             entering = [e for e in run.entries if year - EPS <= e.time < year + 1 - EPS]
+            built = sum(1 for e in stages if e.time <= last.time + EPS)
+            new_stages = [(self.storage_position(e), e.time, e.decided, e.kind == STORAGE)
+                          for e in stages if year - EPS <= e.time < year + 1 - EPS]
+            short_kt = round(sum(f.storage_short_t for f in part) / cap.KILO)
             rows.append({
                 "year": year,
                 "achievable_ktpa": shown,
@@ -445,13 +569,36 @@ class Horizon:
                 "halves": [{"time": f.time, "milled_kt": round(f.milled_t / cap.KILO, 1),
                             "binding_link": f.link, "mine_link": f.mine_link} for f in part],
                 "measures": [self.entry_dict(e) for e in entering],
+                "storage_short_kt": short_kt,
                 "note": wording.horizon_note(limiting.link, shown, cap.round_kt(limiting.mine_ktpa),
-                                             [(wording.decline_label(names, key), bottoms[key]) for key in crossed]),
+                                             [(wording.decline_label(names, key), bottoms[key]) for key in crossed],
+                                             storage_next=built + 1, short_kt=short_kt, stages=new_stages),
             })
         return rows
 
+    @staticmethod
+    def _storage_entries(run: _Run) -> List[Entry]:
+        """The tailings stages of a run (the new cell and the stages beyond it), in time order."""
+        return sorted((e for e in run.entries if e.link == "tailings" and e.kind in (MEASURE, STORAGE)),
+                      key=lambda e: e.time)
+
+    @staticmethod
+    def storage_position(entry: Entry) -> int:
+        """Position of a tailings stage counted from the new cell (1): 2 for the second stage."""
+        return entry.stage + 1 if entry.kind == STORAGE else entry.stage
+
+    def in_horizon(self, entry: Entry) -> bool:
+        """True when the entry comes into service before the end of the horizon."""
+        return entry.time < self.t0 + self.years - EPS
+
     def entry_dict(self, entry: Entry) -> Dict[str, Any]:
-        """An entry of the schedule as JSON."""
+        """An entry of the schedule as JSON.
+
+        ``deferred_from`` is the time its lead time allowed when a unit measure waited for air
+        (``None`` otherwise), ``waits_for`` the fans that came into service with it, and
+        ``in_horizon`` false for a unit measure whose units the air does not admit by the end of
+        the horizon (it is not bought)."""
+        inside = self.in_horizon(entry)
         return {"time": entry.time, "year": int(math.floor(entry.time + EPS)), "kind": entry.kind,
                 "link": entry.link, "link_name": wording.link_name(entry.link), "knob": entry.knob,
                 "stage": entry.stage, "set": dict(entry.changes), "origin": entry.origin,
@@ -459,14 +606,22 @@ class Horizon:
                 "trucks": entry.trucks, "storage_kt": round(entry.storage_t / cap.KILO),
                 "when": wording.when_text(entry.time, self.t0),
                 "when_short": wording.when_short(entry.time, self.t0),
-                "in_service_text": wording.in_service_text(entry.time, entry.lead_years, self.t0)}
+                "deferred_from": entry.earliest,
+                "deferred_from_short": (wording.when_short(entry.earliest, self.t0)
+                                        if entry.earliest is not None else None),
+                "waits_for": entry.waits or None,
+                "in_horizon": inside,
+                "in_service_text": wording.in_service_text(entry.time, entry.lead_years, self.t0, entry.earliest,
+                                                           entry.waits, inside, self.last_year)}
 
     # --- hold analysis -------------------------------------------------------------------------
 
     def _hold(self, run: _Run, rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """The first year the target is met, the last year of that run, and why it ends."""
+        """The first year the target is met, the last year of that run, and why it ends; for a
+        target never met, the year that came closest (``best_year``) and why it fell short."""
         met = [row["target_met"] for row in rows]
         years = [row["year"] for row in rows]
+        best = max(rows, key=lambda row: row["achievable_ktpa"])     # the first of equal years
         reached = next((year for year, ok in zip(years, met) if ok), None)
         held_to = None
         if reached is not None:
@@ -478,10 +633,12 @@ class Horizon:
         again = None
         if lost_year is not None:
             again = next((year for year, ok in zip(years, met) if ok and year > lost_year), None)
-        check_year = lost_year if lost_year is not None else (None if reached is not None else self.last_year)
+        check_year = lost_year if lost_year is not None else (None if reached is not None else best["year"])
         failure = None
         if check_year is not None:
             failure = next((f for f in run.failures if f[0] < check_year + 1 - EPS), None)
+        elif holds and run.failures:   # held to the end, but the mine fell short and the stockpile made it up
+            failure = run.failures[0]
         lost_row = rows[years.index(check_year)] if check_year is not None else None
         pending = []
         if lost_row is not None and failure is None:   # short because a measure is not in service yet
@@ -497,10 +654,13 @@ class Horizon:
             "failure_year": (int(math.floor(failure[0] + EPS)) if failure else None),
             "failure_link": failure[1] if failure else None,
             "failure_ktpa": failure[2] if failure else None,
+            "best_year": best["year"],
+            "best_ktpa": best["achievable_ktpa"],
         }
         hold["label"] = wording.hold_label(hold, self.last_year)
         hold["text"] = wording.hold_text(run.target_ktpa, hold, self.last_year, lost_row,
-                                         self.entry_dict(pending[0]) if pending else None)
+                                         self.entry_dict(pending[0]) if pending else None,
+                                         storage_next=len(self._storage_entries(run)) + 1)
         return hold
 
     # --- public ------------------------------------------------------------------------------
@@ -535,8 +695,8 @@ class Horizon:
         rows = self._rows(run)
         hold = self._hold(run, rows)
         schedule = [self.entry_dict(e) for e in run.entries]
-        extra = [e for e in run.entries if e.kind == DEPTH_TRUCK]
-        stages = [e for e in run.entries if e.link == "tailings" and e.kind in (MEASURE, STORAGE)]
+        extra = [e for e in run.entries if e.kind == DEPTH_TRUCK and self.in_horizon(e)]
+        stages = self._storage_entries(run)
         runs_out = next((row["year"] for row in rows if row["binding_link"] == "tailings"), None)
         short_kt = sum(f.storage_short_t for f in run.flows) / cap.KILO
         doc = {
@@ -614,7 +774,7 @@ class Horizon:
         for entry in entries:
             amount = (entry.trucks * p("econ.truck_capex_usd_m")
                       + entry.storage_t * p("econ.tsf_capex_usd_per_t") / MILLION)
-            if amount <= 0:
+            if amount <= 0 or not self.in_horizon(entry):   # not in service by the end: not bought
                 continue
             for year, value in self._spread(entry, amount).items():
                 by_year[year] = by_year.get(year, 0.0) + value
@@ -648,7 +808,7 @@ class Horizon:
         covered = {entry.stage for entry in run.entries if entry.kind == MEASURE and entry.knob == "m_plant"
                    and totals[entry.stage] in p("econ.capex_expansion_targets_ktpa")} if published_items else set()
         not_costed = [self.entry_dict(e) for e in run.entries
-                      if e.kind == MEASURE and e.trucks == 0 and e.storage_t <= 0
+                      if e.kind == MEASURE and e.trucks == 0 and e.storage_t <= 0 and self.in_horizon(e)
                       and not (e.knob == "m_plant" and e.stage in covered)]
         years: List[Dict[str, Any]] = []
         sums = {key: 0.0 for key in ("gold_oz", "reference_oz", "gain_oz", "revenue", "margin", "tax", "margin_after",

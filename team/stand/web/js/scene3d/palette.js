@@ -19,8 +19,8 @@ const SCENE = {
   pit: '#e2d6bb',            // bench crest lines and the rim of the old pit
   pitFloor: '#b9ad94',
   skirt: '#2a343d',
-  soil: '#40382a',            // backdrop of the x-ray window near the surface
-  soilDeep: '#1b1915',        // … and at depth
+  soil: '#5c5850',            // backdrop of the x-ray window near the surface: warm grey, near the ground's tone
+  soilDeep: '#3e3c37',        // … and at depth, a little darker
   pad: '#27313b',
   site: '#efe6d2',           // outlines of sites on the image: plant, pad, yard, industrial zone
   tsfCell: '#cfc4ab',        // tailings cells without a dam number

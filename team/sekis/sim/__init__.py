@@ -164,9 +164,19 @@ What the displayed values mean
       stored underground (sumps and flood volume) changes ``water.flood_compression`` (24) times
       faster than the mine clock; flows and the surface keep the mine clock. Levels flood at the
       volumes of their workings (``water.flood_threshold_*``).
-    * ``haul_truck.decline`` is the decline the truck works through (``none`` when parked);
+    * ``haul_truck.decline`` is the decline the truck works through (``none`` when parked; an
+      empty truck on its way back to the pad shows the decline of its next trip);
       ``chainage_m`` is metres from the portal along the drawn decline, 0 off the decline.
+    * A closed decline takes no truck: a truck on the surface road to its portal turns round
+      at once and is dispatched at the pad through the open decline; an empty truck going down
+      turns back at the next bay or level access; empty trucks on its levels give up the trip;
+      a truck being loaded and every truck climbing carry on up to the portal (``Haulage.rehome``).
     * ``pump_station.hours_to_overflow`` is 0 when the sump is not rising or already full.
+    * Countdowns, in minutes of the real clock at the compression ``speedup`` (the wait of a
+      viewer of the Stand; at 60 one minute is one hour of the mine clock), 0 when nothing is
+      coming: ``mine.flood_eta_min`` until the next level floods (``lvl-m050``, then
+      ``lvl-000``), ``monitoring_point.minutes_to_permit`` until the outfall exceeds its permit
+      (0 once it has, and always 0 at the river intake).
     * ``settling_pond.retention_h`` is the water held in the pond over the flow through it: with
       ps-p150 failed it counts the reserve down in hours.
     * Unbounded hours and years are published as 999.

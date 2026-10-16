@@ -25,7 +25,10 @@
 // landscape or the image arriving, the frame is drawn at once (see drawNow).
 // `?debug=1` in the page address shows triangle and draw-call counts;
 // `?view=<preset>` (mine, declines, vent, water, plant) opens the scene in a
-// preset; without it the scene opens on the declines (DEFAULT_VIEW).
+// preset; without it the scene opens on the whole mine (DEFAULT_VIEW).
+//
+// Calm by default: few labels (see relabel), the declines a thin quiet line
+// drawn behind the stopes unless they are the subject (see declineLooks).
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -37,7 +40,7 @@ import { LANDSCAPE_URL, buildLandscape } from './landscape.js';
 import { buildNetwork } from './network.js';
 import { PLINTH, PUMP_SIZE, buildUnitModels } from './models.js';
 import { createPalette } from './palette.js';
-import { buildStatics } from './statics.js';
+import { buildDeclines, buildStatics } from './statics.js';
 import {
   TEXTURE_URL, XRAY_EDGE, chordInEllipsoid, createTerrain, groundOpacity, terrainMaterial, xrayBackdrop,
 } from './terrain.js';
@@ -54,6 +57,8 @@ const RING_STATES = new Set(['waiting_bay', 'held_vent', 'standby_vent', 'mainte
 const HELD_STATES = new Set(['held_vent', 'standby_vent']);   // a unit waiting for air
 const IDLE_STOPE = new Set(['standby', 'planned', 'preparation', 'backfilling']);
 const ALARM_TONES = new Set(['fail', 'flood', 'warn']);
+// A quiet decline: its state colour mixed this far towards the idle grey, then darkened.
+const QUIET_DECLINE = [0.42, 0.95];
 // Drawn length of a working unit at the preset distances, in CSS pixels of a
 // scene about 820 px high (a smaller scene gets up to 28 % less). Closer than
 // FULL_SIZE_AT the minimum shrinks, so that near units return to their true
@@ -67,25 +72,52 @@ const MAX_JUMP = 1900;   // m: a longer move between two samples is shown as a j
 const MAX_PITCH = 14 * Math.PI / 180;   // a unit is drawn pitched along a decline, never steeper
 
 // Camera presets: the target, the direction the camera looks from (azimuth
-// from the south towards the east, elevation above the horizon) and distance.
+// from the south towards the east, elevation above the horizon) and distance;
+// `width` (m across the target) moves the camera back as far as a narrow scene
+// needs to keep that width in the frame.
 // The workings lie under the old pit (x -470 … +360, z -180 … +210: shafts north
 // of the pit, declines in the footwall south of it); the plant is 0.9 km
 // east-north-east and the tailings 1.1–1.5 km north-east of the pit.
 const VIEWS = {
-  mine: { target: [-30, 70, 40], azimuth: -24, elevation: 27, distance: 2350 },
+  // The old pit, the workings under it and the plant east-north-east of it, at once.
+  mine: { target: [300, 190, -60], azimuth: 18, elevation: 26, distance: 1750, width: 1700 },
   declines: { target: [40, 175, 30], azimuth: -12, elevation: 24, distance: 1900 },
   vent: { target: [-60, 200, 0], azimuth: 30, elevation: 24, distance: 1700 },
   water: { target: [40, 200, 10], azimuth: -38, elevation: 25, distance: 1750 },
   plant: { target: [560, 440, -820], azimuth: -28, elevation: 34, distance: 2350 },
 };
 
-// The scene opens on the declines: both of them, the trucks on them and the
-// portal yard, whatever the trucks are doing at that moment; `?view=` opens
-// another preset.
-const DEFAULT_VIEW = 'declines';
+// The scene opens on the whole mine; `?view=` opens another preset.
+const DEFAULT_VIEW = 'mine';
 
-// Which kinds get a label first in each preset (0–100). Abnormal states and
-// the selected twin are labelled in every preset.
+// Labels. By default only these are labelled: the selected twin and the one
+// under the pointer, twins in an abnormal state, the orientation set
+// (ORIENTATION, and the pit), and the subject of the preset (PRESET_SUBJECT)
+// or, in the «Рудник» preset, which has none, the twins of the binding link of
+// the advisor. Every other twin and the named places are labelled only when
+// the camera is closer than LABEL_NEAR_M to them.
+const LABEL_NEAR_M = 820;
+const ORIENTATION = new Set(['decline', 'plant', 'tailings_facility']);
+const PRESET_SUBJECT = {
+  declines: new Set(['decline', 'haul_truck']),
+  vent: new Set(['main_fan', 'shaft', 'raise']),
+  water: new Set(['pump_station', 'monitoring_point', 'settling_pond']),
+  plant: new Set(['plant', 'tailings_facility', 'rom_stockpile', 'tailings_dam']),
+};
+// The twins of each link of the advisor (advisor.binding_link).
+const BINDING_KINDS = {
+  haulage: new Set(['decline', 'haul_truck']),
+  ventilation: new Set(['main_fan', 'shaft', 'raise']),
+  stopes: new Set(['stope']),
+  development: new Set(['decline', 'drill_rig']),
+  dewatering: new Set(['pump_station']),
+  plant: new Set(['plant', 'plant_line', 'rom_stockpile']),
+  water: new Set(['settling_pond', 'monitoring_point']),
+  tailings: new Set(['tailings_facility', 'tailings_dam']),
+};
+const CORE_WEIGHT = 50;   // the least weight of a label of the default set
+
+// Which kinds get a label first in each preset (0–100), among the labels shown.
 const LABEL_WEIGHTS = {
   mine: { decline: 90, plant: 85, tailings_facility: 85, rom_stockpile: 75, pump_station: 62, shaft: 50,
     stope: 55, haul_truck: 45 },
@@ -105,13 +137,16 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 
-function viewPosition(view) {
+/** Camera position of a preset for a scene of the given aspect (width / height). */
+function viewPosition(view, aspect = 2) {
   const a = view.azimuth * DEG;
   const e = view.elevation * DEG;
+  const fit = view.width ? view.width / 2 / (Math.tan((FOV * DEG) / 2) * Math.max(0.3, aspect)) : 0;
+  const distance = Math.max(view.distance, fit);
   return new THREE.Vector3(
-    view.target[0] + view.distance * Math.sin(a) * Math.cos(e),
-    view.target[1] + view.distance * Math.sin(e),
-    view.target[2] + view.distance * Math.cos(a) * Math.cos(e));
+    view.target[0] + distance * Math.sin(a) * Math.cos(e),
+    view.target[1] + distance * Math.sin(e),
+    view.target[2] + distance * Math.cos(a) * Math.cos(e));
 }
 
 /** Bake the face shade into a colour attribute, so that the mesh needs no light. */
@@ -217,6 +252,16 @@ export async function mount(container, geometry) {
   // Behind the workings, seen through the x-ray window: soil, not the page.
   const backdrop = new THREE.Mesh(new THREE.BufferGeometry(), basic({ side: THREE.BackSide }));
   backdrop.visible = false;
+  backdrop.renderOrder = -2;
+  // The declines: drawn first after the backdrop and without depth, so that the
+  // stopes, the level drives and the units are drawn over them wherever they
+  // cross on the screen; the ground still covers them (statics.buildDeclines).
+  const declineMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic({ depthWrite: false }));
+  const declineLines = new THREE.LineSegments(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ vertexColors: true, depthWrite: false }));
+  declineMesh.renderOrder = -1;
+  declineLines.renderOrder = -1;
+  let declineBuilt = null;
   const solidMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic());
   // The fills are pulled a little towards the eye: a low fill level that meets the ground does not flicker.
   const fillMesh = new THREE.Mesh(new THREE.BufferGeometry(),
@@ -259,7 +304,7 @@ export async function mount(container, geometry) {
   stock.visible = Boolean(stockObject);
   if (stockObject) stock.position.fromArray(stockObject.base);
 
-  scene.add(solidMesh, fillMesh, thinLines, ghostLines, rulerLines, boxes.mesh, cones.mesh, stock, plates.mesh, water,
+  scene.add(declineMesh, declineLines, solidMesh, fillMesh, thinLines, ghostLines, rulerLines, boxes.mesh, cones.mesh, stock, plates.mesh, water,
     backdrop, ground, rings.mesh, pumps.mesh, ...Object.values(units).map((unit) => unit.mesh));
 
   // ---------------------------------------------------------- live state
@@ -330,6 +375,7 @@ export async function mount(container, geometry) {
     backdrop.geometry = wall || new THREE.BufferGeometry();
     backdrop.visible = Boolean(wall);
     statics = next;
+    declineKey = null;   // the decline faces may have moved
   }
 
   // -------------------------------------------------------------- camera
@@ -342,17 +388,21 @@ export async function mount(container, geometry) {
   controls.maxDistance = 5200;
   controls.maxPolarAngle = 100 * DEG;
   controls.target.fromArray(VIEWS[presetId].target);
-  camera.position.copy(viewPosition(VIEWS[presetId]));
+  camera.position.copy(viewPosition(VIEWS[presetId], camera.aspect));
   controls.update();
   let fly = null;
+  // Until the camera is moved, the opening preset is re-framed for the scene size.
+  let cameraMoved = false;
   controls.addEventListener('change', () => {
     dirty = true;
   });
   controls.addEventListener('start', () => {
     fly = null;   // a drag takes over from a camera flight
+    cameraMoved = true;
   });
 
   function flyTo(target, position, duration = 700) {
+    cameraMoved = true;
     fly = {
       fromTarget: controls.target.clone(), toTarget: target.clone(),
       fromPosition: camera.position.clone(), toPosition: position.clone(),
@@ -377,6 +427,10 @@ export async function mount(container, geometry) {
     if (cleared) renderer.setSize(pixelWidth, pixelHeight, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
+    if (!cameraMoved) {
+      camera.position.copy(viewPosition(VIEWS[presetId], camera.aspect));
+      controls.update();
+    }
     labels.setSize(width, height);
     dirty = true;
     labelsDueAt = 0;
@@ -394,7 +448,7 @@ export async function mount(container, geometry) {
     presetId = id;
     overlay.setPreset(id);
     const view = VIEWS[id];
-    flyTo(new THREE.Vector3().fromArray(view.target), viewPosition(view));
+    flyTo(new THREE.Vector3().fromArray(view.target), viewPosition(view, camera.aspect));
     derive(performance.now(), false);
     labelsDueAt = 0;
   }
@@ -483,6 +537,47 @@ export async function mount(container, geometry) {
     list.push({ key, path, cum, length, size, color, speed, count: Math.max(2, Math.round(length / spacing)) });
   }
 
+  /**
+   * How each decline is drawn: strong (a tube in its state colour, with its bays
+   * and turns) in the «Уклоны» preset, when it is closed, or when it or a truck
+   * on it is selected; otherwise a thin line, open green or closed red turned
+   * quieter (less saturated, darker), so that it does not run over the stopes.
+   */
+  function declineLooks(dimmed) {
+    const truck = selectedId && things[selectedId] && things[selectedId].kind === 'haul_truck' ? F(selectedId).decline : null;
+    const truckDecline = typeof truck === 'string' && truck !== 'none' ? NS + 'decline-' + truck : null;
+    const looks = new Map();
+    let key = '';
+    for (const [id, o] of Object.entries(objects)) {
+      if (o.kind !== 'decline') continue;
+      const f = F(id);
+      const tone = typeof f.state === 'string' ? stateTone(f.state, 'decline') : 'ok';
+      const selected = id === selectedId;
+      const strong = presetId === 'declines' || tone === 'fail' || selected || id === truckDecline;
+      const color = palette.tone(tone).clone();
+      if (selected) color.lerp(white, 0.45);
+      else if (!strong) color.lerp(palette.tone('idle'), QUIET_DECLINE[0]).multiplyScalar(QUIET_DECLINE[1] * (dimmed.decline ? 0.85 : 1));
+      else if (dimmed.decline && tone !== 'fail') color.multiplyScalar(dimmed.decline);
+      looks.set(id, { color, strong });
+      key += `${id}:${strong ? 1 : 0}:${color.getHexString()}:${Math.round(live.bottom(id))};`;
+    }
+    return { looks, key };
+  }
+
+  let declineKey = null;
+  function updateDeclines(dimmed) {
+    const { looks, key } = declineLooks(dimmed);
+    if (key === declineKey) return;
+    declineKey = key;
+    const next = buildDeclines(geometry, live, looks);
+    declineMesh.geometry.dispose();
+    declineMesh.geometry = next.mesh.geometry;
+    declineLines.geometry.dispose();
+    declineLines.geometry = next.lines.geometry;
+    declineBuilt = next;
+    dirty = true;
+  }
+
   /** Recompute colours and all non-moving instances from the twin state. */
   function derive(now, fresh) {
     if (!statics) return;
@@ -543,6 +638,7 @@ export async function mount(container, geometry) {
         box(o.center[0], o.center[1] - o.size[1] / 2 + h / 2 + 0.2, o.center[2],
           o.size[0] * 0.985, h, o.size[2] * 0.95, fill, id, fx);
       } else if (o.kind === 'decline') {
+        // The portal; the drive is drawn by updateDeclines.
         if (tone) paint(statics.solid, id, palette.tone(tone), selected, dimmed.decline);
       } else if (o.kind === 'shaft' || o.kind === 'raise') {
         if (ghost) continue;
@@ -668,6 +764,7 @@ export async function mount(container, geometry) {
     else if (volume > 0 && Number.isFinite(lowest)) waterTarget = lowest - 7 + Math.min(9, volume / 35);
     else waterTarget = null;
 
+    updateDeclines(dimmed);
     overlay.setAlerts({
       air: nextPlates.some((plate) => plate.color === palette.tone('warn')),   // the legend of the amber levels
       flood: waterTarget !== null,
@@ -778,16 +875,32 @@ export async function mount(container, geometry) {
     return surface ? 'over' : 'clear';
   }
 
+  /**
+   * True when a twin is labelled by default, at any distance: the orientation
+   * set, the subject of the preset, or, in a preset without one, a twin of the
+   * binding link (a stope or a level of it only while it works).
+   */
+  function inDefaultSet(o, state, binding) {
+    if (ORIENTATION.has(o.kind)) return true;
+    if (PRESET_SUBJECT[presetId]) return PRESET_SUBJECT[presetId].has(o.kind);
+    if (!binding) return false;
+    if (o.kind === 'stope') return binding.has('stope') && !IDLE_STOPE.has(state) && state !== 'planned';
+    if (o.kind === 'level') return binding === BINDING_KINDS.development && state === 'development';
+    return binding.has(o.kind);
+  }
+
   function relabel() {
     if (!statics || !size.width) return;
     const weights = LABEL_WEIGHTS[presetId] || LABEL_WEIGHTS.mine;
     const options = { gradeMode };
     const candidates = [];
+    const binding = BINDING_KINDS[F(NS + 'advisor').binding_link] || null;
     for (const id of Object.keys(objects)) {
       const thing = things[id];
       const o = objects[id];
       if (!thing) continue;
       const selected = id === selectedId;
+      const hovered = id === hoverId;
       const v = vehicles.get(id);
       let position = labelPositions.get(id);
       if (v) {
@@ -806,30 +919,41 @@ export async function mount(container, geometry) {
       // yields to the workings and is faded. A fault is always shown, faded
       // only behind a hill; the selected twin is always shown in full.
       const alarm = !routine && ALARM_TONES.has(status.tone);
-      const sight = selected ? 'clear' : anchorSight(position);
+      const distance = camera.position.distanceTo(position);
+      // Calm by default: the rest is labelled under the pointer or close to the camera.
+      const core = inDefaultSet(o, state, binding);
+      if (!selected && !hovered && !alarm && !core && distance > LABEL_NEAR_M) continue;
+      const sight = selected || hovered ? 'clear' : anchorSight(position);
       if (sight === 'hidden' && !alarm) continue;
       let weight = weights[o.kind] || 0;
+      if (core) weight = Math.max(weight, CORE_WEIGHT);
       if (o.kind === 'stope' && IDLE_STOPE.has(state)) weight = 0;
       if (state === 'planned') weight *= 0.5;   // a project is named only where it is the subject
       if (state === 'active' && weight) weight += 8;   // the dam being filled comes before the idle ones
-      let score = weight + 45 * clamp(1 - camera.position.distanceTo(position) / 700, 0, 1);
+      let score = weight + 45 * clamp(1 - distance / 700, 0, 1);
       if (!routine) score += status.tone === 'fail' ? 300 : status.tone === 'flood' ? 260 : status.tone === 'warn' ? 180 : 0;
       if (labels.isShown(id)) score += 6;       // a shown label is not swapped for an equal one
       const dim = alarm ? sight === 'hidden' : sight === 'behind';
       if (sight === 'behind' && !alarm) score -= 30;
       if (selected) score += 10000;
+      else if (hovered) score += 5000;
       if (score < 40) continue;
       candidates.push({
         id, position, score, selected, dim, name: shortName(id, things), line: status.text, tone: status.tone,
         title: thing.name || '', align: o.kind === 'level' ? 'right' : 'above',
       });
     }
-    // Named places of the image (village, river, stream): context, after every
-    // twin, and never over the x-ray window or behind a hill.
+    // Named places: the pit is one of the orientation labels (over the x-ray
+    // window, so it may stand there); the village, the river and the stream
+    // are context, labelled only close to the camera, after every twin, and
+    // never over the x-ray window or behind a hill.
     for (const place of statics.places) {
       const position = labelPositions.get(place.id);
-      if (!position || anchorSight(position) !== 'clear') continue;
-      candidates.push({ id: place.id, position, score: 20 + (labels.isShown(place.id) ? 6 : 0), selected: false,
+      if (!position) continue;
+      const sight = anchorSight(position);
+      if (place.orient ? sight === 'hidden' : sight !== 'clear' || camera.position.distanceTo(position) > LABEL_NEAR_M) continue;
+      const score = (place.orient ? CORE_WEIGHT + 5 : 20) + (labels.isShown(place.id) ? 6 : 0);
+      candidates.push({ id: place.id, position, score, selected: false, dim: false,
         name: place.name, line: place.line, tone: 'place', title: place.name, align: 'above' });
     }
     labelCount = labels.layout(candidates, camera, size.width, size.height, overlay.reserved());
@@ -902,7 +1026,8 @@ export async function mount(container, geometry) {
     raycaster.setFromCamera(pointer, camera);
     const instances = pickable.map((item) => item.mesh);
     const surface = ground.visible ? [groundPick] : [];
-    for (const hit of raycaster.intersectObjects([solidMesh, fillMesh, ...instances, stock, ...surface], false)) {
+    const tubes = declineBuilt ? [declineMesh] : [];
+    for (const hit of raycaster.intersectObjects([solidMesh, fillMesh, ...tubes, ...instances, stock, ...surface], false)) {
       if (hit.object === groundPick) {
         // Opaque ground ends the search; through the x-ray cut the ray goes on.
         if (groundOpacity(hit.point.toArray(), camera.position.toArray(), statics.xray) > 0.6) return null;
@@ -910,6 +1035,7 @@ export async function mount(container, geometry) {
       }
       const key = hit.object === solidMesh ? statics.solid.keyOfFace(hit.faceIndex)
         : hit.object === fillMesh ? statics.fills.keyOfFace(hit.faceIndex)
+          : hit.object === declineMesh ? declineBuilt.mesh.keyOfFace(hit.faceIndex)
           : hit.object === stock ? stockId : pickable[instances.indexOf(hit.object)].ids[hit.instanceId];
       const id = key ? key.split('#')[0] : null;   // a part such as the pond of a dam names its twin
       if (id && objects[id]) return id;
@@ -927,6 +1053,13 @@ export async function mount(container, geometry) {
 
   let press = null;
   let hoverAt = 0;
+  let hoverId = null;   // the twin under the pointer: labelled while it is there
+  function setHover(id) {
+    if (id === hoverId) return;
+    hoverId = id;
+    labelsDueAt = 0;
+    dirty = true;
+  }
   const onPointerDown = (event) => {
     controls.enableZoom = true;
     // The label is noted now: the controls capture the pointer, so the release
@@ -952,13 +1085,16 @@ export async function mount(container, geometry) {
     const now = performance.now();
     if (now - hoverAt < 140) return;
     hoverAt = now;
-    const onLabel = event.target instanceof Element && event.target.closest('.s3d-label');
-    const hover = onLabel || pickAt(event.clientX, event.clientY) ? '1' : '0';
+    const onLabel = event.target instanceof Element ? event.target.closest('.s3d-label') : null;
+    const id = onLabel ? onLabel.dataset.thing || null : pickAt(event.clientX, event.clientY);
+    const hover = onLabel || id ? '1' : '0';
     if (root.dataset.hover !== hover) root.dataset.hover = hover;
+    setHover(id && objects[id] ? id : null);
   };
   const onPointerLeave = () => {
     controls.enableZoom = false;
     delete root.dataset.hover;
+    setHover(null);
   };
   root.addEventListener('pointerdown', onPointerDown);
   root.addEventListener('pointerup', onPointerUp);
@@ -1372,6 +1508,7 @@ export async function mount(container, geometry) {
       /** Put the camera at `position` looking at `target` (close-ups for review), and draw. */
       look(target, position) {
         fly = null;
+        cameraMoved = true;
         controls.target.fromArray(target);
         camera.position.fromArray(position);
         camera.lookAt(controls.target);   // closer than the orbit limit allows: no controls.update()

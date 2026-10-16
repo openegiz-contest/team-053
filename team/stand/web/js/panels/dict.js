@@ -237,6 +237,8 @@ export const FEATURE_RU = {
   air_velocity_ms: 'Скорость воздуха', pressure: 'Давление', power_kw: 'Потребляемая мощность',
   sump_level_pct: 'Уровень в водосборнике', pumps_running: 'Насосов в работе',
   pumps_available: 'Насосов исправно', hours_to_overflow: 'До переполнения', payload: 'Груз',
+  flood_eta_min: 'До затопления следующего горизонта (мин на стенде)',
+  minutes_to_permit: 'До превышения разрешения на сброс (мин на стенде)',
   speed: 'Скорость', decline: 'Уклон', chainage_m: 'Расстояние от портала', elevation: 'Отметка',
   pos_x: 'Координата X', pos_y: 'Координата Y', pos_z: 'Координата Z',
   trips_today: 'Рейсов с 08:00', tonnes_today: 'Тонн с 08:00', stope: 'Очистной блок',
@@ -309,7 +311,7 @@ export const LINK_ATTR_RU = {
 
 // Features whose meaning differs between kinds of twin (the same id, another basis).
 const FEATURE_RU_BY_KIND = {
-  mine: { air_demand_m3s: 'Потребность работающих машин в воздухе' },
+  mine: { air_demand_m3s: 'Потребность парка на полной нагрузке (без ждущих воздуха)' },
   advisor: { air_demand_m3s: 'Потребность всего парка в воздухе' },
   enterprise: { gold_poured_oz_day: 'Выплавка золота за 24 ч' },
   plant: { gold_poured_oz_day: 'Выплавка золота, темп последних 2 ч', feed_tph: 'Питание сейчас' },
@@ -385,7 +387,7 @@ const FEATURE_DIGITS = {
   sim_day: 1, grade: 2, feed_grade: 2, grade_gpt: 2, recovery_pct: 2, inflow_factor: 2,
   dewatering_margin: 2, gold_koz_year: 1, gold_gain_koz_year: 1, tailings_years_left: 1,
   years_left: 1, air_margin_pct: 1, tss_out_mgl: 2, tss_mgl: 2, tss_in_mgl: 3,
-  hours_to_overflow: 1, retention_h: 1, avg_cycle_min: 1, air_velocity_ms: 1,
+  hours_to_overflow: 1, retention_h: 1, avg_cycle_min: 1, air_velocity_ms: 1, flood_eta_min: 1, minutes_to_permit: 1,
   air_demand_m3s: 1, air_flow_m3s: 1, air_required_m3s: 1, feed_tph: 1, days_of_feed: 0,
   air_delivered_m3s: 1, vod_demand_m3s: 1, duty_setpoint_m3s: 1, fan_power_kw: 0, fan_energy_today_kwh: 0,
   fan_saving_today_kwh: 0, fan_saving_today_kzt: 0, fan_energy_shift_kwh: 0, fan_saving_shift_kwh: 0,
@@ -549,23 +551,35 @@ export function heldUnitsText(counts) {
 }
 
 /**
- * Air of the mine as the page states it. Two demands are named apart:
- * «потребность работающих машин» (mine.air_demand_m3s, the units not held) and
- * «потребность всего парка» (the advisor's demand of every unit in service).
- * `short` is true while any unit waits for air or the mine is restricted_air.
+ * Air of the mine as the page states it. The air now is `delivered`
+ * (mine.air_delivered_m3s, what the main fans deliver under ventilation on demand)
+ * against `inWork` (mine.vod_demand_m3s, the demand of the units in work now; in a
+ * blast window or between the blocks only the base demand). The design figures of
+ * the hold rule are named apart: `supply` (mine.air_supply_m3s, the fans at their
+ * design duty), `workingDemand` (mine.air_demand_m3s, every unit not held at full
+ * work) and «потребность всего парка» `fleetDemand` (the advisor's demand of every
+ * unit in service). Without the ventilation-on-demand features (an older state)
+ * the delivered air falls back to the supply and the demand in work to
+ * workingDemand. `short` is true while any unit waits for air or the mine is
+ * restricted_air.
  */
 export function airStatus(things, advisor) {
   const mine = (things && things[NS + 'mine'] && things[NS + 'mine'].f) || {};
   const counts = unitCounts(things);
   const held = counts.heldUnits || (isNum(mine.units_held_vent) ? mine.units_held_vent : 0);
   const fleetDemand = advisor && advisor.kpi && isNum(advisor.kpi.airDemand) ? advisor.kpi.airDemand : null;
+  const supply = isNum(mine.air_supply_m3s) ? mine.air_supply_m3s : null;
+  const workingDemand = isNum(mine.air_demand_m3s) ? mine.air_demand_m3s : null;
   return {
     short: held > 0 || mine.state === 'restricted_air',
     held,
     counts,
-    supply: isNum(mine.air_supply_m3s) ? mine.air_supply_m3s : null,
-    workingDemand: isNum(mine.air_demand_m3s) ? mine.air_demand_m3s : null,
+    supply,
+    workingDemand,
     fleetDemand,
+    delivered: isNum(mine.air_delivered_m3s) ? mine.air_delivered_m3s : supply,
+    inWork: isNum(mine.vod_demand_m3s) ? mine.vod_demand_m3s : workingDemand,
+    vod: typeof mine.vod_state === 'string' ? mine.vod_state : null,
     margin: isNum(mine.air_margin_pct) ? mine.air_margin_pct : null,
   };
 }

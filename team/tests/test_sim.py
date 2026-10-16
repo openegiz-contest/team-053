@@ -25,6 +25,7 @@ from sekis import capacity as cap  # noqa: E402
 from sekis import geometry  # noqa: E402
 from sekis.sim import (MISSING_PARAMS, TUNED_PARAMS, PublishPlanner, STRING_FEATURES, Simulator,  # noqa: E402
                        ditto_modify, telemetry_topic)
+from sekis.sim import traffic  # noqa: E402
 from sekis.sim.timebase import Rolling, bucket_for  # noqa: E402
 
 REGISTRY = json.loads((TEAM / "model" / "registry.json").read_text(encoding="utf-8"))
@@ -953,6 +954,66 @@ class TestDisturbances(SimCase):
         self.assertEqual(snap["decline-tu2"]["state"], "open")
         self.assertEqual([snap[n]["decline"] for n in TRUCKS[:5]], ["tu2"] * 4 + ["tu1"])
 
+    def test_no_truck_enters_a_closed_decline(self):
+        """Closing TU-2 at 10:00 (spec 2.4): the truck on the surface road to the portal turns
+        round where it is, the empty truck going down turns back at the next bay, the loaded truck
+        climbs out; no truck goes down a segment of TU-2 or onto one of its levels after the
+        closure, and TU-2 is clear within 20 minutes."""
+        sim = new_sim()
+        sim.advance(30)                               # 10:00
+        ramp = sim.haul.ramps["tu2"]
+        trucks = sim.haul.by_name
+        self.assertEqual(trucks["truck-04"].phase, traffic.P_TO_PORTAL)
+        self.assertEqual(trucks["truck-02"].phase, traffic.P_DOWN)
+        self.assertEqual(trucks["truck-01"].phase, traffic.P_UP)
+        self.assertGreater(trucks["truck-01"].load_t, 0.0)
+        before = copy_snapshot(sim)
+        aborted = sim.haul.aborted_trips
+        sim.apply_scenario({"tu2_closed": 1})
+        after = sim.snapshot()
+        # the truck on the surface road turns round at once, from where it is
+        self.assertEqual(trucks["truck-04"].phase, traffic.P_TO_PAD)
+        self.assertEqual(after["truck-04"]["state"], "surface_haul")
+        self.assertEqual(after["truck-04"]["decline"], "tu1")
+        for axis in ("pos_x", "pos_y", "pos_z"):
+            self.assertAlmostEqual(after["truck-04"][axis], before["truck-04"][axis], delta=0.2)
+        allowed = {(trk.name, trk.seg) for trk in sim.haul.trucks
+                   if trk.ramp is ramp and trk.phase == traffic.P_DOWN}   # finish the segment they are in
+        self.assertEqual(allowed, {("truck-02", 9)})
+        seen_02 = []
+        clear_at = None
+        for step in range(1, 30 * 6 + 1):
+            sim.advance(1 / 6)                        # one 10-second step
+            for trk in sim.haul.trucks:
+                if trk.ramp is not ramp:
+                    continue
+                if trk.phase == traffic.P_DOWN:
+                    self.assertIn((trk.name, trk.seg), allowed, f"{trk.name} went down the closed TU-2")
+                self.assertNotIn(trk.phase, (traffic.P_LEVEL_IN, traffic.P_QUEUE, traffic.P_LOADING),
+                                 f"{trk.name} entered a level of the closed TU-2")
+            if trucks["truck-02"].phase != (seen_02[-1] if seen_02 else None):
+                seen_02.append(trucks["truck-02"].phase)
+            busy = [trk.name for trk in sim.haul.active if trk.ramp is ramp
+                    and (trk.phase in traffic._ON_RAMP or trk.phase in traffic._ON_LEVEL)
+                    and not (trk.phase == traffic.P_DOWN_WAIT and trk.node == 0)]
+            if not busy and clear_at is None:
+                clear_at = step / 6
+                self.assertEqual(sim.snapshot()["decline-tu2"]["trucks_on_ramp"], 0.0)
+        self.assertIsNotNone(clear_at, "TU-2 still has trucks 30 minutes after the closure")
+        self.assertLess(clear_at, 20.0)
+        # truck-02 turned back at the bay it was driving to and climbed out empty
+        self.assertEqual(seen_02[0], traffic.P_DOWN)
+        self.assertIn(seen_02[1], (traffic.P_UP_WAIT, traffic.P_UP))
+        self.assertIn(traffic.P_TO_PAD, seen_02)
+        self.assertEqual(trucks["truck-02"].load_t, 0.0)
+        self.assertGreaterEqual(sim.haul.aborted_trips - aborted, 2)    # truck-04 and truck-02
+        self.assertEqual(sim.haul.conflicts, 0)
+        self.assertGreater(trucks["truck-01"].trips_today, before["truck-01"]["trips_today"])
+        # the stopes keep no commitment from the trips given up
+        for stope in sim.mining.producing:
+            self.assertGreaterEqual(stope.committed, 0.0, stope.name)
+            self.assertGreaterEqual(stope.assigned, 0, stope.name)
+
     def test_close_tu1_sends_its_truck_through_tu2(self):
         sim = new_sim()
         sim.advance(100)
@@ -1596,6 +1657,73 @@ def overflow_minute(sim):
         if sim.water.total["discharge"] > before:
             return minute
     raise AssertionError("the ponds did not overflow within two days")
+
+
+class TestCountdowns(SimCase):
+    """The waits to the next consequence of a slow disturbance, in minutes of the real clock at
+    the compression ``speedup`` (60: one real minute is one hour of the mine clock)."""
+
+    def test_flood_eta_counts_down_to_each_level_after_the_pump_station_fails(self):
+        sim = new_sim()
+        sim.advance(26 * 60)
+        self.assertEqual(sim.snapshot()["mine"]["flood_eta_min"], 0.0)       # nothing threatened
+        sim.apply_scenario({"pumps_failed_p150": 3})
+        eta = {"lvl-m050": [], "lvl-000": []}
+        flooded = {}
+        for minute in range(0, 11 * 60):
+            snap = sim.snapshot(["mine", "lvl-m050", "lvl-000"])
+            for level in ("lvl-m050", "lvl-000"):
+                if snap[level]["state"] == "flooded":
+                    flooded.setdefault(level, minute)
+            if snap["mine"]["flood_eta_min"] > 0:
+                level = "lvl-m050" if "lvl-m050" not in flooded else "lvl-000"
+                eta[level].append((minute, snap["mine"]["flood_eta_min"]))
+            sim.advance(1)
+        self.assertEqual(set(flooded), {"lvl-m050", "lvl-000"})
+        self.assertEqual(sim.snapshot()["mine"]["flood_eta_min"], 0.0)       # every threshold passed
+        for level, rows in eta.items():
+            values = [value for _, value in rows]
+            self.assertEqual(values, sorted(values, reverse=True), f"{level}: the countdown goes up")
+            # the wait stated at its first minute matches the minute the level flooded (mine
+            # hours = real minutes at x60), within 3 % or 0.2 min
+            minute, value = rows[0]
+            actual = (flooded[level] - minute) / 60
+            self.assertAlmostEqual(value, actual, delta=max(0.2, 0.03 * actual), msg=f"{level}: {rows[0]}")
+        self.assertTrue(3.0 <= eta["lvl-m050"][0][1] <= 4.0, eta["lvl-m050"][0])   # about 3.5 min at x60
+
+    def test_outfall_minutes_to_permit_counts_down_in_the_flood(self):
+        sim = new_sim()
+        sim.advance(26 * 60)
+        self.assertEqual(sim.snapshot()["mon-volchevka"]["minutes_to_permit"], 0.0)
+        sim.apply_scenario({"inflow_factor": 2.18})
+        rows = []
+        exceeded = None
+        for minute in range(0, 8 * 60):
+            snap = sim.snapshot(["mon-volchevka", "mon-sekisovka"])
+            self.assertEqual(snap["mon-sekisovka"]["minutes_to_permit"], 0.0)
+            if snap["mon-volchevka"]["state"] == "exceeded":
+                exceeded = minute
+                self.assertEqual(snap["mon-volchevka"]["minutes_to_permit"], 0.0)
+                break
+            rows.append((minute, snap["mon-volchevka"]["minutes_to_permit"]))
+            sim.advance(1)
+        self.assertIsNotNone(exceeded)
+        values = [value for _, value in rows]
+        self.assertTrue(all(value > 0 for value in values), "the countdown stops before the permit is exceeded")
+        self.assertEqual(values, sorted(values, reverse=True))
+        self.assertAlmostEqual(values[0], exceeded / 60, delta=0.15 * exceeded / 60)   # within 15 % at the start
+        self.assertAlmostEqual(values[len(values) // 2], (exceeded - rows[len(rows) // 2][0]) / 60, delta=0.3)
+
+    def test_the_wait_follows_the_time_compression(self):
+        sim = new_sim()
+        sim.advance(26 * 60)
+        sim.apply_scenario({"pumps_failed_p150": 3})
+        at_60 = sim.snapshot()["mine"]["flood_eta_min"]
+        sim.speedup = 120.0                           # SIM_SPEEDUP=120: twice as fast, half the wait
+        sim._snapshot_tick = -1
+        self.assertAlmostEqual(sim.snapshot()["mine"]["flood_eta_min"], at_60 / 2, delta=0.1)
+        self.assertEqual(sim.stand_minutes(2.0), 1.0)
+        self.assertEqual(sim.stand_minutes(0.0), 0.0)
 
 
 class TestResponseTimes(SimCase):

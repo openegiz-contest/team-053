@@ -590,8 +590,8 @@
     },
     {
       "type": "stat",
-      "title": "Воздух: потребность и подача",
-      "description": "Потребность рудника в свежем воздухе и подача главных вентиляторов (mine.air_demand_m3s, mine.air_supply_m3s).",
+      "title": "Воздух сейчас",
+      "description": "Подаётся — воздух, который главные вентиляторы подают сейчас при вентиляции по потребности (mine.air_delivered_m3s); нужно машинам в работе — потребность работающих сейчас машин с базовой потребностью (mine.vod_demand_m3s). Проектная подача вентиляторов — mine.air_supply_m3s.",
       "datasource": {
         "type": "influxdb",
         "uid": "opentwins-influxdb"
@@ -603,7 +603,7 @@
             "type": "influxdb",
             "uid": "opentwins-influxdb"
           },
-          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_air_demand_m3s_properties_value\": \"Потребность\",\n  \"kz.sekis:mine/value_air_supply_m3s_properties_value\": \"Подача\"\n]\norder = [\"kz.sekis:mine/value_air_demand_m3s_properties_value\": 1, \"kz.sekis:mine/value_air_supply_m3s_properties_value\": 2]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_air_demand_m3s_properties_value\" or r._field == \"value_air_supply_m3s_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:mine/value_air_delivered_m3s_properties_value\": \"Подаётся\",\n  \"kz.sekis:mine/value_vod_demand_m3s_properties_value\": \"Нужно машинам в работе\",\n  \"kz.sekis:mine/value_air_supply_m3s_properties_value\": \"Проектная подача\"\n]\norder = [\"kz.sekis:mine/value_air_delivered_m3s_properties_value\": 1, \"kz.sekis:mine/value_vod_demand_m3s_properties_value\": 2, \"kz.sekis:mine/value_air_supply_m3s_properties_value\": 3]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_air_delivered_m3s_properties_value\" or r._field == \"value_air_supply_m3s_properties_value\" or r._field == \"value_vod_demand_m3s_properties_value\")\n      and (r.thingId == \"kz.sekis:mine\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
         }
       ],
       "fieldConfig": {
@@ -658,7 +658,7 @@
     {
       "type": "stat",
       "title": "Рудный склад",
-      "description": "Руда на складе перед фабрикой и на сколько суток полного питания фабрики её хватит, если рудник не подаёт руду (rom-stockpile.tonnes, rom-stockpile.days_of_feed). Это не срок исчерпания склада при текущем балансе рудника и фабрики: его показывает советник на стенде («Рудный склад», расход в сутки).",
+      "description": "«До исчерпания» — через сколько суток рудный склад опустеет, если фабрика перерабатывает больше, чем выдаёт рудник (advisor.stockpile_days_left, расчётные мощности; та же величина, что «Рудный склад» советника на стенде; «не убывает», когда склад не уменьшается). «Без подачи руды» — на сколько суток полного питания фабрики хватит руды на складе, если рудник не подаёт руду совсем (rom-stockpile.days_of_feed).",
       "datasource": {
         "type": "influxdb",
         "uid": "opentwins-influxdb"
@@ -670,7 +670,7 @@
             "type": "influxdb",
             "uid": "opentwins-influxdb"
           },
-          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:rom-stockpile/value_tonnes_properties_value\": \"Запас руды\",\n  \"kz.sekis:rom-stockpile/value_days_of_feed_properties_value\": \"Склад: суток питания без подачи руды\"\n]\norder = [\"kz.sekis:rom-stockpile/value_tonnes_properties_value\": 1, \"kz.sekis:rom-stockpile/value_days_of_feed_properties_value\": 2]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_days_of_feed_properties_value\" or r._field == \"value_tonnes_properties_value\")\n      and (r.thingId == \"kz.sekis:rom-stockpile\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+          "query": "import \"dict\"\n\nnames = [\n  \"kz.sekis:advisor/value_stockpile_days_left_properties_value\": \"До исчерпания\",\n  \"kz.sekis:rom-stockpile/value_days_of_feed_properties_value\": \"Без подачи руды\"\n]\norder = [\"kz.sekis:advisor/value_stockpile_days_left_properties_value\": 1, \"kz.sekis:rom-stockpile/value_days_of_feed_properties_value\": 2]\n\nfrom(bucket: \"default\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"mqtt_consumer\"\n      and (r._field == \"value_days_of_feed_properties_value\" or r._field == \"value_stockpile_days_left_properties_value\")\n      and (r.thingId == \"kz.sekis:advisor\" or r.thingId == \"kz.sekis:rom-stockpile\"))\n  |> map(fn: (r) => ({_time: r._time, _value: r._value,\n      _field: dict.get(dict: names, key: r.thingId + \"/\" + r._field, default: \"\"),\n      _a: dict.get(dict: order, key: r.thingId + \"/\" + r._field, default: 0)}))\n  |> filter(fn: (r) => r._field != \"\")\n  |> group(columns: [\"_a\", \"_field\"])\n  |> sort(columns: [\"_time\"])\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
         }
       ],
       "fieldConfig": {
@@ -696,19 +696,37 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Запас руды"
+              "options": "До исчерпания"
             },
             "properties": [
               {
                 "id": "unit",
-                "value": "suffix: т"
+                "value": "suffix: сут"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "не убывает",
+                        "index": 0
+                      }
+                    }
+                  }
+                ]
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Склад: суток питания без подачи руды"
+              "options": "Без подачи руды"
             },
             "properties": [
               {

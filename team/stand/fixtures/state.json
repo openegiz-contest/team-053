@@ -78,7 +78,8 @@
      "fan_energy_shift_kwh": "kWh",
      "fan_saving_shift_kwh": "kWh",
      "fan_energy_day_kwh": "kWh",
-     "fan_saving_day_kwh": "kWh"
+     "fan_saving_day_kwh": "kWh",
+     "flood_eta_min": "min"
     },
     "design_capacity_ktpa": 1000,
     "working_days": 360,
@@ -110,7 +111,8 @@
     "fan_energy_shift_kwh": 2049.3,
     "fan_saving_shift_kwh": 638.7,
     "fan_energy_day_kwh": 21573.3,
-    "fan_saving_day_kwh": 5306.7
+    "fan_saving_day_kwh": 5306.7,
+    "flood_eta_min": 0.0
    }
   },
   "kz.sekis:lvl-p320": {
@@ -2044,9 +2046,9 @@
     "decline": "tu2",
     "chainage_m": 2231.0,
     "elevation": 50.0,
-    "pos_x": -372.3,
+    "pos_x": -200.0,
     "pos_y": 50.0,
-    "pos_z": -84.5,
+    "pos_z": 65.5,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -2090,9 +2092,9 @@
     "decline": "tu2",
     "chainage_m": 1146.1,
     "elevation": 181.3,
-    "pos_x": -9.2,
+    "pos_x": 133.1,
     "pos_y": 181.3,
-    "pos_z": 62.5,
+    "pos_z": 204.8,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -2182,9 +2184,9 @@
     "decline": "tu2",
     "chainage_m": 968.3,
     "elevation": 202.8,
-    "pos_x": -122.3,
+    "pos_x": 20.0,
     "pos_y": 202.8,
-    "pos_z": 62.5,
+    "pos_z": 204.8,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -2228,9 +2230,9 @@
     "decline": "tu1",
     "chainage_m": 3140.0,
     "elevation": 50.0,
-    "pos_x": -372.3,
+    "pos_x": -200.0,
     "pos_y": 50.0,
-    "pos_z": -84.5,
+    "pos_z": 65.5,
     "trips_today": 2.0,
     "tonnes_today": 90.0
    }
@@ -2585,9 +2587,9 @@
     "state": "idle",
     "stope": "stp-p150-1",
     "tonnes_today": 336.0,
-    "pos_x": -372.3,
+    "pos_x": -200.0,
     "pos_y": 150.0,
-    "pos_z": -84.5
+    "pos_z": 65.49999999999997
    }
   },
   "kz.sekis:lhd-02": {
@@ -2618,9 +2620,9 @@
     "state": "idle",
     "stope": "stp-p100-1",
     "tonnes_today": 336.0,
-    "pos_x": -372.3,
+    "pos_x": -200.0,
     "pos_y": 100.0,
-    "pos_z": -84.5
+    "pos_z": 65.50000000000003
    }
   },
   "kz.sekis:lhd-03": {
@@ -2651,9 +2653,9 @@
     "state": "loading_truck",
     "stope": "stp-p050-1",
     "tonnes_today": 336.0,
-    "pos_x": -372.3,
+    "pos_x": -200.0,
     "pos_y": 50.0,
-    "pos_z": -84.5
+    "pos_z": 65.49999999999997
    }
   },
   "kz.sekis:lhd-04": {
@@ -2684,9 +2686,9 @@
     "state": "mucking",
     "stope": "stp-000-1",
     "tonnes_today": 336.0,
-    "pos_x": -372.3,
+    "pos_x": -200.0,
     "pos_y": 0.0,
-    "pos_z": -84.5
+    "pos_z": 65.50000000000003
    }
   },
   "kz.sekis:lhd-05": {
@@ -2913,9 +2915,9 @@
     "state": "drilling",
     "stope": "stp-p100-1",
     "metres_today": 52.8,
-    "pos_x": -342.3,
+    "pos_x": -170.0,
     "pos_y": 100.0,
-    "pos_z": -84.5
+    "pos_z": 65.50000000000003
    }
   },
   "kz.sekis:rig-02": {
@@ -2944,9 +2946,9 @@
     "state": "tramming",
     "stope": "none",
     "metres_today": 21.6,
-    "pos_x": -378.8,
+    "pos_x": -297.65,
     "pos_y": 100.0,
-    "pos_z": 40.0
+    "pos_z": 102.5
    }
   },
   "kz.sekis:rig-03": {
@@ -3169,7 +3171,8 @@
      "discharge_m3h": "m3/h",
      "intake_m3h": "m3/h",
      "tss_mgl": "mg/l",
-     "permit_use_pct": "%"
+     "permit_use_pct": "%",
+     "minutes_to_permit": "min"
     },
     "water_body": "ручей Волчевка",
     "permit_m3h": 218.8,
@@ -3180,7 +3183,8 @@
     "discharge_m3h": 4.2,
     "intake_m3h": 0.0,
     "tss_mgl": 2.02,
-    "permit_use_pct": 1.9
+    "permit_use_pct": 1.9,
+    "minutes_to_permit": 0.0
    }
   },
   "kz.sekis:mon-sekisovka": {
@@ -3200,7 +3204,8 @@
      "discharge_m3h": "m3/h",
      "intake_m3h": "m3/h",
      "tss_mgl": "mg/l",
-     "permit_use_pct": "%"
+     "permit_use_pct": "%",
+     "minutes_to_permit": "min"
     },
     "water_body": "р. Секисовка"
    },
@@ -3209,7 +3214,8 @@
     "discharge_m3h": 0.0,
     "intake_m3h": 0.0,
     "tss_mgl": 0.0,
-    "permit_use_pct": 0.0
+    "permit_use_pct": 0.0,
+    "minutes_to_permit": 0.0
    }
   },
   "kz.sekis:plant": {

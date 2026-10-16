@@ -347,11 +347,27 @@ class TestStandTexts(unittest.TestCase):
     """A4c, A4d and the VOD panel on the page."""
 
     def test_grafana_stockpile_stat_says_what_it_counts(self):
+        # The days to depletion are the advisor's, as on the Stand; the days of feed come second.
         path = REPO / "deploy" / "compose" / "grafana" / "dashboards" / "Sekisovskoye" / "sekis-overview.json"
         text = path.read_text(encoding="utf-8")
-        self.assertIn("Склад: суток питания без подачи руды", text)
         self.assertNotIn("Хватит на", text)
-        json.loads(text)
+        panel = next(p for p in json.loads(text)["panels"] if p["title"] == "Рудный склад")
+        query = panel["targets"][0]["query"]
+        first = query.index('"kz.sekis:advisor/value_stockpile_days_left_properties_value": "До исчерпания"')
+        second = query.index('"kz.sekis:rom-stockpile/value_days_of_feed_properties_value": "Без подачи руды"')
+        self.assertLess(first, second)
+
+    def test_grafana_shows_ventilation_on_demand_and_the_air_now(self):
+        base = REPO / "deploy" / "compose" / "grafana" / "dashboards" / "Sekisovskoye"
+        under = json.loads((base / "sekis-underground.json").read_text(encoding="utf-8"))
+        queries = " ".join(p["targets"][0]["query"] for p in under["panels"] if p.get("targets"))
+        for field in ("air_delivered_m3s", "vod_demand_m3s", "fan_power_kw", "fan_saving_today_kwh"):
+            self.assertIn(f"kz.sekis:mine/value_{field}_properties_value", queries, field)
+        ids = [p["id"] for p in under["panels"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        over = json.loads((base / "sekis-overview.json").read_text(encoding="utf-8"))
+        air = next(p for p in over["panels"] if p["id"] == 8)
+        self.assertIn("value_air_delivered_m3s_properties_value", air["targets"][0]["query"])
 
     def test_scenarios_panel_names_the_smallest_link_and_the_repair_apart(self):
         js = (TEAM / "stand" / "web" / "js" / "panels" / "scenarios.js").read_text(encoding="utf-8")

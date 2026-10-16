@@ -87,6 +87,51 @@ function stageNotes(things, knobs, advisor, stages) {
   return notes;
 }
 
+/** «≈3 мин», «≈1,5 ч», «меньше минуты»: a wait on the real clock of the page. */
+function waitText(minutes) {
+  if (minutes < 1) return 'меньше чем через минуту';
+  if (minutes >= 90) return `через ≈${fmt(minutes / 60, 1)} ч`;
+  return `через ≈${fmt(Math.round(minutes))} мин`;
+}
+
+const FLOOD_LEVELS = [['lvl-m050', 'гор. −50 м'], ['lvl-000', 'гор. 0 м']];
+
+/**
+ * The next consequence of a slow disturbance, live: [{ knob, text, tone }]. The simulator
+ * publishes the waits in minutes of the real clock at its time compression
+ * (mine.flood_eta_min: the next level floods; mon-volchevka.minutes_to_permit: the outfall
+ * exceeds its permit), so the viewer knows how long to watch. `k` is
+ * water.flood_compression, stated while the water underground runs faster.
+ */
+function countdowns(things, knobs, k) {
+  const f = (name) => (things[NS + name] && things[NS + name].f) || {};
+  const rows = [];
+  const mine = f('mine');
+  const station = f('ps-p150');
+  const episode = station.state === 'failed' || (isNum(mine.flood_volume_m3) && mine.flood_volume_m3 > 0);
+  const fast = episode && isNum(k) && k > 1 ? ` (×${fmt(k)})` : '';
+  const next = FLOOD_LEVELS.find(([name]) => f(name).state !== 'flooded');
+  if (isNum(mine.flood_eta_min) && mine.flood_eta_min > 0 && next) {
+    rows.push({ knob: 'pumps_failed_p150', tone: 'warn',
+      text: `${next[1]} затопит ${waitText(mine.flood_eta_min)}${fast}` });
+  } else if (episode) {
+    const flooded = FLOOD_LEVELS.filter(([name]) => f(name).state === 'flooded').map(([, label]) => label);
+    if (flooded.length) {
+      rows.push({ knob: 'pumps_failed_p150', tone: 'fail',
+        text: `${flooded.length > 1 ? 'затоплены' : 'затоплен'} ${flooded.join(' и ')}${fast}` });
+    }
+  }
+  const outfall = f('mon-volchevka');
+  if (outfall.state === 'exceeded') {
+    rows.push({ knob: 'inflow_factor', tone: 'fail',
+      text: `сброс в Волчевку превышает разрешение: ${fmt(outfall.permit_use_pct, 0)} %` });
+  } else if (isNum(outfall.minutes_to_permit) && outfall.minutes_to_permit > 0) {
+    rows.push({ knob: 'inflow_factor', tone: 'warn',
+      text: `сброс превысит разрешение ${waitText(outfall.minutes_to_permit)}` });
+  }
+  return rows;
+}
+
 export function createScenarios({ onChanged }) {
   const root = document.getElementById('scenarios');
   const message = document.getElementById('sc-message');
@@ -95,6 +140,8 @@ export function createScenarios({ onChanged }) {
   const undo = document.getElementById('sc-undo');
   const measures = document.getElementById('sc-measures');
   const floodNote = document.getElementById('sc-flood-note');
+  const togglesBox = root.querySelector('.sc-toggles');
+  const countdownRows = {};   // knob -> the line under the buttons of that disturbance
   const knobRows = {};
   let params = null;   // model/params.json, for the statement of the flood time compression
   let busy = false;
@@ -249,6 +296,42 @@ export function createScenarios({ onChanged }) {
           + `${fmt(value('water.flood_threshold_m050_m3', 14960))} м³, гор. 0 м — ${fmt(value('water.flood_threshold_000_m3', 44930))} м³; `
           + 'приток, откачка и поверхность — по часам рудника.');
       }
+    }
+
+    // Slow disturbances: the wait to their next consequence, under the row of their button.
+    const k = params && params['water.flood_compression'] && isNum(params['water.flood_compression'].value)
+      ? params['water.flood_compression'].value : 24;
+    const rows = known ? countdowns(things, knobs, k) : [];
+    for (const [knob, line] of Object.entries(countdownRows)) {
+      if (!rows.some((row) => row.knob === knob)) line.hidden = true;
+    }
+    for (const row of rows) {
+      const buttons = toggles.filter((button) => button.dataset.knob === row.knob);
+      const pressed = buttons.filter((button) => pressedOf.get(button));
+      const anchor = (pressed.length ? pressed : buttons).at(-1);
+      if (!anchor || !togglesBox) continue;
+      let line = countdownRows[row.knob];
+      if (!line) {
+        line = countdownRows[row.knob] = el('p', { class: 'sc-note sc-countdown', role: 'status',
+          style: 'grid-column: 1 / -1; margin: 0;',
+          title: 'Время на часах стенда, пересчитывается при каждом обновлении' });
+      }
+      // The line goes after the last button of the anchor's row of two, so the grid keeps its pairs.
+      const index = toggles.indexOf(anchor);
+      const rowEnd = toggles[Math.min(toggles.length - 1, index - (index % 2) + 1)];
+      // Lines of one row stay in the order they were placed: the line moves only when it is
+      // not already in the run of lines right after the row.
+      let point = rowEnd;
+      let placed = false;
+      while (point.nextElementSibling && point.nextElementSibling.classList.contains('sc-countdown')) {
+        point = point.nextElementSibling;
+        if (point === line) placed = true;
+      }
+      if (!placed) point.after(line);
+      line.hidden = false;
+      line.dataset.tone = row.tone;
+      line.style.borderLeftColor = row.tone === 'fail' ? 'var(--fail)' : 'var(--warn)';
+      setText(line, row.text);
     }
 
     setText(revision, known

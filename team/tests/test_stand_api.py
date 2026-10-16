@@ -243,9 +243,9 @@ class FixtureStandTest(unittest.TestCase):
             self.assertEqual(row["economics"]["gold_price_usd_oz"], 4615)
         self.assertEqual([row["economics"]["capex_usd_m"] for row in report["ladder"]], [None, None, 125, 125])
         # the horizon of each target (section 11 item 3): the year it is held to, and the economics after tax
-        self.assertEqual([row["horizon"]["held_to_year"] for row in report["ladder"]], [2036, 2036, 2034, 2030])
+        self.assertEqual([row["horizon"]["held_to_year"] for row in report["ladder"]], [2036, 2036, 2036, None])
         self.assertEqual([row["horizon"]["label"] for row in report["ladder"]],
-                         ["держится до 2036 г.", "держится до 2036 г.", "держится до 2034 г.", "держится до 2030 г."])
+                         ["держится до 2036 г.", "держится до 2036 г.", "держится до 2036 г.", "не достигается до 2036 г."])
         for row in report["ladder"]:
             self.assertEqual(row["economics"]["cit_rate_pct"], 20)
             if not row["horizon"]["holds"]:
@@ -442,10 +442,10 @@ class FixtureStandTest(unittest.TestCase):
         economics = [item for item in items if item["id"] == "economics"]
         self.assertEqual(len(economics), 1)
         # section 11 item 3: the ten-year economics and the hold year, never a payback for a target not held
-        self.assertIn("держится до 2034 г.", economics[0]["text"])
-        self.assertIn("окупаемость не указывается", economics[0]["text"])
+        self.assertIn("держится до 2036 г.", economics[0]["text"])
+        self.assertIn("окупается в 2029 г.", economics[0]["text"])
         projection = self.client.json("/api/advisor")[1]["projection"]
-        self.assertEqual((projection["target_ktpa"], projection["held_to_year"]), (2000, 2034))
+        self.assertEqual((projection["target_ktpa"], projection["held_to_year"]), (2000, 2036))
         self.client.post({"action": "reset"})
 
     def test_knob_minus_plus(self):

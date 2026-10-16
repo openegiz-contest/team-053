@@ -7,8 +7,8 @@ import { clear, el } from '../panels/format.js';
 
 // Values shown after the key features of the kind.
 const MORE = {
-  mine: ['air_supply_m3s', 'air_demand_m3s', 'units_held_vent', 'inflow_m3h', 'pumped_m3h', 'flood_volume_m3'],
-  level: ['air_required_m3s', 'ore_today_t'],
+  mine: ['air_delivered_m3s', 'vod_demand_m3s', 'air_supply_m3s', 'air_demand_m3s', 'units_held_vent', 'inflow_m3h', 'pumped_m3h', 'flood_volume_m3'],
+  level: ['air_flow_m3s', 'air_required_m3s', 'ore_today_t'],
   stope: ['drilled_pct', 'mucked_today_t'],
   decline: ['bottom_elevation', 'loaded_trips_today', 'avg_cycle_min'],
   main_fan: ['pressure'],

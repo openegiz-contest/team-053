@@ -218,7 +218,7 @@ function advisorDue(state) {
 
 // Counts follow the one definition of dict.js (unitCounts): «в работе» is every
 // truck of the fleet that is not under repair, «в рейсе» those of them that are
-// not waiting for air. Two air demands are named apart (airStatus).
+// not waiting for air. The air is the delivered air against the demand in work (airStatus).
 function vizSummary(state, advisor) {
   const f = (name) => (state.things[NS + name] && state.things[NS + name].f) || {};
   const mine = f('mine');
@@ -233,11 +233,12 @@ function vizSummary(state, advisor) {
   } else {
     trucks = `самосвалов в рейсе: ${fmt(c.onTrip)}`;
   }
-  const supply = fmt(air.supply, 0);
-  // While nothing waits for air the two demands are the same figure.
-  const airText = air.short
-    ? `воздух: потребность всего парка ${fmt(air.fleetDemand, 0)}, работающих машин ${fmt(air.workingDemand, 0)}, подача ${supply} м³/с`
-    : `воздух: нужно ${fmt(air.workingDemand, 0)} из ${supply} м³/с`;
+  // The air now: delivered by the fans against the demand of the units in work. While units
+  // wait for air the demand of the whole fleet against the design supply says why.
+  const airNow = `воздух: подаётся ${fmt(air.delivered, 0)} м³/с, нужно машинам в работе ${fmt(air.inWork, 0)} м³/с`;
+  const airText = air.short && isNum(air.fleetDemand)
+    ? `${airNow}; всему парку нужно ${fmt(air.fleetDemand, 0)} при проектной подаче ${fmt(air.supply, 0)} м³/с`
+    : airNow;
   const parts = [
     trucks,
     c.lhdHeld > 0 ? `ПДМ ждут воздуха: ${fmt(c.lhdHeld)}` : null,

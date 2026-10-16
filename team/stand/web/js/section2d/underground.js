@@ -10,21 +10,6 @@ import { levelAir, pumpStates, shortName } from './model.js';
 
 const AIR_MIN = 0.5;   // m3/s below which an airway shows no flow
 
-/** Elevation of a decline polyline at x inside [y0, y1], or null. */
-function crossing(declines, x, y0, y1) {
-  for (const decline of declines) {
-    const pts = decline.points;
-    for (let i = 1; i < pts.length; i += 1) {
-      const [xa, ya] = pts[i - 1];
-      const [xb, yb] = pts[i];
-      if ((x - xa) * (x - xb) > 0 || xa === xb) continue;
-      const y = ya + (yb - ya) * (x - xa) / (xb - xa);
-      if (y > y0 && y < y1) return y;
-    }
-  }
-  return null;
-}
-
 /** Split a descending polyline at an elevation: [built part, part below]. */
 function splitAt(points, elevation) {
   const upper = [points[0]];
@@ -110,7 +95,7 @@ export function fanSymbol(cx, cy, r) {
 }
 
 export function buildUnderground(ctx) {
-  const { L, M, layers, measure } = ctx;
+  const { L, M, layers } = ctx;
   const { px, py, s, F } = L;
   const roomy = L.lines >= 2;
 
@@ -157,16 +142,7 @@ export function buildUnderground(ctx) {
         layers.back.append(S('path', { class: 'sx-road', d: pathOf(ramp.map(([x, y]) => [px(x), py(y)])) }));
       }
     }
-    if (roomy) {
-      // The caption stands in the upper part of the cut, under the ground line.
-      const caption = 'карьер (в проекции)';
-      const width = measure(caption, F * 0.92);
-      const cx0 = px(x0 + (x1 - x0) * 0.15);
-      const y = maxBetween(ground, cx0, cx0 + width) + F * 1.25;
-      if (y + 3 < minBetween(contour, cx0, cx0 + width)) {
-        layers.labels.append(text(cx0, y, caption, { class: 'sx-note halo' }));
-      }
-    }
+    // No caption in the cut: the legend names the pit contour.
   }
   layers.grid.append(S('path', { class: 'sx-ground', d: pathOf(ground) }));
   ctx.groundPx = ground;
@@ -238,7 +214,6 @@ export function buildUnderground(ctx) {
       height: Math.max(1, (box.y1 - box.y0) * s - 2 * inset), fill: `url(#${ctx.uid}-backfill)`,
     }));
   }
-  const tagW = measure('−100-1', F * 0.92, 600) + 8;
   for (const stope of M.stopes) {
     const x = px(stope.x0);
     const y = py(stope.y1) + inset;
@@ -251,12 +226,8 @@ export function buildUnderground(ctx) {
       S('rect', { class: 'hatch', x, y, width: w, height: h, fill: `url(#${ctx.uid}-blast)` }),
       S('rect', { class: 'flash', x, y, width: w, height: h }),
       S('rect', { class: 'frame', x, y, width: w, height: h }));
-    if (!L.inbox && w >= tagW && h >= F * 2.1) {
-      // The block name goes into the half of the box that no decline crosses.
-      const hit = crossing(M.declines, (stope.x0 + stope.x1) / 2, stope.y0, stope.y1);
-      const low = hit !== null && hit > (stope.y0 + stope.y1) / 2;
-      g.append(text(x + 4, low ? y + h - F * 0.42 : y + F * 1.02, stope.short, { class: 'sx-tag' }));
-    }
+    // No name in the box: the stope cells of the level row (or the box text of
+    // the inbox layout) name it, and the pointer lights both.
     layers.stopes.append(g);
     ctx.reg(stope.id, x + w / 2, y + h / 2);
     let previous = null;
@@ -292,7 +263,9 @@ export function buildUnderground(ctx) {
     const g = S('g', { class: 'sx-airway sx-obj', 'data-thing': airway.id, 'data-dir': airway.direction },
       design, solid, flow, head,
       line(x, py(airway.top), x, py(airway.bottom), { class: 'sx-hit' }));
-    if (roomy) {
+    // An airway served by a fan is named by the label of its fan; the others carry a tag.
+    const fanned = M.fans.some((fan) => fan.airways.includes(airway.id));
+    if (roomy && !fanned) {
       const name = shortName(airway.id);
       const mid = py(Math.max(airway.bottom, airway.top - Math.min(60, (airway.top - airway.bottom) / 2)));
       if (name) {
