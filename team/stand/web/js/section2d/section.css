@@ -150,6 +150,10 @@
 .sx-station .pump { fill: var(--sx-bg); stroke: var(--c, var(--text-3)); stroke-width: calc(var(--u) * 1.3px); }
 .sx-station .pump-mark { fill: var(--c, var(--text-3)); }
 .sx-station[data-state="planned"] .pump, .sx-station[data-state="planned"] .gauge { stroke-dasharray: 2 2; }
+.sx-station[data-pumps="1"] .pump, .sx-station[data-pumps="1"] .pump-mark { display: none; }
+.sx-station .pumps .unit { fill: var(--sx-bg); stroke: var(--info); stroke-width: calc(var(--u) * 1.2px); }
+.sx-station .pumps .unit[data-pump="run"] { fill: var(--ok); stroke: var(--ok); }
+.sx-station .pumps .unit[data-pump="fail"] { fill: var(--fail); stroke: var(--fail); }
 
 /* ---------------------------------------------------------------- declines */
 

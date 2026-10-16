@@ -6,7 +6,7 @@
 import { STOPE_ORDER, VEHICLE_MARKS, stateLabel, stateTone } from '../panels/dict.js';
 import { fmt, isNum, withUnit } from '../panels/format.js';
 import { S, line, set, setText, text } from './svg.js';
-import { levelAir, levelLabel, shortName } from './model.js';
+import { levelAir, levelLabel, pumpStates, shortName } from './model.js';
 import { fitting } from './surface.js';
 import { fanSymbol } from './underground.js';
 
@@ -174,7 +174,10 @@ export function buildTables(ctx) {
     ctx.on(station.id, (thing) => {
       const f = thing.f;
       const state = stateLabel(f.state, 'pump_station');
-      set(g, { 'data-tone': stateTone(f.state, 'pump_station') });
+      const failed = pumpStates(thing).filter((token) => token === 'fail').length;
+      const tone = stateTone(f.state, 'pump_station');
+      // A station that pumps with a pump out of service is a warning.
+      set(g, { 'data-tone': failed && tone === 'ok' ? 'warn' : tone });
       if (f.state === 'planned') {
         setText(value, state);
         if (sub) setText(sub, levelLabel(station.e));
@@ -186,12 +189,14 @@ export function buildTables(ctx) {
       const overflow = f.hours_to_overflow > 0 && f.state !== 'pumping'
         ? `до переполнения ${withUnit(fmt(f.hours_to_overflow, 1), 'ч')}` : null;
       const fit = (lists, width) => fitting(lists.map((parts) => parts.filter(Boolean).join(' · ')), width, (content) => m(content));
+      const broken = failed ? `в отказе ${fmt(failed)} из ${fmt(pumpStates(thing).length)}` : null;
+      const shortBroken = failed ? `отказ ${fmt(failed)}` : null;
       if (sub) {
         setText(value, fit([[sump, flow], [sump]], room));
-        setText(sub, fit([[state, overflow], [state]], R.x1 - textX));
+        setText(sub, fit([[state, broken, overflow], [state, broken], [broken || state], [shortBroken || state]], R.x1 - textX));
       } else {
         setText(value, fit(down ? [[state, sump, overflow], [state, sump], [sump, flow], [sump]]
-          : [[sump, flow || state], [sump, flow], [sump]], room));
+          : [[sump, broken, flow || state], [sump, broken, flow], [sump, broken], [sump, shortBroken], [sump]], room));
       }
     });
   }

@@ -7,9 +7,9 @@
 // order of three.js PlaneGeometry rotated to lie flat. The inset border
 // elevations match the coarse edges, so the two grids meet without cracks.
 //
-// The underground stays the subject: an "x-ray" box around the workings makes
-// the ground translucent wherever the line of sight continues into the box, from
-// any camera; the rest of the ground is opaque (see terrainMaterial).
+// The underground stays the subject: an "x-ray" ellipsoid around the workings
+// makes the ground translucent wherever the line of sight continues into it,
+// from any camera; the rest of the ground is opaque (see terrainMaterial).
 
 import * as THREE from 'three';
 
@@ -162,55 +162,72 @@ export function createTerrain(block) {
 }
 
 // ------------------------------------------------------------------ x-ray
-// A terrain fragment is drawn translucent when the line of sight, continued
-// beyond it, runs through the box of the workings for at least `edge[0]`
-// metres (fully translucent from `edge[1]`). The same test runs in JavaScript
-// for picking, so that hidden workings are not picked through opaque ground.
+// The workings are wrapped in an ellipsoid (statics.js). A terrain fragment is
+// drawn the more translucent the longer the line of sight, continued beyond it,
+// runs inside that ellipsoid: `edge[0]` metres or less keep the ground opaque,
+// `edge[1]` and more give the x-ray opacity. Because the chord of an ellipsoid
+// shrinks smoothly towards its outline, the window over the workings fades out
+// softly in an oval, without a box edge, from any camera. Inside the window the
+// image is lightened rather than darkened, so that the ground over the workings
+// stays part of the landscape. The same test runs in JavaScript for picking and
+// for the labels, so that hidden workings are not picked or labelled through
+// opaque ground.
 
-export const XRAY_EDGE = [25, 150];   // m of line of sight inside the box
-export const XRAY_ALPHA = 0.24;       // opacity of the ground over the workings
+export const XRAY_EDGE = [30, 330];   // m of line of sight inside the ellipsoid
+export const XRAY_ALPHA = 0.34;       // opacity of the ground at the heart of the window
+export const XRAY_LIGHT = [1.22, 0.025];   // inside the window: colour * gain + lift
 
-/** Length of the ray from `p` along unit `d` inside the box [min, max]. */
-export function chordInBox(p, d, min, max) {
-  let t0 = 0;
-  let t1 = Infinity;
-  for (let k = 0; k < 3; k += 1) {
-    const dk = Math.abs(d[k]) < 1e-5 ? 1e-5 : d[k];
-    let a = (min[k] - p[k]) / dk;
-    let b = (max[k] - p[k]) / dk;
-    if (a > b) [a, b] = [b, a];
-    t0 = Math.max(t0, a);
-    t1 = Math.min(t1, b);
-  }
+/**
+ * Length of the ray from `p` along unit `d` inside the ellipsoid
+ * { center, radii }: the part with t >= 0.
+ */
+export function chordInEllipsoid(p, d, ellipsoid) {
+  const { center: c, radii: r } = ellipsoid;
+  const P = [(p[0] - c[0]) / r[0], (p[1] - c[1]) / r[1], (p[2] - c[2]) / r[2]];
+  const D = [d[0] / r[0], d[1] / r[1], d[2] / r[2]];
+  const a = D[0] * D[0] + D[1] * D[1] + D[2] * D[2];
+  const b = P[0] * D[0] + P[1] * D[1] + P[2] * D[2];
+  const k = P[0] * P[0] + P[1] * P[1] + P[2] * P[2] - 1;
+  const disc = b * b - a * k;
+  if (disc <= 0 || a <= 0) return 0;
+  const root = Math.sqrt(disc);
+  const t1 = (-b + root) / a;
+  const t0 = Math.max(0, (-b - root) / a);
   return Math.max(0, t1 - t0);
 }
 
-/** Opacity of the ground at world point `p` seen from `eye` (the shader's formula). */
-export function groundOpacity(p, eye, box) {
-  if (!box) return 1;
+/** 0 outside the x-ray window, 1 at its heart: the shader's weight at `p` seen from `eye`. */
+export function xrayWeight(p, eye, ellipsoid) {
+  if (!ellipsoid) return 0;
   const d = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
   const l = Math.hypot(d[0], d[1], d[2]) || 1;
-  const chord = chordInBox(p, [d[0] / l, d[1] / l, d[2] / l], box.min, box.max);
+  const chord = chordInEllipsoid(p, [d[0] / l, d[1] / l, d[2] / l], ellipsoid);
   const t = THREE.MathUtils.clamp((chord - XRAY_EDGE[0]) / (XRAY_EDGE[1] - XRAY_EDGE[0]), 0, 1);
-  const k = t * t * (3 - 2 * t);
-  return 1 + (XRAY_ALPHA - 1) * k;
+  return t * t * (3 - 2 * t);
+}
+
+/** Opacity of the ground at world point `p` seen from `eye` (the shader's formula). */
+export function groundOpacity(p, eye, ellipsoid) {
+  return 1 + (XRAY_ALPHA - 1) * xrayWeight(p, eye, ellipsoid);
 }
 
 /**
  * Material of the ground: unlit, vertex hillshade times the image (plain
- * `fallback` colour until the image has loaded), with the x-ray cut. Returns
- * { material, setXray(box), setMap(texture) }; `box` is { min: [x, y, z],
- * max: [x, y, z] } of the workings, or null for an opaque ground.
+ * `fallback` colour until the image has loaded), with the x-ray window.
+ * Returns { material, setXray(ellipsoid), setMap(texture) }; `ellipsoid` is
+ * { center: [x, y, z], radii: [rx, ry, rz] } around the workings, or null for
+ * an opaque ground.
  */
 export function terrainMaterial(fallback) {
   const material = new THREE.MeshBasicMaterial({
     color: fallback.clone(), vertexColors: true, transparent: true, depthWrite: true,
   });
   const uniforms = {
-    xrayMin: { value: new THREE.Vector3() },
-    xrayMax: { value: new THREE.Vector3() },
+    xrayCenter: { value: new THREE.Vector3() },
+    xrayRadii: { value: new THREE.Vector3(1, 1, 1) },
     xrayEdge: { value: new THREE.Vector2(XRAY_EDGE[0], XRAY_EDGE[1]) },
     xrayAlpha: { value: 1 },
+    xrayLight: { value: new THREE.Vector2(XRAY_LIGHT[0], XRAY_LIGHT[1]) },
   };
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
@@ -221,30 +238,33 @@ export function terrainMaterial(fallback) {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vXrayWorld;
-uniform vec3 xrayMin;
-uniform vec3 xrayMax;
+uniform vec3 xrayCenter;
+uniform vec3 xrayRadii;
 uniform vec2 xrayEdge;
 uniform float xrayAlpha;
+uniform vec2 xrayLight;
 float xrayChord(vec3 p, vec3 d) {
-  vec3 s = vec3(abs(d.x) < 1e-5 ? 1e-5 : d.x, abs(d.y) < 1e-5 ? 1e-5 : d.y, abs(d.z) < 1e-5 ? 1e-5 : d.z);
-  vec3 a = (xrayMin - p) / s;
-  vec3 b = (xrayMax - p) / s;
-  vec3 n = min(a, b);
-  vec3 f = max(a, b);
-  float t0 = max(max(max(n.x, n.y), n.z), 0.0);
-  float t1 = min(min(f.x, f.y), f.z);
-  return max(t1 - t0, 0.0);
+  vec3 q = (p - xrayCenter) / xrayRadii;
+  vec3 e = d / xrayRadii;
+  float a = dot(e, e);
+  float b = dot(q, e);
+  float disc = b * b - a * (dot(q, q) - 1.0);
+  if (disc <= 0.0) return 0.0;
+  float root = sqrt(disc);
+  return max((-b + root) / a - max((-b - root) / a, 0.0), 0.0);
 }`)
       .replace('#include <opaque_fragment>', `#include <opaque_fragment>
-\tgl_FragColor.a *= mix(1.0, xrayAlpha,
-\t\tsmoothstep(xrayEdge.x, xrayEdge.y, xrayChord(vXrayWorld, normalize(vXrayWorld - cameraPosition))));`);
+\tfloat xrayK = xrayAlpha < 1.0
+\t\t? smoothstep(xrayEdge.x, xrayEdge.y, xrayChord(vXrayWorld, normalize(vXrayWorld - cameraPosition))) : 0.0;
+\tgl_FragColor.rgb = mix(gl_FragColor.rgb, min(gl_FragColor.rgb * xrayLight.x + xrayLight.y, vec3(1.0)), xrayK);
+\tgl_FragColor.a *= mix(1.0, xrayAlpha, xrayK);`);
   };
   return {
     material,
-    setXray(box) {
-      uniforms.xrayMin.value.fromArray(box ? box.min : [0, 0, 0]);
-      uniforms.xrayMax.value.fromArray(box ? box.max : [0, 0, 0]);
-      uniforms.xrayAlpha.value = box ? XRAY_ALPHA : 1;
+    setXray(ellipsoid) {
+      uniforms.xrayCenter.value.fromArray(ellipsoid ? ellipsoid.center : [0, 0, 0]);
+      uniforms.xrayRadii.value.fromArray(ellipsoid ? ellipsoid.radii : [1, 1, 1]);
+      uniforms.xrayAlpha.value = ellipsoid ? XRAY_ALPHA : 1;
     },
     /** The image replaces the plain colour (the vertex hillshade stays). */
     setMap(texture) {
@@ -253,4 +273,39 @@ float xrayChord(vec3 p, vec3 d) {
       material.needsUpdate = true;
     },
   };
+}
+
+/**
+ * The backdrop of the x-ray window: the inner wall of the ellipsoid, pressed
+ * under the ground where it would rise above it, coloured like the soil near
+ * the surface and darker with depth. Through the translucent ground the
+ * workings are seen against it rather than against the black page, so the
+ * window reads as a look into the earth, not as a dark box. Drawn opaque, back
+ * faces only, so that from outside only its far side shows. Returns a
+ * BufferGeometry (about 800 triangles), or null without an ellipsoid.
+ */
+export function xrayBackdrop(ellipsoid, heightAt, near, deep) {
+  if (!ellipsoid) return null;
+  const geometry = new THREE.SphereGeometry(1, 32, 14);
+  const position = geometry.getAttribute('position');
+  const colors = new Float32Array(position.count * 3);
+  const { center: c, radii: r } = ellipsoid;
+  const tint = new THREE.Color();
+  for (let i = 0; i < position.count; i += 1) {
+    const x = c[0] + position.getX(i) * r[0];
+    const z = c[2] + position.getZ(i) * r[2];
+    const ground = heightAt(x, z) - 4;
+    const y = Math.min(ground, c[1] + position.getY(i) * r[1]);
+    position.setXYZ(i, x, y, z);
+    const t = THREE.MathUtils.clamp((ground - y) / (r[1] * 1.4), 0, 1);
+    tint.copy(near).lerp(deep, Math.sqrt(t));
+    colors[i * 3] = tint.r;
+    colors[i * 3 + 1] = tint.g;
+    colors[i * 3 + 2] = tint.b;
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geometry.deleteAttribute('normal');
+  geometry.deleteAttribute('uv');
+  geometry.computeBoundingSphere();
+  return geometry;
 }

@@ -53,7 +53,8 @@ export function createLabels(root, scene) {
 
   /**
    * Decide which labels are shown. `candidates`: [{ id, position (Vector3),
-   * score, name, line, tone, title, align, selected }], any order.
+   * score, name, line, tone, title, align, selected, dim }], any order;
+   * a `dim` label is drawn faded.
    * `reserved`: screen rectangles [x, y, w, h] that must stay free.
    */
   function layout(candidates, camera, width, height, reserved) {
@@ -110,6 +111,7 @@ export function createLabels(root, scene) {
       setAttr(item.label, 'data-selected', c.selected ? '1' : '0');
       setAttr(item.label, 'title', c.title);
       setAttr(item.tag, 'data-align', c.align === 'right' ? 'right' : 'above');
+      setAttr(item.tag, 'data-dim', c.dim ? '1' : '0');
       if (c.align === 'right') item.object.center.set(0, 0.5);
       else item.object.center.set(0.5, 1);
       item.object.position.copy(c.position);

@@ -285,3 +285,17 @@ export function readModel(geometry) {
   }
   return M;
 }
+
+/**
+ * The pumps of a station, one entry each in their row: 'run', 'ready' or
+ * 'fail' (out of service), from `pumps_total`, `pumps_available` and
+ * `pumps_running`; [] when the station has no pump count or is a project.
+ */
+export function pumpStates(thing) {
+  const f = (thing && thing.f) || {};
+  const total = thing && thing.attrs && Number.isFinite(thing.attrs.pumps_total) ? Math.round(thing.attrs.pumps_total) : 0;
+  if (!total || f.state === 'planned') return [];
+  const available = Number.isFinite(f.pumps_available) ? f.pumps_available : total;
+  const running = Number.isFinite(f.pumps_running) ? f.pumps_running : 0;
+  return Array.from({ length: total }, (_, i) => (i < running ? 'run' : i < available ? 'ready' : 'fail'));
+}

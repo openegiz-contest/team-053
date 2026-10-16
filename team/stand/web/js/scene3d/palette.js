@@ -20,11 +20,12 @@ const SCENE = {
   pit: '#e2d6bb',            // bench crest lines and the rim of the old pit
   pitFloor: '#b9ad94',
   skirt: '#2a343d',
+  soil: '#40382a',            // backdrop of the x-ray window near the surface
+  soilDeep: '#1b1915',        // … and at depth
   pad: '#27313b',
   site: '#efe6d2',           // outlines of sites on the image: plant, pad, yard, industrial zone
   tsfCell: '#cfc4ab',        // tailings cells without a dam number
   village: '#cfc6b4',
-  frame: '#4a5d72',
   ruler: '#7c8da3',
   drive: '#8494a8',          // a level drive with enough air
   driveQuiet: '#4d5a6b',     // mined-out level

@@ -73,6 +73,14 @@ export function shortName(thingId, things) {
 
 const unit = (value, digits, text) => withUnit(fmt(value, digits), text);
 
+/** Pumps of a station out of service: { failed, total }, or null when every pump is available. */
+export function failedPumps(thing) {
+  const f = (thing && thing.f) || {};
+  const total = thing && thing.attrs && isNum(thing.attrs.pumps_total) ? thing.attrs.pumps_total : 0;
+  if (!total || !isNum(f.pumps_available) || f.pumps_available >= total) return null;
+  return { failed: Math.round(total - Math.max(0, f.pumps_available)), total };
+}
+
 /** The one value shown next to the state in a label; '' when there is none. */
 export function keyValue(thing, { gradeMode = false } = {}) {
   const f = (thing && thing.f) || {};
@@ -102,11 +110,14 @@ export function keyValue(thing, { gradeMode = false } = {}) {
     case 'level':
       if (!isNum(f.air_flow_m3s) || !isNum(f.air_required_m3s)) return '';
       return `воздух ${fmt(f.air_flow_m3s, 1)} из ${unit(f.air_required_m3s, 1, 'м³/с')}`;
-    case 'pump_station':
+    case 'pump_station': {
       if ((f.state === 'failed' || f.state === 'alarm_high') && isNum(f.hours_to_overflow) && f.hours_to_overflow > 0) {
         return `до перелива ${unit(f.hours_to_overflow, 1, 'ч')}`;
       }
-      return isNum(f.sump_level_pct) ? `водосборник ${unit(f.sump_level_pct, 0, '%')}` : '';
+      const sump = isNum(f.sump_level_pct) ? `водосборник ${unit(f.sump_level_pct, 0, '%')}` : '';
+      const down = failedPumps(thing);
+      return down ? [`насосов в отказе: ${fmt(down.failed)} из ${fmt(down.total)}`, sump].filter(Boolean).join(' · ') : sump;
+    }
     case 'settling_pond':
       return isNum(f.inflow_m3h) ? unit(f.inflow_m3h, 0, 'м³/ч') : '';
     case 'monitoring_point':
@@ -132,8 +143,10 @@ export function keyValue(thing, { gradeMode = false } = {}) {
 
 /** Second line of a label: «state · value». */
 export function statusLine(thing, options) {
-  const state = thingState(thing);
+  const state = { ...thingState(thing) };
   const value = keyValue(thing, options);
+  // A station that pumps with a pump out of service is a warning, not the norm.
+  if (thing && thing.kind === 'pump_station' && state.tone === 'ok' && failedPumps(thing)) state.tone = 'warn';
   if (state.label === DASH) return { text: value || DASH, tone: state.tone };
   return { text: value ? `${state.label} · ${value}` : state.label, tone: state.tone };
 }

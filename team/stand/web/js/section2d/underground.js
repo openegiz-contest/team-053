@@ -6,7 +6,7 @@
 import { stateLabel, stateTone } from '../panels/dict.js';
 import { fmt, isNum, withUnit } from '../panels/format.js';
 import { S, clamp, line, pathOf, set, text } from './svg.js';
-import { levelAir, shortName } from './model.js';
+import { levelAir, pumpStates, shortName } from './model.js';
 
 const AIR_MIN = 0.5;   // m3/s below which an airway shows no flow
 
@@ -378,6 +378,8 @@ export function buildUnderground(ctx) {
     // The pipe is drawn beside the drive and the shaft it follows.
     const d = pathOf(route.map(([wx, wy]) => [px(wx) + 3, py(wy) - 3]));
     const level = S('rect', { class: 'level', x: cx - gaugeW / 2 + 0.6, width: gaugeW - 1.2, y: y + 2 + gaugeH, height: 0 });
+    // The pumps in a row, each coloured by its own state (in place of the one pump symbol).
+    const row = S('g', { class: 'pumps' });
     const g = S('g', { class: 'sx-station sx-obj', 'data-thing': station.id, 'data-state': station.planned ? 'planned' : '' },
       S('path', { class: 'pipe', d }),
       S('path', { class: 'pipe-flow', d }),
@@ -389,7 +391,8 @@ export function buildUnderground(ctx) {
       S('path', {
         class: 'pump-mark',
         d: `M${cx - pumpR * 0.55} ${y - pumpR * 0.6 - 1.5}L${cx} ${y - pumpR * 1.75 - 1.5}L${cx + pumpR * 0.55} ${y - pumpR * 0.6 - 1.5}Z`,
-      }));
+      }),
+      row);
     layers.water.append(g);
     ctx.reg(station.id, cx, y);
     ctx.on(station.id, (thing) => {
@@ -403,6 +406,15 @@ export function buildUnderground(ctx) {
         'data-flow': pumping ? '1' : '0',
       });
       g.style.setProperty('--pipe-w', `${clamp(1.1 + (f.pumped_m3h || 0) / 400, 1.2, 2.8).toFixed(2)}px`);
+      const pumps = pumpStates(thing);
+      if (row.childNodes.length !== pumps.length) {
+        const r = Math.max(2.2, pumpR * 0.62);
+        row.replaceChildren(...pumps.map((_, i) => S('circle', {
+          class: 'unit', cx: cx + (i - (pumps.length - 1) / 2) * r * 2.6, cy: y - r - 1.5, r,
+        })));
+      }
+      pumps.forEach((token, i) => set(row.childNodes[i], { 'data-pump': token }));
+      set(g, { 'data-pumps': pumps.length ? '1' : '0' });
     });
   }
 

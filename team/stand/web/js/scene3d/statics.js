@@ -24,6 +24,13 @@ const SKIRT_DEPTH = 24;          // m: the edge of the terrain block
 const GALLERY_RISE = 13;         // m: the conveyor gallery climbs to the top of the crusher house
 const GALLERY_RAMP = 120;        // m of conveyor along which it climbs (about 6 degrees)
 const TURN = 0.15;               // rad: the crusher house stands at the first turn of the conveyor sharper than this
+// The x-ray ellipsoid: semi-axes over the half sizes of the box of the workings
+// (x, y, z); the ore zone is narrow north-south, so z grows most. Its centre is
+// raised by XRAY_LIFT of the box height, so that the window is widest near the
+// ground, where the portals, the upper turns of the declines and the top of the
+// ruler are, and the dashed design levels at the bottom fade first.
+const XRAY_GROW = [1.3, 1.28, 1.75];
+const XRAY_LIFT = 0.1;
 
 /**
  * The conveyor from the ROM pad: on the ground up to its ramp, then in an
@@ -254,7 +261,7 @@ export function buildStatics(geometry, palette, live, terrain) {
   }
 
   // -------------------------------------------------------------- things
-  let frame = null;   // plan box of the underground workings, for the cutaway frame
+  let frame = null;   // plan box of the underground workings: the x-ray window and the water plane
   const grow = (x, z) => {
     if (!frame) frame = [x, z, x, z];
     frame = [Math.min(frame[0], x), Math.min(frame[1], z), Math.max(frame[2], x), Math.max(frame[3], z)];
@@ -440,24 +447,27 @@ export function buildStatics(geometry, palette, live, terrain) {
     }
   }
 
-  // ------------------------------- cutaway frame, x-ray box and the ruler
+  // ------------------------------------------- x-ray window and the ruler
   const ruler = new LineBuilder();
   let rulerAt = null;
   let xray = null;
   if (frame && levels.length) {
     const [x0, z0, x1, z1] = [frame[0] - 28, frame[1] - 24, frame[2] + 28, frame[3] + 24];
     const lowest = Math.min(...levels.map((l) => l.elevation));
-    const corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
-    lines.use(null, palette.scene('frame'));
-    for (const [x, z] of corners) lines.seg([x, lowest, z], [x, groundAt(x, z), z]);
-    lines.path(corners.map(([x, z]) => [x, lowest, z]), true);
-    // The ground is translucent where the line of sight runs on into this box (terrain.js).
+    // The ground is translucent where the line of sight runs on into an
+    // ellipsoid around the workings (terrain.js): an oval window that fades
+    // out at its rim, without the edges of a box. It reaches west over the
+    // elevation ruler and its figures.
     let top = -Infinity;
     for (let i = 0; i <= 12; i += 1) {
       for (let j = 0; j <= 6; j += 1) top = Math.max(top, groundAt(x0 + ((x1 - x0) * i) / 12, z0 + ((z1 - z0) * j) / 6));
     }
-    // It reaches west over the elevation ruler and its figures.
-    xray = { min: [x0 - 150, lowest - 30, z0], max: [x1, top + 5, z1] };
+    const min = [x0 - 150, lowest - 30, z0];
+    const max = [x1, top + 5, z1];
+    xray = {
+      center: min.map((v, k) => (v + max[k]) / 2 + (k === 1 ? (max[1] - min[1]) * XRAY_LIFT : 0)),
+      radii: min.map((v, k) => ((max[k] - v) / 2) * XRAY_GROW[k]),
+    };
 
     // Elevation ruler: a vertical scale left of the levels; the marks are the
     // level elevations and the ground at the ruler. Built in its own frame (x

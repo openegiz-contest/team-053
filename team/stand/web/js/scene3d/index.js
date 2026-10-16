@@ -18,7 +18,8 @@
 // canvas resize (which clears the buffer), the scene being shown again or the
 // image arriving, the frame is drawn at once (see drawNow).
 // `?debug=1` in the page address shows triangle and draw-call counts;
-// `?view=<preset>` (mine, declines, vent, water, plant) opens the scene in a preset.
+// `?view=<preset>` (mine, declines, vent, water, plant) opens the scene in a
+// preset; without it the scene opens on the declines (DEFAULT_VIEW).
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -30,7 +31,9 @@ import { buildNetwork } from './network.js';
 import { PLINTH, PUMP_SIZE, buildUnitModels } from './models.js';
 import { createPalette } from './palette.js';
 import { buildStatics } from './statics.js';
-import { TEXTURE_URL, createTerrain, groundOpacity, terrainMaterial } from './terrain.js';
+import {
+  TEXTURE_URL, XRAY_EDGE, chordInEllipsoid, createTerrain, groundOpacity, terrainMaterial, xrayBackdrop,
+} from './terrain.js';
 import { shortName, statusLine } from './texts.js';
 import { createOverlay } from './ui.js';
 
@@ -42,7 +45,15 @@ const VEHICLE_KINDS = new Set(['haul_truck', 'lhd', 'drill_rig']);
 const THIN_KINDS = new Set(['decline', 'level', 'shaft', 'raise', 'main_fan', 'pump_station', 'monitoring_point']);
 const RING_STATES = new Set(['waiting_bay', 'held_vent', 'standby_vent', 'maintenance']);
 const IDLE_STOPE = new Set(['standby', 'planned', 'preparation', 'backfilling']);
-const MIN_PIXELS = { haul_truck: 25, lhd: 17, drill_rig: 20 };   // drawn length of a working unit
+const ALARM_TONES = new Set(['fail', 'flood', 'warn']);
+// Drawn length of a working unit at the preset distances, in CSS pixels of a
+// scene about 820 px high (a smaller scene gets up to 28 % less). Closer than
+// FULL_SIZE_AT the minimum shrinks, so that near units return to their true
+// size instead of crowding each other; parked units are always drawn to scale.
+const MIN_PIXELS = { haul_truck: 38, lhd: 30, drill_rig: 32 };
+const FULL_SIZE_AT = [250, 900];   // m from the camera: no minimum … the whole minimum
+const MAX_UNIT_SCALE = 12;
+const PUMP_PIXELS = 10;   // drawn length of a pump at the preset distances
 const STOUT = 1.45;      // working units are drawn thicker than to scale, to stay visible
 const MAX_JUMP = 1900;   // m: a longer move between two samples is shown as a jump
 const MAX_PITCH = 14 * Math.PI / 180;   // a unit is drawn pitched along a decline, never steeper
@@ -53,11 +64,16 @@ const MAX_PITCH = 14 * Math.PI / 180;   // a unit is drawn pitched along a decli
 // is 0.9 km east-north-east and the tailings 1.1–1.5 km north-east of the pit.
 const VIEWS = {
   mine: { target: [-120, 70, -40], azimuth: -24, elevation: 27, distance: 2350 },
-  declines: { target: [-142, 190, 47], azimuth: 8, elevation: 7, distance: 1350 },
+  declines: { target: [20, 175, -30], azimuth: -12, elevation: 24, distance: 1900 },
   vent: { target: [-142, 200, -87], azimuth: 30, elevation: 24, distance: 1700 },
   water: { target: [-40, 200, -60], azimuth: -38, elevation: 25, distance: 1750 },
   plant: { target: [560, 440, -820], azimuth: -28, elevation: 34, distance: 2350 },
 };
+
+// The scene opens on the declines: both of them, the trucks on them and the
+// portal yard, whatever the trucks are doing at that moment; `?view=` opens
+// another preset.
+const DEFAULT_VIEW = 'declines';
 
 // Which kinds get a label first in each preset (0–100). Abnormal states and
 // the selected twin are labelled in every preset.
@@ -182,6 +198,9 @@ export async function mount(container, geometry) {
   ground.renderOrder = 3;
   ground.visible = Boolean(terrain);
   let groundTexture = null;
+  // Behind the workings, seen through the x-ray window: soil, not the page.
+  const backdrop = new THREE.Mesh(new THREE.BufferGeometry(), basic({ side: THREE.BackSide }));
+  backdrop.visible = false;
   const solidMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic());
   const fillMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic());
   const ghostLines = new THREE.LineSegments(new THREE.BufferGeometry(),
@@ -223,7 +242,7 @@ export async function mount(container, geometry) {
   if (stockObject) stock.position.fromArray(stockObject.base);
 
   scene.add(solidMesh, fillMesh, thinLines, ghostLines, rulerLines, boxes.mesh, cones.mesh, stock, plates.mesh, water,
-    ground, rings.mesh, pumps.mesh, ...Object.values(units).map((unit) => unit.mesh));
+    backdrop, ground, rings.mesh, pumps.mesh, ...Object.values(units).map((unit) => unit.mesh));
 
   // ---------------------------------------------------------- live state
   let things = {};
@@ -234,7 +253,7 @@ export async function mount(container, geometry) {
   let lastSignature = null;
   let selectedId = null;
   let gradeMode = false;
-  let presetId = VIEWS[query.get('view')] ? query.get('view') : 'mine';
+  let presetId = VIEWS[query.get('view')] ? query.get('view') : DEFAULT_VIEW;
   let dirty = true;
   let disposed = false;
   let stateDrawn = false;
@@ -288,6 +307,10 @@ export async function mount(container, geometry) {
     for (const [id, anchor] of next.anchors) labelPositions.set(id, new THREE.Vector3().fromArray(anchor));
     for (const place of next.places) labelPositions.set(place.id, new THREE.Vector3().fromArray(place.position));
     groundLook.setXray(next.xray);
+    const wall = terrain && xrayBackdrop(next.xray, terrain.heightAt, palette.scene('soil'), palette.scene('soilDeep'));
+    backdrop.geometry.dispose();
+    backdrop.geometry = wall || new THREE.BufferGeometry();
+    backdrop.visible = Boolean(wall);
     statics = next;
   }
 
@@ -528,7 +551,8 @@ export async function mount(container, geometry) {
           nextPumps.push({
             position: new THREE.Vector3(o.center[0] - o.size[0] / 2 + 3 + i * 7,
               o.center[1] - o.size[1] / 2 + PLINTH + PUMP_SIZE[1] / 2, o.center[2]),
-            color: (selected ? tmpColor.copy(color).lerp(white, 0.45) : color).clone(), id,
+            center: new THREE.Vector3(o.center[0], o.center[1] - o.size[1] / 2 + PLINTH, o.center[2]),
+            color: (selected ? tmpColor.copy(color).lerp(white, 0.45) : color).clone(), id, failed: i >= available,
           });
         }
         if (pumped > 0) {
@@ -660,9 +684,61 @@ export async function mount(container, geometry) {
   let labelCount = 0;
   const scratch = new THREE.Vector3();
 
+  /** How much larger than to scale a unit is drawn, so that it stays visible (1 = true size). */
+  function unitScale(v) {
+    if (v.parked) return 1;
+    const distance = camera.position.distanceTo(v.position);
+    const near = clamp((distance - FULL_SIZE_AT[0]) / (FULL_SIZE_AT[1] - FULL_SIZE_AT[0]), 0, 1);
+    const pixels = MIN_PIXELS[v.kind] * near * clamp(size.height / 820, 0.72, 1);
+    return clamp((pixels * worldPerPixel(v.position)) / v.size[0], 1, MAX_UNIT_SCALE);
+  }
+
   function vehicleLabelPosition(v, out) {
-    const k = v.parked ? 1 : clamp((MIN_PIXELS[v.kind] * worldPerPixel(v.position)) / v.size[0], 1, 7);
+    const k = unitScale(v);
     return out.copy(v.position).addScaledVector(Y_AXIS, v.size[1] * k * (k > 1 ? STOUT : 1) + 3);
+  }
+
+  /**
+   * Where a label anchor stands for the camera: 'hidden' (opaque ground lies
+   * in front of it), 'behind' (on or above the ground beyond the x-ray window,
+   * so that its label would float over the workings), 'over' (on the line of
+   * sight through the window, in front of it or inside it) or 'clear'.
+   */
+  const toEye = new THREE.Vector3();
+  function anchorSight(point) {
+    if (!terrain) return 'clear';
+    const eye = camera.position;
+    const distance = eye.distanceTo(point);
+    if (!(distance > 1)) return 'clear';
+    toEye.copy(point).sub(eye).divideScalar(distance);
+    // The first place where the line of sight from the eye goes into the ground.
+    const steps = clamp(Math.ceil(distance / 30), 8, 160);
+    let prevT = 0;
+    let prevAbove = eye.y - terrain.heightAt(eye.x, eye.z);
+    for (let i = 1; i <= steps; i += 1) {
+      const t = (distance * i) / steps;
+      const x = eye.x + toEye.x * t;
+      const y = eye.y + toEye.y * t;
+      const z = eye.z + toEye.z * t;
+      const above = y - terrain.heightAt(x, z);
+      if (above < -2 && prevAbove >= -2) {
+        if (distance - t < 12) break;   // the anchor itself stands on the ground
+        const k = prevT + ((t - prevT) * (prevAbove + 2)) / Math.max(1e-6, prevAbove - above);
+        const at = [eye.x + toEye.x * k, eye.y + toEye.y * k, eye.z + toEye.z * k];
+        if (groundOpacity(at, eye.toArray(), statics.xray) > 0.6) return 'hidden';
+        break;
+      }
+      prevT = t;
+      prevAbove = above;
+    }
+    if (!statics.xray) return 'clear';
+    const sight = chordInEllipsoid(eye.toArray(), toEye.toArray(), statics.xray);
+    if (sight <= XRAY_EDGE[0]) return 'clear';
+    const surface = point.y >= terrain.heightAt(point.x, point.z) - 5;
+    // On the surface beyond the window: the line of sight has crossed the ellipsoid before it.
+    if (surface && chordInEllipsoid(point.toArray(), toEye.toArray(), statics.xray) < 1
+      && sight > XRAY_EDGE[0] * 2) return 'behind';
+    return surface ? 'over' : 'clear';
   }
 
   function relabel() {
@@ -688,29 +764,36 @@ export async function mount(container, geometry) {
       if (!position) continue;
       const status = statusLine(thing, options);
       const state = thing.f && thing.f.state;
+      const routine = o.kind === 'stope' && state === 'awaiting_blast';
+      // A label behind a hill is not shown, and one beyond the x-ray window
+      // yields to the workings and is faded. A fault is always shown, faded
+      // only behind a hill; the selected twin is always shown in full.
+      const alarm = !routine && ALARM_TONES.has(status.tone);
+      const sight = selected ? 'clear' : anchorSight(position);
+      if (sight === 'hidden' && !alarm) continue;
       let weight = weights[o.kind] || 0;
       if (o.kind === 'stope' && IDLE_STOPE.has(state)) weight = 0;
       if (state === 'planned') weight *= 0.5;   // a project is named only where it is the subject
       if (state === 'active' && weight) weight += 8;   // the dam being filled comes before the idle ones
       let score = weight + 45 * clamp(1 - camera.position.distanceTo(position) / 700, 0, 1);
-      const routine = o.kind === 'stope' && state === 'awaiting_blast';
       if (!routine) score += status.tone === 'fail' ? 300 : status.tone === 'flood' ? 260 : status.tone === 'warn' ? 180 : 0;
       if (labels.isShown(id)) score += 6;       // a shown label is not swapped for an equal one
+      const dim = alarm ? sight === 'hidden' : sight === 'behind';
+      if (sight === 'behind' && !alarm) score -= 30;
       if (selected) score += 10000;
       if (score < 40) continue;
       candidates.push({
-        id, position, score, selected, name: shortName(id, things), line: status.text, tone: status.tone,
+        id, position, score, selected, dim, name: shortName(id, things), line: status.text, tone: status.tone,
         title: thing.name || '', align: o.kind === 'level' ? 'right' : 'above',
       });
     }
-    // Named places of the image (village, river, stream): context, after the twins.
+    // Named places of the image (village, river, stream): context, after every
+    // twin, and never over the x-ray window or behind a hill.
     for (const place of statics.places) {
       const position = labelPositions.get(place.id);
-      const score = 41 + (labels.isShown(place.id) ? 6 : 0);
-      if (position) {
-        candidates.push({ id: place.id, position, score, selected: false, name: place.name, line: place.line,
-          tone: 'place', title: place.name, align: 'above' });
-      }
+      if (!position || anchorSight(position) !== 'clear') continue;
+      candidates.push({ id: place.id, position, score: 20 + (labels.isShown(place.id) ? 6 : 0), selected: false,
+        name: place.name, line: place.line, tone: 'place', title: place.name, align: 'above' });
     }
     labelCount = labels.layout(candidates, camera, size.width, size.height, overlay.reserved());
   }
@@ -895,11 +978,25 @@ export async function mount(container, geometry) {
       boxes.add(item.position, identity, item.scale, c, item.id);
     }
 
+    // The pumps: drawn larger at a distance (the row spreads from the middle of
+    // the plinth), so that a pump out of service shows as a red one with a red ring.
+    rings.begin();
     pumps.begin();
-    for (const item of pumpList) pumps.add(item.position, identity, pumpScale, item.color, item.id);
+    for (const item of pumpList) {
+      const distance = camera.position.distanceTo(item.center);
+      const near = clamp((distance - FULL_SIZE_AT[0]) / (FULL_SIZE_AT[1] - FULL_SIZE_AT[0]), 0, 1);
+      const wpp = worldPerPixel(item.center);
+      const k = clamp((PUMP_PIXELS * near * wpp) / PUMP_SIZE[0], 1, 6);
+      position.set(item.center.x + (item.position.x - item.center.x) * k, item.center.y + (PUMP_SIZE[1] * k) / 2,
+        item.position.z);
+      pumps.add(position, identity, scale.copy(pumpScale).multiplyScalar(k), item.color, item.id);
+      if (item.failed) {
+        const r = Math.max(PUMP_SIZE[0] * k * 0.95, 13 * wpp);
+        rings.add(position, camera.quaternion, scale.set(r, r, r), palette.tone('fail'), item.id);
+      }
+    }
     pumps.end();
 
-    rings.begin();
     for (const unit of Object.values(units)) unit.begin();
     for (const v of vehicles.values()) {
       if (v.path) {
@@ -911,7 +1008,7 @@ export async function mount(container, geometry) {
         moving = true;
       }
       const wpp = worldPerPixel(v.position);
-      const k = v.parked ? 1 : clamp((MIN_PIXELS[v.kind] * wpp) / v.size[0], 1, 7);
+      const k = unitScale(v);
       const length = v.size[0];
       const height = v.size[1] * (k > 1 ? STOUT : 1);
       const width = v.size[2] * (k > 1 ? STOUT : 1);
@@ -1159,6 +1256,8 @@ export async function mount(container, geometry) {
         return (performance.now() - started) / count;
       },
       pick: (x, y) => pickAt(x, y),
+      /** How each label anchor stands for the camera: hidden, behind, over or clear. */
+      sights: () => Object.fromEntries([...labelPositions].map(([id, at]) => [id, anchorSight(at)])),
       vehicles: () => [...vehicles.values()].map((v) => ({ id: v.id, state: v.state, moving: Boolean(v.path),
         position: v.position.toArray(), off: network.snap(v.position.toArray()).d })),
       project(thingId) {

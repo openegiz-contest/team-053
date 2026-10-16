@@ -20,6 +20,7 @@ const CSS = `
 .s3d-tag::after { content: ""; position: absolute; left: 50%; bottom: 1px; width: 1px; height: 8px;
   background: var(--line-strong, #3a4959); }
 .s3d-tag[data-align="right"] { padding: 0 0 0 12px; }
+.s3d-tag[data-dim="1"] { opacity: 0.55; }
 .s3d-tag[data-align="right"]::after { left: 2px; bottom: 50%; width: 10px; height: 1px; }
 .s3d-label { position: relative; padding: 2px 7px 3px 8px; border-radius: 3px; white-space: nowrap;
   background: rgba(13, 19, 26, 0.84); border: 1px solid var(--line-strong, #3a4959);

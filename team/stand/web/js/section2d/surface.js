@@ -439,14 +439,18 @@ function tailingsPlace(M) {
 /**
  * «поверхность по рельефу Copernicus DEM (план — схема подземной части)», once,
  * small, just above the ground line: in the widest stretch west of the pit that
- * no surface fan or label leader takes; on two lines where one is too long.
+ * no surface fan or label leader takes; on two lines where one is too long, and
+ * shortened down to «рельеф Copernicus DEM» on a narrow sheet.
  */
 function groundCaption(ctx, sky) {
   const { L, M, layers, measure } = ctx;
   const { px, F } = L;
   const size = F * 0.92;
   const parts = ['поверхность по рельефу Copernicus DEM', '(план — схема подземной части)'];
-  const whole = parts.join(' ');
+  // Shorter forms for a narrow sheet: the ground line keeps its source; the
+  // note on the plan is also in the page footer.
+  const [lead, source] = parts[0].split(/ (?=Copernicus)/);      // «поверхность по рельефу», the data set
+  const forms = [[parts.join(' ')], parts, [parts[0]], [lead, source], [`рельеф ${source}`]];
   const east = M.pit ? px(M.pit.section[0][0]) - F * 0.6 : px(M.mineX1);
   const stops = [L.left.rulerX + 6, east];
   for (const label of sky) stops.push(label.x, label.c);
@@ -458,8 +462,7 @@ function groundCaption(ctx, sky) {
     const b = marks[i] - F * 0.7;
     if (!best || b - a > best[1] - best[0]) best = [a, b];
   }
-  const linesFor = (width) => (measure(whole, size) <= width ? [whole]
-    : Math.max(...parts.map((part) => measure(part, size))) <= width ? parts : null);
+  const linesFor = (width) => forms.find((lines) => Math.max(...lines.map((part) => measure(part, size))) <= width) || null;
   const step = L.lineH * 0.95;
   const draw = (x, top, lines) => layers.labels.append(S('g', { class: 'sx-ground-note' },
     ...lines.map((part, i) => text(x, top + i * step, part, { class: 'sx-note halo' }))));
