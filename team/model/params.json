@@ -447,12 +447,12 @@
   "water.flood_threshold_m050_m3": {
     "value": 14960,
     "unit": "m3",
-    "source": "ASSUMPTION: level -50 m counts as flooded when its workings are full: (level drive 640 m + access from decline TU1 80 m + three stope crosscuts of 37 m; schematic layout of spec 4.2, model/geometry.json) = 831 m x 18.0 m2 (water.flood_section_m2) = 14 958 m3. The -50 m stopes are in preparation and have no open void"
+    "source": "ASSUMPTION: level -50 m counts as flooded when its workings are full: (level drive 662 m + access from decline TU1 58 m + three stope crosscuts of 37 m; schematic layout of spec 4.2 under the old pit, model/geometry.json) = 831 m x 18.0 m2 (water.flood_section_m2) = 14 960 m3. The -50 m stopes are in preparation and have no open void"
   },
   "water.flood_threshold_000_m3": {
     "value": 44930,
     "unit": "m3",
-    "source": "ASSUMPTION: level 0 m counts as flooded when the water has filled the -50 m workings (14 958 m3), the declines between -50 m and 0 m (TU1 50 m and TU2 34 m of depth at 8.26 m of ramp per vertical metre: 694 m x 18 m2 = 12 494 m3) and the 0 m workings (level drive 670 m + accesses from TU1 80 m and TU2 110 m + three crosscuts of 37 m = 971 m x 18 m2 = 17 478 m3): 44 930 m3. The voids of the open 0 m stopes lie above the level floor and fill only after the level is flooded"
+    "source": "ASSUMPTION: level 0 m counts as flooded when the water has filled the -50 m workings (14 960 m3), the declines between -50 m and 0 m (TU1 50 m and TU2 34 m of depth at 8.26 m of ramp per vertical metre: 694 m x 18 m2 = 12 494 m3) and the 0 m workings (level drive 694 m + accesses from TU1 58 m and TU2 102 m + three crosscuts of 37 m = 966 m x 18 m2 = 17 381 m3): 44 835 m3 with the layout under the old pit; the threshold of 44 930 m3, set with the earlier layout, is kept (0.2 % apart). The voids of the open 0 m stopes lie above the level floor and fill only after the level is flooded"
   },
   "water.flood_section_m2": {
     "value": 18.0,

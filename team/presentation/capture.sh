@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Retake the screenshots used in the presentation from the running Stand and Grafana,
-# then crop them into img/ (prep_images.py). Takes about 20 minutes: the pump-station
-# failure needs about 12 real minutes before the level -50 m is flooded.
+# then crop them into img/ (prep_images.py). Takes about 20 minutes: after the pump-station
+# failure the level -50 m floods in about 3.5 real minutes and the level 0 m in about
+# 10 (the flood episode runs 24 times faster than the mine clock); the shot is taken at 11.5.
+# The panel «Вентиляция по потребности» is taken first: start the script after the Stand
+# has run at least 24 real minutes in «Базовый режим», so that «Экономия за 24 ч» covers it.
 #
 #   bash team/presentation/capture.sh [raw_dir]
 #
@@ -41,6 +44,11 @@ scene() {
 }
 
 preset reset; sleep 20
+# ventilation on demand at baseline, and the plan view on the satellite image
+job bvod "{\"url\":\"$STAND/\",\"width\":1150,\"height\":4000,\"scale\":2,\"wait\":15000,
+  \"shots\":[{\"out\":\"$R/b_vod.png\",\"selector\":\"#vod\"}]}"
+job bplanview "{\"url\":\"$STAND/?view=plan\",\"width\":1920,\"height\":1500,\"scale\":2,\"wait\":15000,
+  \"shots\":[{\"out\":\"$R/b_planview.png\",\"selector\":\"#mine\"}]}"
 # baseline: advisor, ladder and projection, calibration, 3D and section
 job base "{\"url\":\"$STAND/\",\"width\":1920,\"height\":5200,\"scale\":2,\"wait\":15000,
   \"shots\":[{\"out\":\"$R/b_advisor.png\",\"selector\":\"#advisor\"},{\"out\":\"$R/b_plan.png\",\"selector\":\"#advisor-plan\"},

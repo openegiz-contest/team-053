@@ -247,8 +247,9 @@ class SceneModule(unittest.TestCase):
             self.assertIn(notice, ui)
         self.assertIn("root.append(style, bar, legend, credit);", ui)
         html = read(os.path.join(WEB_DIR, "index.html")).decode("utf-8")
-        self.assertIn("Поверхность — рельеф Copernicus DEM и снимок Sentinel-2 (30.09.2026), объекты — OpenStreetMap; "
-                      "подземные выработки: отметки и сечения по документам, план — схема", html)
+        self.assertIn("Поверхность — рельеф Copernicus DEM, местность — OpenStreetMap (снимок Sentinel-2 30.09.2026 — "
+                      "кнопка «Снимок»); подземные выработки: отметки и сечения по документам, план — схема", html)
+        self.assertNotIn("Поверхность — рельеф Copernicus DEM и снимок Sentinel-2", html)
         self.assertNotIn("Отметки и сечения — по опубликованным данным; расположение в плане — схема", html)
 
     def test_server_serves_the_texture(self):
