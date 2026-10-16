@@ -1,5 +1,6 @@
 // Static part of the scene, built from model/geometry.json into merged
-// objects: `solid` (triangles of everything that exists), `fills` (the tailings
+// objects: `solid` (triangles of everything that exists: workings, and the
+// buildings and fixed equipment drawn as models, models.js), `fills` (the tailings
 // in their dams, whose level follows the twin), `ghost` (dashed outlines of
 // everything that is still a project), `lines` (thin outlines, roads, streams,
 // pipes, the bench crests of the old pit) and the elevation ruler. The ground
@@ -11,12 +12,63 @@
 
 import * as THREE from 'three';
 import { LineBuilder, MeshBuilder, strokeText } from './kit.js';
+import {
+  EdgeWriter, FAN_BOX, SolidWriter, crusherHouse, fan, headframe, placement, plantLine, pumpStation, stack,
+} from './models.js';
 import { elevationText } from './texts.js';
 
 const VEHICLE_KINDS = new Set(['haul_truck', 'lhd', 'drill_rig']);
 const MIN_AIRWAY_RADIUS = 2.2;   // m: thinner airways vanish at the overview scale
 const LINE_LIFT = 1.8;           // m: surface lines above the ground, clear of the triangles
 const SKIRT_DEPTH = 24;          // m: the edge of the terrain block
+const GALLERY_RISE = 13;         // m: the conveyor gallery climbs to the top of the crusher house
+const GALLERY_RAMP = 120;        // m of conveyor along which it climbs (about 6 degrees)
+const TURN = 0.15;               // rad: the crusher house stands at the first turn of the conveyor sharper than this
+
+/**
+ * The conveyor from the ROM pad: on the ground up to its ramp, then in an
+ * inclined gallery up to the top of the crusher house at its first sharp turn,
+ * down inside the house and on along the plant lines. Returns the path the ore
+ * beads follow and the parts to draw, or null when the route has no turn.
+ */
+function conveyorRoute(points) {
+  let turn = -1;
+  for (let i = 1; i < points.length - 1 && turn < 0; i += 1) {
+    const [a, b, c] = [points[i - 1], points[i], points[i + 1]];
+    const t0 = Math.atan2(b[2] - a[2], b[0] - a[0]);
+    const t1 = Math.atan2(c[2] - b[2], c[0] - b[0]);
+    let d = Math.abs(t1 - t0);
+    if (d > Math.PI) d = 2 * Math.PI - d;
+    if (d > TURN) turn = i;
+  }
+  if (turn < 0) return null;
+  const cum = [0];
+  for (let i = 1; i < points.length; i += 1) {
+    cum.push(cum[i - 1] + Math.hypot(points[i][0] - points[i - 1][0], points[i][2] - points[i - 1][2]));
+  }
+  const from = Math.max(0, cum[turn] - GALLERY_RAMP);
+  const rise = (d) => (GALLERY_RISE * (d - from)) / Math.max(1, cum[turn] - from);
+  const ground = [];
+  const gallery = [];
+  for (let i = 0; i < turn; i += 1) {
+    if (cum[i] <= from) ground.push(points[i]);
+    if (cum[i] === from) gallery.push(points[i]);
+    if (cum[i] < from && cum[i + 1] > from) {
+      const t = (from - cum[i]) / (cum[i + 1] - cum[i]);
+      const a = points[i];
+      const b = points[i + 1];
+      const at = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      ground.push(at);
+      gallery.push(at);
+    } else if (cum[i] > from) {
+      gallery.push([points[i][0], points[i][1] + rise(cum[i]), points[i][2]]);
+    }
+  }
+  const top = points[turn];
+  gallery.push([top[0], top[1] + GALLERY_RISE, top[2]]);
+  const after = points.slice(turn);
+  return { path: [...ground.slice(0, -1), ...gallery, ...after], ground, gallery, after, house: top };
+}
 
 function sample(points, step) {
   const out = [];
@@ -131,6 +183,7 @@ export function buildStatics(geometry, palette, live, terrain) {
       lines.use(null, palette.scene('pitFloor')).outline(pit.floor_outline, pit.floor + 0.6);
     }
   }
+  const plantId = Object.keys(objects).find((id) => objects[id].kind === 'plant') || null;
   for (const [name, item] of Object.entries(scenery)) {
     if (!Array.isArray(item.points)) continue;
     // Already laid on the terrain by the generator: lifted clear of the triangles.
@@ -138,7 +191,29 @@ export function buildStatics(geometry, palette, live, terrain) {
     paths[name] = path;
     const tint = name.startsWith('road') ? 'road' : name.startsWith('stream') || name.startsWith('river') ? 'stream'
       : name === 'conveyor' ? 'road' : 'pipe';
-    lines.use(null, palette.scene(tint)).path(path);
+    const route = name === 'conveyor' ? conveyorRoute(path) : null;
+    if (!route) {
+      lines.use(null, palette.scene(tint)).path(path);
+      continue;
+    }
+    // The conveyor: a ground line, the inclined gallery on trestles, the crusher house.
+    paths[name] = route.path;
+    lines.use(null, palette.scene(tint)).path(route.ground);
+    lines.path(route.after);
+    solid.use(plantId, palette.scene('steel'), false);
+    const g = route.gallery;
+    for (let i = 0; i < g.length - 1; i += 1) {
+      solid.beam([g[i][0], g[i][1] - 1.4, g[i][2]], [g[i + 1][0], g[i + 1][1] - 1.4, g[i + 1][2]], 3.4, 2.4);
+    }
+    for (let i = 1; i < g.length - 1; i += 1) {
+      const [x, y, z] = g[i];
+      const foot = groundAt(x, z);
+      if (y - foot > 5) solid.beam([x, foot - 0.5, z], [x, y - 2.6, z], 0.9, 0.9, false);
+    }
+    const [hx, , hz] = route.house;
+    const [a, b] = [route.after[0], route.after[1] || route.after[0]];
+    crusherHouse(new SolidWriter(solid, placement([hx, groundAt(hx, hz), hz], [b[0] - a[0], b[2] - a[2]])),
+      { key: plantId, walls: palette.scene('building'), roof: palette.scene('roof') });
   }
   if (scenery.yard && scenery.yard.footprint) {
     lines.use(null, palette.scene('site')).path(drapeOutline(scenery.yard.footprint));
@@ -243,20 +318,31 @@ export function buildStatics(geometry, palette, live, terrain) {
       const split = isGhost ? o.top : Math.max(y0, o.planned_below === undefined ? y0 : o.planned_below);
       if (split < o.top) solid.use(id, palette.scene('airway')).cylinder(x, z, split, o.top, radius, radius, 8);
       if (split > y0) ghost.cylinderEdges(x, z, y0, split, radius);
+      if (o.kind === 'shaft' && o.top >= groundAt(x, z) - 3) {
+        // The collar at the surface: a headframe, its backstays away from the fan.
+        const fanAt = Object.values(objects).find((f) => f.kind === 'main_fan' && f.center
+          && Array.isArray(f.airway) && f.airway.includes(id));
+        const place = placement([x, o.top, z], fanAt ? [fanAt.center[0] - x, fanAt.center[2] - z] : [1, 0]);
+        headframe(isGhost ? new EdgeWriter(ghost, place) : new SolidWriter(solid, place), {
+          key: id, house: palette.scene('building'), roof: palette.scene('roof'), steel: palette.scene('airway'),
+        });
+      }
       const axis = [[x, o.top, z], [x, isGhost ? y0 : split, z]];
       pick.set(id, sample(axis, 30));
       spheres.set(id, sphereOf(axis));
       grow(x, z);
     } else if (o.kind === 'main_fan' && o.center) {
-      if (isGhost) {
-        ghost.boxEdges(o.center, o.size);
-      } else {
-        solid.use(id, palette.tone('ok')).box(o.center, o.size);
-        if (o.center[1] > groundAt(o.center[0], o.center[2]) - 6) {   // a surface fan gets its diffuser cone
-          const top = o.center[1] + o.size[1] / 2;
-          solid.cylinder(o.center[0], o.center[2], top, top + 7, 2.4, 4.2, 8);
-        }
-      }
+      // The casing points its duct at the shaft it serves (+u), the diffuser away from it.
+      const shaft = (o.airway || []).map((a) => objects[a]).find((a) => a && a.kind === 'shaft' && a.base);
+      const axis = shaft ? [shaft.base[0] - o.center[0], shaft.base[2] - o.center[2]] : [1, 0];
+      const along = Math.abs(axis[0]) >= Math.abs(axis[1]);
+      const [sx, sy, sz] = along ? o.size : [o.size[2], o.size[1], o.size[0]];
+      const place = placement([o.center[0], o.center[1] - sy / 2, o.center[2]], axis,
+        [sx / FAN_BOX[0], sy / FAN_BOX[1], sz / FAN_BOX[2]]);
+      fan(isGhost ? new EdgeWriter(ghost, place) : new SolidWriter(solid, place), {
+        key: id, casing: palette.tone('ok'), base: palette.scene('concrete'), duct: palette.scene('steel'),
+        mouth: palette.scene('fanMouth'), surface: o.center[1] > groundAt(o.center[0], o.center[2]) - 6,
+      });
       pick.set(id, [o.center]);
       spheres.set(id, { center: o.center, radius: 30 });
     } else if (o.kind === 'pump_station' && o.center) {
@@ -266,7 +352,8 @@ export function buildStatics(geometry, palette, live, terrain) {
         ghost.boxEdges(o.center, o.size);
         if (Array.isArray(o.pipe)) ghost.path(o.pipe);
       } else {
-        solid.use(id, palette.tone('ok')).box(o.center, o.size);
+        pumpStation(new SolidWriter(solid, placement([o.center[0], o.center[1] - o.size[1] / 2, o.center[2]])),
+          { key: id, state: palette.tone('ok'), pipe: palette.scene('steel') }, o.size);
         if (o.sump) lines.use(id + '#gauge', palette.tone('info')).boxEdges(o.sump.center, o.sump.size);
         lines.use(id + '#gauge', palette.tone('info')).boxEdges(gauge.center, gauge.size);
         gauges.set(id, gauge);
@@ -308,13 +395,26 @@ export function buildStatics(geometry, palette, live, terrain) {
       spheres.set(id, sphereOf(o.footprint.map(([x, z]) => [x, o.y, z])));
       // Label over the west end, clear of the stockpile label.
       anchors.set(id, [Math.min(...o.footprint.map((p) => p[0])) + 10, o.anchor ? o.anchor[1] : o.y + 16, cz]);
+      // The stack stands north-west of the westmost line, between its hall and its tanks.
+      const first = Object.values(objects).filter((l) => l.kind === 'plant_line' && l.center)
+        .sort((a, b) => a.center[0] - b.center[0])[0];
+      if (first) {
+        const [sx, sz] = [first.center[0] - 11, first.center[2] - 20];
+        stack(new SolidWriter(solid, placement([sx, groundAt(sx, sz), sz])),
+          { key: id, stack: palette.scene('stack'), band: palette.scene('stackBand') });
+      }
     } else if (o.kind === 'rom_stockpile' && o.base) {
       if (o.pad) lines.use(id, palette.scene('site')).path(drapeOutline(o.pad));
       pick.set(id, [o.base, [o.base[0], o.base[1] + (o.height || 20) / 2, o.base[2]]]);
       spheres.set(id, { center: o.base, radius: (o.radius || 30) * 1.6 });
     } else if (o.kind === 'plant_line' && o.center) {
-      if (isGhost) ghost.boxEdges(o.center, o.size);
-      else solid.use(id, palette.tone('ok')).box(o.center, o.size);
+      // A bay of the mill hall and the CIL tank row of the line; a project is dashed.
+      const y0 = o.center[1] - o.size[1] / 2;
+      const place = placement([o.center[0], y0, o.center[2]]);
+      plantLine(isGhost ? new EdgeWriter(ghost, place) : new SolidWriter(solid, place), {
+        key: id, walls: palette.scene('building'), state: palette.tone('ok'),
+        tankBase: Math.min(0, groundAt(o.center[0], o.center[2] - 11) - y0) - 1,
+      });
       pick.set(id, [o.center]);
       spheres.set(id, { center: o.center, radius: 45 });
     } else if (o.kind === 'tailings_facility' && o.footprint) {

@@ -47,15 +47,22 @@ export class MeshBuilder {
     this.keyIndex = new Map();
     this.ranges = new Map();
     this.key = null;
+    this.paintKey = null;
     this.keyNo = 0;
     this.rgb = [1, 1, 1];
     this.start = 0;
   }
 
-  /** Shapes added from now on belong to `key` and get the base colour `color`. */
-  use(key, color) {
+  /**
+   * Shapes added from now on belong to `key` and get the base colour `color`.
+   * With `paint` false they still belong to the key (a ray that hits them names
+   * it) but keep their colour when the key is recoloured: the neutral walls,
+   * frames and pipes of a building whose state colour is on its roof or tanks.
+   */
+  use(key, color, paint = true) {
     this.flush();
     this.key = key === undefined ? null : key;
+    this.paintKey = paint ? this.key : null;
     if (this.key === null) this.keyNo = 0;
     else {
       if (!this.keyIndex.has(this.key)) {
@@ -70,8 +77,33 @@ export class MeshBuilder {
 
   flush() {
     const count = this.pos.length / 3;
-    addRange(this.ranges, this.key, this.start, count);
+    addRange(this.ranges, this.paintKey, this.start, count);
     this.start = count;
+  }
+
+  /**
+   * Flat convex polygon (points in order, any plane), split as a fan from its
+   * first point; `inside` is any point on the inner side, used to orient it.
+   */
+  face(points, inside) {
+    if (points.length < 3) return;
+    let n = norm(cross(sub(points[1], points[0]), sub(points[2], points[0])));
+    let order = points;
+    if (inside && dot(n, sub(points[0], inside)) < 0) {
+      n = [-n[0], -n[1], -n[2]];
+      order = points.slice().reverse();
+    }
+    const s = faceShade(n[0], n[1], n[2]);
+    const base = this.pos.length / 3;
+    for (const p of order) {
+      this.pos.push(p[0], p[1], p[2]);
+      this.shade.push(s);
+      this.col.push(this.rgb[0] * s, this.rgb[1] * s, this.rgb[2] * s);
+    }
+    for (let i = 1; i < order.length - 1; i += 1) {
+      this.idx.push(base, base + i, base + i + 1);
+      this.owner.push(this.keyNo);
+    }
   }
 
   /** Quad a-b-c-d; `inside` is any point on the inner side, used to orient the face. */

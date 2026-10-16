@@ -198,6 +198,44 @@ class SceneModule(unittest.TestCase):
             self.assertIn(name, geometry["scenery"], name)
             self.assertTrue(name in text, f"{name} is not animated by the scene")
 
+    def test_equipment_models_are_drawn_in_code(self):
+        # The equipment and the buildings are low-poly models written in code
+        # (models.js): no model files, no loaders, nothing but the kit.
+        models = read(os.path.join(SCENE_DIR, "models.js")).decode("utf-8")
+        self.assertEqual(IMPORT_RE.findall(models), ["./kit.js"])
+        text = "\n".join(read(path).decode("utf-8") for path in scene_files())
+        self.assertNotRegex(text, r"\b(?:GLTF|OBJ|FBX|Collada|STL|PLY|Draco)Loader\b")
+        self.assertNotRegex(text, r"\.(?:glb|gltf|obj|fbx|dae|stl|ply)['\"]")
+        for name in ("function truck(", "function truckLoad(", "function lhd(", "function lhdLoad(", "function rig(",
+                     "function pump(", "export function fan(", "export function headframe(",
+                     "export function plantLine(", "export function crusherHouse(", "export function stack(",
+                     "export function pumpStation("):
+            self.assertIn(name, models)
+        unit_models = re.search(r"export function buildUnitModels\(\) \{(.*?)\n\}", models, re.S).group(1)
+        for kind in ("haul_truck", "lhd", "drill_rig"):
+            self.assertIn(kind + ":", unit_models)
+        statics = read(os.path.join(SCENE_DIR, "statics.js")).decode("utf-8")
+        for call in ("fan(isGhost ? new EdgeWriter(ghost, place) : new SolidWriter(solid, place)",
+                     "headframe(isGhost ? new EdgeWriter(ghost, place) : new SolidWriter(solid, place)",
+                     "plantLine(isGhost ? new EdgeWriter(ghost, place) : new SolidWriter(solid, place)",
+                     "crusherHouse(new SolidWriter(solid,", "stack(new SolidWriter(solid,",
+                     "pumpStation(new SolidWriter(solid,"):
+            self.assertIn(call, statics)   # merged into the static meshes; a project is dashed
+
+    def test_units_are_instanced_per_model(self):
+        # One instanced mesh (one draw call) per unit model and one for the
+        # pumps; the instance colour carries loaded or empty and the state.
+        text = read(os.path.join(SCENE_DIR, "index.js")).decode("utf-8")
+        self.assertIn("const unitModels = buildUnitModels();", text)
+        self.assertIn("for (const kind of ['haul_truck', 'truckLoad', 'lhd', 'lhdLoad', 'drill_rig']) {", text)
+        self.assertIn("units[kind] = instanced(unitModels[kind], basic(), 48);", text)
+        self.assertIn("const pumps = instanced(unitModels.pump, basic(), 24);", text)
+        self.assertIn("color.copy(palette.scene(v.loaded ? 'truckLoaded' : 'truckEmpty'));", text)
+        # Instanced meshes in all: boxes, cones, rings, plates, the unit models (loop) and the pumps.
+        self.assertLessEqual(len(re.findall(r"\binstanced\(", text)) - 1, 6)   # minus the definition
+        # Picking covers every instanced mesh that carries a thing id.
+        self.assertIn("const pickable = [boxes, pumps, ...Object.values(units)];", text)
+
     def test_surface_data_is_attributed(self):
         # The licences ask for attribution wherever the data is shown: in the scene and in the page legend.
         ui = read(os.path.join(SCENE_DIR, "ui.js")).decode("utf-8")

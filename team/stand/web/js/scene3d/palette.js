@@ -42,10 +42,16 @@ const SCENE = {
   airExhaust: '#c9a27e',
   truckEmpty: '#dfe6ee',
   truckLoaded: '#f2b63a',
-  cab: '#8fa0b4',
   lhd: '#8ed1c6',
   rig: '#b9a8e2',
   select: '#ffffff',
+  building: '#c9cfd6',       // walls of the mill hall, the crusher house and the collar houses
+  roof: '#8f9cab',           // roofs that carry no state
+  concrete: '#8a9096',       // fan base frames
+  steel: '#b4bec9',          // ducts, galleries, headers
+  stack: '#dfe3e8',
+  stackBand: '#c9574f',
+  fanMouth: '#2b333c',       // the open end of a fan diffuser
   plate: '#51647a',
   plateQuiet: '#33404e',
 };

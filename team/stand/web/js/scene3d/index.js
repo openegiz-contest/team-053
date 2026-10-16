@@ -9,8 +9,10 @@
 //
 // Budget (spec 4.5): no lights, shadows or post-processing; one texture (the
 // satellite image on the terrain, served by the Stand at /terrain/texture.jpg);
-// static geometry merged into a few objects; moving things are instances of
-// four small meshes; antialias off, pixel ratio 1, canvas at most 1280 x 720; a
+// static geometry merged into a few objects (buildings and fixed equipment are
+// low-poly models merged into them, models.js); moving things are instances:
+// one mesh per unit model (truck, its load, LHD, its load, drill rig), the
+// pumps, and boxes, cones and rings for the rest; antialias off, pixel ratio 1, canvas at most 1280 x 720; a
 // frame is drawn only while something moves and at most 12 times a second. The
 // one exception is a frame that must not wait: after mount, the first state, a
 // canvas resize (which clears the buffer), the scene being shown again or the
@@ -25,6 +27,7 @@ import { el, fmt, isNum } from '../panels/format.js';
 import { cumulative, faceShade, pointAlong } from './kit.js';
 import { MAX_LABELS, createLabels } from './labels.js';
 import { buildNetwork } from './network.js';
+import { PLINTH, PUMP_SIZE, buildUnitModels } from './models.js';
 import { createPalette } from './palette.js';
 import { buildStatics } from './statics.js';
 import { TEXTURE_URL, createTerrain, groundOpacity, terrainMaterial } from './terrain.js';
@@ -42,6 +45,7 @@ const IDLE_STOPE = new Set(['standby', 'planned', 'preparation', 'backfilling'])
 const MIN_PIXELS = { haul_truck: 25, lhd: 17, drill_rig: 20 };   // drawn length of a working unit
 const STOUT = 1.45;      // working units are drawn thicker than to scale, to stay visible
 const MAX_JUMP = 1900;   // m: a longer move between two samples is shown as a jump
+const MAX_PITCH = 14 * Math.PI / 180;   // a unit is drawn pitched along a decline, never steeper
 
 // Camera presets: the target, the direction the camera looks from (azimuth
 // from the south towards the east, elevation above the horizon) and distance.
@@ -186,6 +190,15 @@ export async function mount(container, geometry) {
   const rulerLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true }));
 
   const boxes = instanced(shaded(new THREE.BoxGeometry(1, 1, 1)), basic(), 320);
+  // The units and the pumps: one instanced mesh per model; the colour of an
+  // instance tints the paint of its model (models.js).
+  const unitModels = buildUnitModels();
+  const units = {};
+  for (const kind of ['haul_truck', 'truckLoad', 'lhd', 'lhdLoad', 'drill_rig']) {
+    units[kind] = instanced(unitModels[kind], basic(), 48);
+  }
+  const pumps = instanced(unitModels.pump, basic(), 24);
+  const pickable = [boxes, pumps, ...Object.values(units)];
   const cones = instanced(shaded(new THREE.ConeGeometry(1, 2.4, 8)), basic(), 64);
   const rings = instanced(new THREE.RingGeometry(0.8, 1, 24),
     new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false, side: THREE.DoubleSide, fog: false }), 40);
@@ -210,7 +223,7 @@ export async function mount(container, geometry) {
   if (stockObject) stock.position.fromArray(stockObject.base);
 
   scene.add(solidMesh, fillMesh, thinLines, ghostLines, rulerLines, boxes.mesh, cones.mesh, stock, plates.mesh, water,
-    ground, rings.mesh);
+    ground, rings.mesh, pumps.mesh, ...Object.values(units).map((unit) => unit.mesh));
 
   // ---------------------------------------------------------- live state
   let things = {};
@@ -367,6 +380,7 @@ export async function mount(container, geometry) {
   const stopeFx = new Map();      // stope id -> { state, flashUntil }
   const flowPhase = new Map();    // flow key -> phase 0..1
   let fixed = [];                 // boxes that do not move between samples
+  let pumpList = [];              // pumps on the plinths of the stations, coloured by pump
   let flows = [];                 // beads travelling along pipes and the conveyor
   let arrows = [];                // air flow in shafts and raises
   let plateList = [];
@@ -425,6 +439,7 @@ export async function mount(container, geometry) {
     const nextFlows = [];
     const nextArrows = [];
     const nextPlates = [];
+    const nextPumps = [];
     const flooded = [];
     let lowest = Infinity;
     const dimmed = DIMMED[presetId] || {};
@@ -507,9 +522,14 @@ export async function mount(container, geometry) {
         const total = (thing.attrs && isNum(thing.attrs.pumps_total) && thing.attrs.pumps_total) || 0;
         const available = isNum(f.pumps_available) ? f.pumps_available : total;
         const running = isNum(f.pumps_running) ? f.pumps_running : 0;
+        // The pumps stand in a row on the plinth: running, ready or out of service.
         for (let i = 0; i < total; i += 1) {
           const color = i < running ? palette.tone('ok') : i < available ? palette.tone('info') : palette.tone('fail');
-          box(o.center[0] - o.size[0] / 2 + 3 + i * 7, o.center[1] + o.size[1] / 2 + 3.4, o.center[2], 5, 5, 5, color, id);
+          nextPumps.push({
+            position: new THREE.Vector3(o.center[0] - o.size[0] / 2 + 3 + i * 7,
+              o.center[1] - o.size[1] / 2 + PLINTH + PUMP_SIZE[1] / 2, o.center[2]),
+            color: (selected ? tmpColor.copy(color).lerp(white, 0.45) : color).clone(), id,
+          });
         }
         if (pumped > 0) {
           addFlow(nextFlows, id + '#pipe', statics.paths[id + '#pipe'],
@@ -592,6 +612,7 @@ export async function mount(container, geometry) {
       flood: waterTarget !== null,
     });
     fixed = nextFixed;
+    pumpList = nextPumps;
     flows = nextFlows;
     arrows = nextArrows;
     plateList = nextPlates;
@@ -759,7 +780,8 @@ export async function mount(container, geometry) {
     // 3. Whatever surface the ray hits first.
     pointer.set((x / size.width) * 2 - 1, -(y / size.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
-    for (const hit of raycaster.intersectObjects([solidMesh, fillMesh, boxes.mesh, stock, ground], false)) {
+    const instances = pickable.map((item) => item.mesh);
+    for (const hit of raycaster.intersectObjects([solidMesh, fillMesh, ...instances, stock, ground], false)) {
       if (hit.object === ground) {
         // Opaque ground ends the search; through the x-ray cut the ray goes on.
         if (groundOpacity(hit.point.toArray(), camera.position.toArray(), statics.xray) > 0.6) return null;
@@ -767,7 +789,7 @@ export async function mount(container, geometry) {
       }
       const id = hit.object === solidMesh ? statics.solid.keyOfFace(hit.faceIndex)
         : hit.object === fillMesh ? statics.fills.keyOfFace(hit.faceIndex)
-          : hit.object === stock ? stockId : boxes.ids[hit.instanceId];
+          : hit.object === stock ? stockId : pickable[instances.indexOf(hit.object)].ids[hit.instanceId];
       if (id && objects[id]) return id;
     }
     // 4. Anything close.
@@ -828,10 +850,11 @@ export async function mount(container, geometry) {
   // ---------------------------------------------------------- frame loop
   const position = new THREE.Vector3();
   const scale = new THREE.Vector3();
-  const offset = new THREE.Vector3();
   const direction = new THREE.Vector3();
   const quaternion = new THREE.Quaternion();
   const identity = new THREE.Quaternion();
+  const heading = new THREE.Euler();
+  const pumpScale = new THREE.Vector3().fromArray(PUMP_SIZE);
   const color = new THREE.Color();
   let lastStepAt = 0;
   let moving = false;
@@ -855,7 +878,7 @@ export async function mount(container, geometry) {
       moving = true;
     }
 
-    // Boxes: stope fills, sump gauges, pumps, dam fills; then units and beads.
+    // Boxes: stope fills and sump gauges, then the flow beads; the pumps; the units.
     boxes.begin();
     for (const item of fixed) {
       let c = item.color;
@@ -872,12 +895,18 @@ export async function mount(container, geometry) {
       boxes.add(item.position, identity, item.scale, c, item.id);
     }
 
+    pumps.begin();
+    for (const item of pumpList) pumps.add(item.position, identity, pumpScale, item.color, item.id);
+    pumps.end();
+
     rings.begin();
+    for (const unit of Object.values(units)) unit.begin();
     for (const v of vehicles.values()) {
       if (v.path) {
         const k = clamp((now - v.startedAt) / v.duration, 0, 1);
         pointAlong(v.path, v.cum, k * v.length, v.position, direction);
-        if (direction.lengthSq() > 1e-6) v.direction.copy(direction).normalize();
+        // A (near) vertical leg of a route keeps the heading the unit had.
+        if (Math.hypot(direction.x, direction.z) > 0.3 * direction.length()) v.direction.copy(direction).normalize();
         if (k >= 1) v.path = null;
         moving = true;
       }
@@ -887,29 +916,31 @@ export async function mount(container, geometry) {
       const height = v.size[1] * (k > 1 ? STOUT : 1);
       const width = v.size[2] * (k > 1 ? STOUT : 1);
       const selected = v.id === selectedId;
-      quaternion.setFromUnitVectors(X_AXIS, v.direction);
+      // Heading along the travel direction, pitched with the slope, never rolled.
+      heading.set(0, Math.atan2(-v.direction.z, v.direction.x),
+        clamp(Math.atan2(v.direction.y, Math.hypot(v.direction.x, v.direction.z)), -MAX_PITCH, MAX_PITCH), 'YZX');
+      quaternion.setFromEuler(heading);
       position.copy(v.position).addScaledVector(Y_AXIS, (height * k) / 2 + (v.parked ? 0 : 1.2));
-      // Body.
+      // A parked unit stands on the drawn ground of the sloping yard, not in it.
+      if (v.parked && terrain) {
+        position.y = Math.max(v.position.y, terrain.heightAt(v.position.x, v.position.z) + 0.05) + height / 2;
+      }
+      // The model: the paint carries loaded or empty, the kind, or parked.
       if (v.parked) color.copy(palette.tone('idle'));
       else if (v.kind === 'haul_truck') color.copy(palette.scene(v.loaded ? 'truckLoaded' : 'truckEmpty'));
       else color.copy(palette.scene(v.kind === 'lhd' ? 'lhd' : 'rig'));
       if (selected) color.lerp(white, 0.5);
-      boxes.add(position, quaternion, scale.set(length * k, height * k, width * k), color, v.id);
-      // Cab, bucket or boom: tells the kind and the direction of travel.
-      if (v.kind === 'haul_truck') {
-        offset.copy(v.direction).multiplyScalar(length * k * 0.37).addScaledVector(Y_AXIS, height * k * 0.2);
-        scale.set(length * k * 0.24, height * k * 1.3, width * k * 1.05);
-        color.copy(v.parked ? palette.tone('idle') : palette.scene('cab'));
-      } else if (v.kind === 'lhd') {
-        offset.copy(v.direction).multiplyScalar(length * k * 0.56).addScaledVector(Y_AXIS, -height * k * 0.15);
-        scale.set(length * k * 0.22, height * k * 0.7, width * k * 1.2);
-        color.copy(v.parked ? palette.tone('idle') : palette.scene(v.working ? 'ore' : 'cab'));
-      } else {
-        offset.copy(v.direction).multiplyScalar(length * k * 0.62).addScaledVector(Y_AXIS, height * k * 0.35);
-        scale.set(length * k * 0.5, height * k * 0.22, width * k * 0.3);
-        color.copy(v.parked ? palette.tone('idle') : palette.scene('cab'));
+      scale.set(length * k, height * k, width * k);
+      const model = units[v.kind] || units.haul_truck;
+      model.add(position, quaternion, scale, color, v.id);
+      // Ore in the body of a loaded truck and in the bucket of an LHD at work.
+      const load = v.kind === 'haul_truck' && v.loaded ? units.truckLoad
+        : v.kind === 'lhd' && v.working && !v.parked ? units.lhdLoad : null;
+      if (load) {
+        color.copy(palette.scene('ore'));
+        if (selected) color.lerp(white, 0.4);
+        load.add(position, quaternion, scale, color, v.id);
       }
-      boxes.add(position.add(offset), quaternion, scale, color, v.id);
       if (v.ring) {
         const r = Math.max(length * k * 0.78, 11 * wpp);
         rings.add(position.copy(v.position).addScaledVector(Y_AXIS, (height * k) / 2), camera.quaternion,
@@ -917,6 +948,7 @@ export async function mount(container, geometry) {
       }
       if (labels.isShown(v.id)) labels.move(v.id, vehicleLabelPosition(v, scratch));
     }
+    for (const unit of Object.values(units)) unit.end();
 
     for (const flow of flows) {
       const phase = ((flowPhase.get(flow.key) || 0) + (flow.speed * dt) / flow.length) % 1;
@@ -1138,6 +1170,16 @@ export async function mount(container, geometry) {
         return [rect.left + (scratch.x * 0.5 + 0.5) * size.width, rect.top + (-scratch.y * 0.5 + 0.5) * size.height];
       },
       camera: () => ({ position: camera.position.toArray(), target: controls.target.toArray() }),
+      /** Put the camera at `position` looking at `target` (close-ups for review), and draw. */
+      look(target, position) {
+        fly = null;
+        controls.target.fromArray(target);
+        camera.position.fromArray(position);
+        camera.lookAt(controls.target);   // closer than the orbit limit allows: no controls.update()
+        labelsDueAt = 0;
+        dirty = true;
+        drawNow(true);
+      },
     };
   }
 
