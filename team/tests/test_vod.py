@@ -1,4 +1,4 @@
-"""Ventilation on demand (spec 3.5) and the plausibility fixes of 17 October (decision 11.4).
+"""Ventilation on demand (spec 3.5) and the plausibility fixes of 16 October (decision 11.4).
 
 B   the control rule in the simulator: supply never below the requirement over seven days, the
     duty drops in the shift changes and with units held, the energy saving follows the cube law,

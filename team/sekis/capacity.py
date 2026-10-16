@@ -936,7 +936,7 @@ class LevelAir:
 def level_air(model: Model, delivered_m3s: float, demand_m3s: Optional[float] = None,
               kw_by_level: Optional[Mapping[str, float]] = None, flooded: Iterable[str] = (),
               held_kw_by_level: Optional[Mapping[str, float]] = None) -> Dict[str, LevelAir]:
-    """Air of every level (spec 2.6 as decided on 17 October, decision 11.4).
+    """Air of every level (spec 2.6 as decided on 16 October, decision 11.4).
 
     Only levels in use get air for work: the levels whose role is production or development and
     that are not flooded, and any other open level with units on it. Their requirement follows
