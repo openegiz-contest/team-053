@@ -8,16 +8,21 @@ visible in the source are in place.
 """
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import threading
 import unittest
+import urllib.request
 
 TEAM_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR = os.path.join(TEAM_DIR, "stand", "web")
 SCENE_DIR = os.path.join(WEB_DIR, "js", "scene3d")
 VENDOR_DIR = os.path.join(WEB_DIR, "vendor", "three")
 GEOMETRY_FILE = os.path.join(TEAM_DIR, "model", "geometry.json")
+TEXTURE_FILE = os.path.join(TEAM_DIR, "model", "terrain", "texture.jpg")
+SERVER_FILE = os.path.join(TEAM_DIR, "stand", "server.py")
 
 # three@0.160.0 from the npm registry tarball (sha1 cd1e4dbd01aee0719280a9086d75545db52b7a8f):
 # package/build/three.module.min.js, package/examples/jsm/controls/OrbitControls.js,
@@ -116,12 +121,28 @@ class SceneModule(unittest.TestCase):
         for required in ("antialias: false", "renderer.setPixelRatio(1)", "const FRAME_MS = 1000 / 12;",
                          "const MAX_CANVAS = [1280, 720];", "export const MAX_LABELS = 30;"):
             self.assertTrue(required in text, required)
-        for banned in ("TextureLoader", "CanvasTexture", "shadowMap", "castShadow", "EffectComposer",
-                       "DirectionalLight", "AmbientLight", "PointLight", "MeshStandardMaterial",
-                       "MeshPhongMaterial", "MeshLambertMaterial"):
+        for banned in ("CanvasTexture", "DataTexture", "new THREE.Texture(", "VideoTexture", "shadowMap",
+                       "castShadow", "EffectComposer", "DirectionalLight", "AmbientLight", "PointLight",
+                       "MeshStandardMaterial", "MeshPhongMaterial", "MeshLambertMaterial"):
             self.assertFalse(banned in text, f"{banned} is outside the budget")
+        # One texture (spec 4.5): the satellite image of the terrain, from the Stand server.
+        self.assertEqual(text.count("new THREE.TextureLoader()"), 1)
+        self.assertEqual(text.count("TextureLoader"), 1)
+        self.assertIn("export const TEXTURE_URL = '/terrain/texture.jpg';", text)
         # At most five translucent materials (spec 4.5).
         self.assertLessEqual(len(re.findall(r"transparent: true", text)), 5)
+
+    def test_terrain_fits_the_budget(self):
+        with open(GEOMETRY_FILE, encoding="utf-8") as handle:
+            terrain = json.load(handle)["terrain"]
+        rows, inset = terrain["rows"], terrain["inset"]
+        x0, z0, x1, z1 = inset["cells"]
+        # The scene draws every main cell outside the inset and every inset cell, two triangles each.
+        coarse = (len(rows) - 1) * (len(rows[0]) - 1) - (x1 - x0) * (z1 - z0)
+        fine = (len(inset["rows"]) - 1) * (len(inset["rows"][0]) - 1)
+        self.assertEqual(2 * (coarse + fine), 9272)
+        self.assertLessEqual(2 * (coarse + fine), 10000)   # leaves 10 000 of the 20 000 for the rest
+        self.assertEqual(terrain["texture"]["size"], [512, 512])
 
     def test_resize_never_leaves_the_canvas_cleared(self):
         # Setting the canvas size clears the WebGL buffer. A headless capture
@@ -153,13 +174,61 @@ class SceneModule(unittest.TestCase):
         for thing_id, item in geometry["objects"].items():
             for field in used[item["primitive"]] + ("anchor", "planned"):
                 self.assertIn(field, item, f"{thing_id} lacks {field}")
-        for name in ("surface", "old-pit", "road-tu1", "road-tu2"):
+        for name in ("surface", "old-pit", "road-tu1", "road-tu2", "village", "industrial-zone",
+                     "river-sekisovka", "stream-volchevka"):
             self.assertIn(name, geometry["scenery"], name)
+        # The terrain and the carved pit, as the scene reads them.
+        terrain = geometry["terrain"]
+        for field in ("extent", "origin", "spacing", "rows", "inset", "texture"):
+            self.assertIn(field, terrain, field)
+        for field in ("origin", "spacing", "rows", "cells"):
+            self.assertIn(field, terrain["inset"], field)
+        self.assertEqual(terrain["texture"]["extent"], terrain["extent"])
+        pit = geometry["scenery"]["old-pit"]
+        self.assertEqual(pit["primitive"], "pit")
+        for field in ("rim", "floor", "floor_outline", "benches"):
+            self.assertIn(field, pit, field)
+        self.assertTrue(all("y" in bench and "lines" in bench for bench in pit["benches"]))
+        for thing_id, item in geometry["objects"].items():
+            if item["kind"] == "settling_pond":
+                self.assertIn("outline", item, thing_id)
         # Flow paths the scene animates are looked up by these names.
         for name in ("conveyor", "pipeline-tailings", "pipeline-water-supply", "pipeline-discharge",
                      "pipeline-intake"):
             self.assertIn(name, geometry["scenery"], name)
             self.assertTrue(name in text, f"{name} is not animated by the scene")
+
+    def test_surface_data_is_attributed(self):
+        # The licences ask for attribution wherever the data is shown: in the scene and in the page legend.
+        ui = read(os.path.join(SCENE_DIR, "ui.js")).decode("utf-8")
+        for notice in ("© DLR e.V. 2010–2014, © Airbus DS 2014–2018, Copernicus",
+                       "Contains modified Copernicus Sentinel data 2026", "© OpenStreetMap contributors"):
+            self.assertIn(notice, ui)
+        self.assertIn("root.append(style, bar, legend, credit);", ui)
+        html = read(os.path.join(WEB_DIR, "index.html")).decode("utf-8")
+        self.assertIn("Поверхность — рельеф Copernicus DEM и снимок Sentinel-2 (30.09.2026), объекты — OpenStreetMap; "
+                      "подземные выработки: отметки и сечения по документам, план — схема", html)
+        self.assertNotIn("Отметки и сечения — по опубликованным данным; расположение в плане — схема", html)
+
+    def test_server_serves_the_texture(self):
+        spec = importlib.util.spec_from_file_location("stand_server_texture", SERVER_FILE)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        server = module.make_server("127.0.0.1", 0, True)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_address[1]}/terrain/texture.jpg"
+            with urllib.request.urlopen(url, timeout=10) as answer:
+                self.assertEqual(answer.status, 200)
+                self.assertEqual(answer.headers["Content-Type"], "image/jpeg")
+                self.assertIn("max-age", answer.headers["Cache-Control"])
+                body = answer.read()
+            self.assertEqual(body, read(TEXTURE_FILE))
+            self.assertTrue(body.startswith(bytes([0xFF, 0xD8])))   # JPEG start of image
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def test_ui_text_is_russian(self):
         text = read(os.path.join(SCENE_DIR, "ui.js")).decode("utf-8")

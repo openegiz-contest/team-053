@@ -16,20 +16,24 @@ const TOKEN_FALLBACK = {
 // palette of the scene and the long section.
 const SCENE = {
   background: '#0a0e13',
-  ground: '#66757a',
-  pit: '#8a8273',
+  ground: '#66757a',         // the terrain until its image has loaded
+  pit: '#e2d6bb',            // bench crest lines and the rim of the old pit
+  pitFloor: '#b9ad94',
   skirt: '#2a343d',
   pad: '#27313b',
-  frame: '#2c3a49',
+  site: '#efe6d2',           // outlines of sites on the image: plant, pad, yard, industrial zone
+  tsfCell: '#cfc4ab',        // tailings cells without a dam number
+  village: '#cfc6b4',
+  frame: '#4a5d72',
   ruler: '#7c8da3',
   drive: '#8494a8',          // a level drive with enough air
   driveQuiet: '#4d5a6b',     // mined-out level
   airway: '#93a7bc',
   backfill: '#4b4135',
-  road: '#5f6b78',
-  stream: '#3f86c4',
-  pipe: '#4b6f8f',
-  pond: '#3f86c4',
+  road: '#ddd3bd',
+  stream: '#4fb0f2',
+  pipe: '#86b0d2',
+  pond: '#3f8fd0',
   water: '#58a6e6',
   ore: '#d9a544',
   tailings: '#9c907c',

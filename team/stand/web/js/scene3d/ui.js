@@ -1,6 +1,8 @@
 // DOM chrome of the scene: its own style sheet (scoped by the s3d- prefix; the
 // colours are the page tokens), the camera preset bar, the legend line, the
-// debug overlay and the message shown when the graphics context is lost.
+// attribution of the surface data (required by the licences wherever the data
+// is shown), the debug overlay and the message shown when the graphics context
+// is lost.
 
 import { STOPE_ORDER, VEHICLE_MARKS, stateLabel, stopeColor } from '../panels/dict.js';
 import { el, fmt, setText } from '../panels/format.js';
@@ -34,6 +36,9 @@ const CSS = `
 .s3d-label[data-tone="idle"] { --tone: var(--idle, #5d6c80); }
 .s3d-label[data-tone="flood"] { --tone: var(--flood, #58a6e6); }
 .s3d-label[data-tone="info"] { --tone: var(--info, #9fb3c8); }
+.s3d-label[data-tone="place"] { --tone: transparent; background: rgba(13, 19, 26, 0.62);
+  border-color: rgba(233, 238, 244, 0.22); font-style: italic; cursor: default; }
+.s3d-label[data-tone="place"]:hover { background: rgba(13, 19, 26, 0.62); }
 .s3d-label[data-selected="1"] { background: var(--surface-3, #202b37); border-color: var(--text, #e9eef4);
   border-left-color: var(--tone, var(--text, #e9eef4)); }
 .s3d-bar { position: absolute; left: 8px; top: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 6px;
@@ -47,7 +52,7 @@ const CSS = `
 .s3d-seg button:hover { background: var(--surface-2, #18212b); color: var(--text, #e9eef4); }
 .s3d-seg button[aria-pressed="true"] { background: var(--surface-3, #202b37); color: var(--text, #e9eef4);
   font-weight: 600; }
-.s3d-legend { position: absolute; left: 6px; bottom: 5px; max-width: calc(100% - 12px); display: flex;
+.s3d-legend { position: absolute; left: 6px; bottom: 21px; max-width: calc(100% - 12px); display: flex;
   flex-wrap: wrap; gap: 1px 11px; padding: 2px 6px; border-radius: 3px; background: rgba(10, 14, 19, 0.78);
   font: 10.5px/1.5 var(--font, system-ui, sans-serif); color: var(--text-3, #73839a); pointer-events: none; }
 .s3d-legend span { white-space: nowrap; }
@@ -56,13 +61,21 @@ const CSS = `
 .s3d-legend i.s3d-ramp { width: 54px; }
 .s3d-legend i.s3d-ring { background: transparent; border: 2px solid; border-radius: 50%; }
 .s3d-legend i.s3d-dash { background: transparent; border: 1px dashed; border-radius: 0; }
+.s3d-credit { position: absolute; left: 6px; bottom: 3px; max-width: calc(100% - 12px); padding: 0 6px;
+  border-radius: 3px; background: rgba(10, 14, 19, 0.7); font: 9.5px/1.6 var(--font, system-ui, sans-serif);
+  color: var(--text-3, #73839a); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .s3d-debug { position: absolute; right: 8px; top: 8px; padding: 3px 7px; border-radius: 3px;
   background: rgba(18, 25, 33, 0.9); border: 1px solid var(--line, #273341); white-space: pre;
   font: 10.5px/1.45 var(--mono, monospace); color: var(--text-2, #a8b5c3); pointer-events: none; }
 .s3d-note { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   background: rgba(10, 14, 19, 0.8); color: var(--text-2, #a8b5c3); font: 13px var(--font, system-ui, sans-serif); }
-@media (max-width: 760px) { .s3d-legend { display: none; } }
+@media (max-width: 760px) { .s3d-legend { display: none; } .s3d-credit { white-space: normal; } }
 `;
+
+// Attribution of the terrain (Copernicus DEM), the image (Sentinel-2) and the
+// map data (OpenStreetMap); see model/terrain/ATTRIBUTION.md.
+export const CREDIT = '© DLR e.V. 2010–2014, © Airbus DS 2014–2018, Copernicus · '
+  + 'Contains modified Copernicus Sentinel data 2026 · © OpenStreetMap contributors';
 
 export const PRESETS = [
   ['mine', 'Рудник'], ['declines', 'Уклоны'], ['vent', 'Вентиляция'], ['water', 'Водоотлив'],
@@ -123,7 +136,10 @@ export function createOverlay(root, palette, { onPreset, onGrade, onZoom }) {
     'вода в выработках');
   legend.append(airAlert, floodAlert);
 
-  root.append(style, bar, legend);
+  const credit = el('div', { class: 's3d-credit', text: CREDIT, title: CREDIT });
+  swallow(credit);
+
+  root.append(style, bar, legend, credit);
 
   let debug = null;
   let note = null;
@@ -143,7 +159,7 @@ export function createOverlay(root, palette, { onPreset, onGrade, onZoom }) {
     /** Rectangles (in root pixels) the labels must keep clear of. */
     reserved() {
       const base = root.getBoundingClientRect();
-      return [bar.firstChild, bar.children[1], bar.children[2], legend].map((node) => {
+      return [bar.firstChild, bar.children[1], bar.children[2], legend, credit].map((node) => {
         const r = node.getBoundingClientRect();
         return [r.left - base.left, r.top - base.top, r.width, r.height];
       }).filter((r) => r[2] > 0 && r[3] > 0);

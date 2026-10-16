@@ -7,14 +7,16 @@
 // mount() throws when no WebGL context can be created; the page then mounts the
 // long section in this container.
 //
-// Budget (spec 4.5): no lights, textures, shadows or post-processing; static
-// geometry merged into three objects; moving things are instances of four small
-// meshes; antialias off, pixel ratio 1, canvas at most 1280 x 720; a frame is
-// drawn only while something moves and at most 12 times a second. The one
-// exception is a frame that must not wait: after mount, the first state, a
-// canvas resize (which clears the buffer) or the scene being shown again, the
-// frame is drawn at once (see drawNow).
-// `?debug=1` in the page address shows triangle and draw-call counts.
+// Budget (spec 4.5): no lights, shadows or post-processing; one texture (the
+// satellite image on the terrain, served by the Stand at /terrain/texture.jpg);
+// static geometry merged into a few objects; moving things are instances of
+// four small meshes; antialias off, pixel ratio 1, canvas at most 1280 x 720; a
+// frame is drawn only while something moves and at most 12 times a second. The
+// one exception is a frame that must not wait: after mount, the first state, a
+// canvas resize (which clears the buffer), the scene being shown again or the
+// image arriving, the frame is drawn at once (see drawNow).
+// `?debug=1` in the page address shows triangle and draw-call counts;
+// `?view=<preset>` (mine, declines, vent, water, plant) opens the scene in a preset.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -24,7 +26,8 @@ import { cumulative, faceShade, pointAlong } from './kit.js';
 import { MAX_LABELS, createLabels } from './labels.js';
 import { buildNetwork } from './network.js';
 import { createPalette } from './palette.js';
-import { buildGround, buildStatics } from './statics.js';
+import { buildStatics } from './statics.js';
+import { TEXTURE_URL, createTerrain, groundOpacity, terrainMaterial } from './terrain.js';
 import { shortName, statusLine } from './texts.js';
 import { createOverlay } from './ui.js';
 
@@ -42,12 +45,14 @@ const MAX_JUMP = 1900;   // m: a longer move between two samples is shown as a j
 
 // Camera presets: the target, the direction the camera looks from (azimuth
 // from the south towards the east, elevation above the horizon) and distance.
+// The workings lie under the old pit (x -500 … +215, z -180 … +75); the plant
+// is 0.9 km east-north-east and the tailings 1.1–1.5 km north-east of the pit.
 const VIEWS = {
-  mine: { target: [70, 66, 20], azimuth: -27, elevation: 15, distance: 1860 },
-  declines: { target: [30, 190, 135], azimuth: 8, elevation: 7, distance: 1350 },
-  vent: { target: [30, 215, 0], azimuth: 30, elevation: 19, distance: 1550 },
-  water: { target: [110, 170, 20], azimuth: -40, elevation: 14, distance: 1350 },
-  plant: { target: [-10, 430, -520], azimuth: -6, elevation: 29, distance: 1450 },
+  mine: { target: [-120, 70, -40], azimuth: -24, elevation: 27, distance: 2350 },
+  declines: { target: [-142, 190, 47], azimuth: 8, elevation: 7, distance: 1350 },
+  vent: { target: [-142, 200, -87], azimuth: 30, elevation: 24, distance: 1700 },
+  water: { target: [-40, 200, -60], azimuth: -38, elevation: 25, distance: 1750 },
+  plant: { target: [560, 440, -820], azimuth: -28, elevation: 34, distance: 2350 },
 };
 
 // Which kinds get a label first in each preset (0–100). Abnormal states and
@@ -146,7 +151,8 @@ export async function mount(container, geometry) {
   renderer.setPixelRatio(1);
   renderer.sortObjects = true;
 
-  const debugOn = new URLSearchParams(location.search).get('debug') === '1';
+  const query = new URLSearchParams(location.search);
+  const debugOn = query.get('debug') === '1';
   const palette = createPalette();
   const objects = geometry.objects;
   const root = el('div', { class: 's3d-root' });
@@ -155,7 +161,7 @@ export async function mount(container, geometry) {
 
   const scene = new THREE.Scene();
   scene.background = palette.scene('background');
-  scene.fog = new THREE.Fog(palette.scene('background').getHex(), 2600, 8200);
+  scene.fog = new THREE.Fog(palette.scene('background').getHex(), 4200, 11000);
   const camera = new THREE.PerspectiveCamera(FOV, 2, 25, 12000);
   const labels = createLabels(root, scene);
 
@@ -163,10 +169,17 @@ export async function mount(container, geometry) {
   const white = new THREE.Color(1, 1, 1);
   const basic = (options) => new THREE.MeshBasicMaterial({ vertexColors: true, ...options });
 
-  const ground = new THREE.Mesh(buildGround(geometry, palette).geometry,
-    basic({ transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false }));
+  // The ground: drawn after everything else, opaque except where the line of
+  // sight runs on into the workings (the x-ray cut, terrain.js). It writes
+  // depth, so that a near hill hides the ground behind it.
+  const terrain = createTerrain(geometry.terrain);
+  const groundLook = terrainMaterial(palette.scene('ground'));
+  const ground = new THREE.Mesh(terrain ? terrain.geometry : new THREE.BufferGeometry(), groundLook.material);
   ground.renderOrder = 3;
+  ground.visible = Boolean(terrain);
+  let groundTexture = null;
   const solidMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic());
+  const fillMesh = new THREE.Mesh(new THREE.BufferGeometry(), basic());
   const ghostLines = new THREE.LineSegments(new THREE.BufferGeometry(),
     new THREE.LineDashedMaterial({ vertexColors: true, dashSize: 9, gapSize: 8 }));
   const thinLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true }));
@@ -196,7 +209,8 @@ export async function mount(container, geometry) {
   stock.visible = Boolean(stockObject);
   if (stockObject) stock.position.fromArray(stockObject.base);
 
-  scene.add(solidMesh, thinLines, ghostLines, rulerLines, boxes.mesh, cones.mesh, stock, plates.mesh, water, ground, rings.mesh);
+  scene.add(solidMesh, fillMesh, thinLines, ghostLines, rulerLines, boxes.mesh, cones.mesh, stock, plates.mesh, water,
+    ground, rings.mesh);
 
   // ---------------------------------------------------------- live state
   let things = {};
@@ -207,7 +221,7 @@ export async function mount(container, geometry) {
   let lastSignature = null;
   let selectedId = null;
   let gradeMode = false;
-  let presetId = 'mine';
+  let presetId = VIEWS[query.get('view')] ? query.get('view') : 'mine';
   let dirty = true;
   let disposed = false;
   let stateDrawn = false;
@@ -248,8 +262,9 @@ export async function mount(container, geometry) {
 
   const labelPositions = new Map();
   function rebuildStatics() {
-    const next = buildStatics(geometry, palette, live);
-    for (const [object, built] of [[solidMesh, next.solid], [ghostLines, next.ghost], [thinLines, next.lines], [rulerLines, next.ruler]]) {
+    const next = buildStatics(geometry, palette, live, terrain);
+    for (const [object, built] of [[solidMesh, next.solid], [fillMesh, next.fills], [ghostLines, next.ghost],
+      [thinLines, next.lines], [rulerLines, next.ruler]]) {
       object.geometry.dispose();
       object.geometry = built.geometry;
     }
@@ -258,6 +273,8 @@ export async function mount(container, geometry) {
     rulerLines.visible = Boolean(next.rulerAt);
     labelPositions.clear();
     for (const [id, anchor] of next.anchors) labelPositions.set(id, new THREE.Vector3().fromArray(anchor));
+    for (const place of next.places) labelPositions.set(place.id, new THREE.Vector3().fromArray(place.position));
+    groundLook.setXray(next.xray);
     statics = next;
   }
 
@@ -270,8 +287,8 @@ export async function mount(container, geometry) {
   controls.minDistance = 90;
   controls.maxDistance = 5200;
   controls.maxPolarAngle = 100 * DEG;
-  controls.target.fromArray(VIEWS.mine.target);
-  camera.position.copy(viewPosition(VIEWS.mine));
+  controls.target.fromArray(VIEWS[presetId].target);
+  camera.position.copy(viewPosition(VIEWS[presetId]));
   controls.update();
   let fly = null;
   controls.addEventListener('change', () => {
@@ -514,15 +531,13 @@ export async function mount(container, geometry) {
       } else if (o.kind === 'tailings_dam') {
         if (ghost || !thing) continue;
         paint(statics.lines, id, palette.tone(tone || 'idle'), selected);
-        const xs = o.footprint.map((p) => p[0]);
-        const zs = o.footprint.map((p) => p[1]);
+        // The tailings prism rises from the lowest ground to the fill level
+        // (where the level is under the ground, the ground hides it).
         const h = Math.max(0.6, (o.top - o.bottom) * clamp((isNum(f.fill_pct) ? f.fill_pct : 0) / 100, 0, 1));
-        const color = tmpColor.copy(palette.scene(f.state === 'active' ? 'tailingsActive' : 'tailings'));
-        if (selected) color.lerp(white, 0.4);
-        box((Math.min(...xs) + Math.max(...xs)) / 2, o.bottom + h / 2 + 0.4, (Math.min(...zs) + Math.max(...zs)) / 2,
-          Math.max(...xs) - Math.min(...xs) - 6, h, Math.max(...zs) - Math.min(...zs) - 6, color, id);
-      } else if (o.kind === 'plant' || o.kind === 'tailings_facility') {
-        paint(statics.lines, id, selected ? white : palette.scene('road'), false);
+        statics.fills.setLevel(id, o.bottom + 0.5, o.bottom + h);
+        paint(statics.fills, id, palette.scene(f.state === 'active' ? 'tailingsActive' : 'tailings'), selected);
+      } else if (o.kind === 'plant' || o.kind === 'tailings_facility' || o.kind === 'rom_stockpile') {
+        paint(statics.lines, id, selected ? white : palette.scene('site'), false);
       }
     }
 
@@ -667,6 +682,15 @@ export async function mount(container, geometry) {
         title: thing.name || '', align: o.kind === 'level' ? 'right' : 'above',
       });
     }
+    // Named places of the image (village, river, stream): context, after the twins.
+    for (const place of statics.places) {
+      const position = labelPositions.get(place.id);
+      const score = 41 + (labels.isShown(place.id) ? 6 : 0);
+      if (position) {
+        candidates.push({ id: place.id, position, score, selected: false, name: place.name, line: place.line,
+          tone: 'place', title: place.name, align: 'above' });
+      }
+    }
     labelCount = labels.layout(candidates, camera, size.width, size.height, overlay.reserved());
   }
 
@@ -683,8 +707,20 @@ export async function mount(container, geometry) {
     return dx * dx + dy * dy;
   }
 
+  /** True when opaque ground lies between the camera and a world point. */
+  const groundRay = new THREE.Raycaster();
+  function hiddenByGround(point) {
+    if (!ground.visible) return false;
+    const distance = camera.position.distanceTo(point);
+    groundRay.set(camera.position, scratch.copy(point).sub(camera.position).normalize());
+    groundRay.far = Math.max(0, distance - 6);
+    const hit = groundRay.intersectObject(ground, false)[0];
+    return Boolean(hit) && groundOpacity(hit.point.toArray(), camera.position.toArray(), statics.xray) > 0.6;
+  }
+
   function nearestPickPoint(x, y, radius, kinds) {
     let best = null;
+    let bestPoint = null;
     let bestD = radius * radius;
     for (const [id, points] of statics.pick) {
       if (kinds && !kinds.has(objects[id].kind)) continue;
@@ -693,10 +729,11 @@ export async function mount(container, geometry) {
         if (d < bestD) {
           bestD = d;
           best = id;
+          bestPoint = pt;
         }
       }
     }
-    return best;
+    return best && !hiddenByGround(scratch2.fromArray(bestPoint)) ? best : null;
   }
 
   function pickAt(clientX, clientY) {
@@ -722,9 +759,15 @@ export async function mount(container, geometry) {
     // 3. Whatever surface the ray hits first.
     pointer.set((x / size.width) * 2 - 1, -(y / size.height) * 2 + 1);
     raycaster.setFromCamera(pointer, camera);
-    for (const hit of raycaster.intersectObjects([solidMesh, boxes.mesh, stock], false)) {
+    for (const hit of raycaster.intersectObjects([solidMesh, fillMesh, boxes.mesh, stock, ground], false)) {
+      if (hit.object === ground) {
+        // Opaque ground ends the search; through the x-ray cut the ray goes on.
+        if (groundOpacity(hit.point.toArray(), camera.position.toArray(), statics.xray) > 0.6) return null;
+        continue;
+      }
       const id = hit.object === solidMesh ? statics.solid.keyOfFace(hit.faceIndex)
-        : hit.object === stock ? stockId : boxes.ids[hit.instanceId];
+        : hit.object === fillMesh ? statics.fills.keyOfFace(hit.faceIndex)
+          : hit.object === stock ? stockId : boxes.ids[hit.instanceId];
       if (id && objects[id]) return id;
     }
     // 4. Anything close.
@@ -756,7 +799,7 @@ export async function mount(container, geometry) {
     if (!down || down.button !== 0 || event.button !== 0) return;
     if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5 || performance.now() - down.at > 700) return;
     const id = down.labelId || pickAt(event.clientX, event.clientY);
-    if (!id) return;
+    if (!id || !objects[id]) return;   // a place label (village, river) has no twin
     select(id);
     container.dispatchEvent(new CustomEvent('sekis:select', { bubbles: true, detail: { thingId: id } }));
   };
@@ -1048,6 +1091,22 @@ export async function mount(container, geometry) {
   resize();   // sizes the canvas and draws the first frame now
   raf = requestAnimationFrame(frame);
 
+  // The satellite image (the one texture of the budget). Until it arrives the
+  // ground is drawn in a plain colour; then the frame is drawn at once.
+  if (terrain) {
+    new THREE.TextureLoader().load(TEXTURE_URL, (texture) => {
+      if (disposed) {
+        texture.dispose();
+        return;
+      }
+      texture.colorSpace = THREE.SRGBColorSpace;
+      groundTexture = texture;
+      groundLook.setMap(texture);
+      dirty = true;
+      drawNow(true);
+    }, undefined, () => {});   // no image: the plain ground stays
+  }
+
   if (debugOn) {
     // Measurement hooks for the performance budget (only with ?debug=1).
     window.sekisScene3d = {
@@ -1141,6 +1200,7 @@ export async function mount(container, geometry) {
         if (object.geometry) object.geometry.dispose();
         if (object.material) object.material.dispose();
       });
+      if (groundTexture) groundTexture.dispose();
       renderer.dispose();
       if (debugOn) delete window.sekisScene3d;
       root.remove();

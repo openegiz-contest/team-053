@@ -1,7 +1,8 @@
 // Geometry kit of the 3D scene: builders that merge many small shapes into one
-// buffer geometry each (spec 4.5: static geometry merged, no lights, no textures).
-// Shading is baked into the vertex colours, so every material is a
-// MeshBasicMaterial and the scene needs no light at all.
+// buffer geometry each (spec 4.5: static geometry merged, no lights; the one
+// texture is the satellite image of the terrain). Shading is baked into the
+// vertex colours, so every material is a MeshBasicMaterial and the scene needs
+// no light at all.
 
 import * as THREE from 'three';
 
@@ -163,17 +164,45 @@ export class MeshBuilder {
     }
   }
 
-  /** Flat polygon (convex, plan pairs [x, z]) at elevation y, facing up. */
-  plate(footprint, y) {
-    const pts = footprint.map(([x, z]) => [x, y, z]);
-    const below = [pts[0][0], y - 1, pts[0][2]];
-    for (let i = 1; i < pts.length - 1; i += 1) this.tri(pts[0], pts[i], pts[i + 1], below);
+  /** Flat polygon (any simple footprint, concave too: plan pairs [x, z]) at elevation y, facing up. */
+  polygon(footprint, y) {
+    const ring = openRing(footprint);
+    if (ring.length < 3) return;
+    const faces = THREE.ShapeUtils.triangulateShape(ring.map(([x, z]) => new THREE.Vector2(x, z)), []);
+    const below = [ring[0][0], y - 1, ring[0][1]];
+    for (const [a, b, c] of faces) {
+      this.tri([ring[a][0], y, ring[a][1]], [ring[b][0], y, ring[b][1]], [ring[c][0], y, ring[c][1]], below);
+    }
+  }
+
+  /** Prism of a footprint from y0 to y1: the walls (facing out) and the top. */
+  prism(footprint, y0, y1) {
+    const ring = openRing(footprint);
+    if (ring.length < 3) return;
+    let area = 0;
+    for (let i = 0; i < ring.length; i += 1) {
+      const p = ring[i];
+      const q = ring[(i + 1) % ring.length];
+      area += p[0] * q[1] - q[0] * p[1];
+    }
+    const sign = area >= 0 ? 1 : -1;
+    for (let i = 0; i < ring.length; i += 1) {
+      const p = ring[i];
+      const q = ring[(i + 1) % ring.length];
+      // A point just inside the wall: the outward normal of the edge p-q is sign * (dz, -dx).
+      const [dx, dz] = [q[0] - p[0], q[1] - p[1]];
+      const l = Math.hypot(dx, dz) || 1;
+      const inside = [(p[0] + q[0]) / 2 - (sign * dz) / l, (y0 + y1) / 2, (p[1] + q[1]) / 2 + (sign * dx) / l];
+      this.quad([p[0], y0, p[1]], [q[0], y0, q[1]], [q[0], y1, q[1]], [p[0], y1, p[1]], inside);
+    }
+    this.polygon(ring, y1);
   }
 
   build() {
     this.flush();
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
+    const position = new THREE.Float32BufferAttribute(this.pos, 3);
+    geometry.setAttribute('position', position);
     const color = new THREE.Float32BufferAttribute(this.col, 3);
     geometry.setAttribute('color', color);
     const count = this.pos.length / 3;
@@ -181,6 +210,7 @@ export class MeshBuilder {
     geometry.computeBoundingSphere();
     const { shade, ranges, owner, keys } = this;
     const last = new Map();
+    let built = null;   // positions as built, for setLevel
     return {
       geometry,
       triangles: this.idx.length / 3,
@@ -205,8 +235,38 @@ export class MeshBuilder {
         return true;
       },
       keyOfFace: (faceIndex) => keys[owner[faceIndex]] || null,
+      /**
+       * Move the vertices of a key that were built above elevation `split` to
+       * elevation `y` (the level of a fill); returns true when something changed.
+       */
+      setLevel(key, split, y) {
+        const list = ranges.get(key);
+        if (!list) return false;
+        const tag = 'level' + y.toFixed(2);
+        if (last.get('level:' + key) === tag) return false;
+        last.set('level:' + key, tag);
+        if (!built) built = Float32Array.from(position.array);
+        for (const [from, to] of list) {
+          for (let i = from; i < to; i += 1) {
+            if (built[i * 3 + 1] > split) position.array[i * 3 + 1] = y;
+          }
+        }
+        position.needsUpdate = true;
+        geometry.computeBoundingSphere();
+        geometry.boundingBox = null;
+        return true;
+      },
     };
   }
+}
+
+/** Footprint without a closing duplicate of its first point. */
+function openRing(footprint) {
+  const n = footprint.length;
+  if (n > 1 && footprint[0][0] === footprint[n - 1][0] && footprint[0][1] === footprint[n - 1][1]) {
+    return footprint.slice(0, n - 1);
+  }
+  return footprint;
 }
 
 /** Line segments with a colour per vertex and recolourable key ranges. */
@@ -257,12 +317,6 @@ export class LineBuilder {
     this.path(low, true);
     this.path(high, true);
     for (let i = 0; i < 4; i += 1) this.seg(low[i], high[i]);
-  }
-
-  prismEdges(footprint, bottom, top) {
-    this.outline(footprint, bottom);
-    this.outline(footprint, top);
-    for (const [x, z] of footprint) this.seg([x, bottom, z], [x, top, z]);
   }
 
   circle(x, y, z, radius, segments = 24) {
