@@ -20,6 +20,22 @@ Typical use::
     res.achievable_ktpa              # smallest unrounded capacity
     res.air.demand_m3s, res.water.deficit_m3h, res.tailings.years_left, res.gold.oz_per_year
     cap.next_measure(model, state, res.binding_link)   # (knob, state with one more stage) or None
+    cap.lead_years(model, "m_vent", 2)                 # 2.5: years from the decision to service
+
+Horizon measures (spec 3.4, section 11 item 3)
+
+The Stand's knobs end at the last stage of each ladder. Over the ten-year horizon of the advisor
+two further measures exist, analytic only (they have no twin and the simulator never sees them):
+
+* ``State.extra_trucks``: trucks in service beyond the ``m_haul`` stage, one at a time. They are
+  the next trucks of the registry (truck 11 after the ten of stage 2), and beyond the registry
+  further trucks of model ``ladder.depth_trucks.model`` (``depth_trucks``), each on the decline
+  with fewer trucks, a tie to the decline with the deeper design bottom. This is the haulage
+  stage that keeps pace with depth.
+* ``State.tailings_extra_t``: storage beyond the dams of the registry (``tsf.measure_X2_t``,
+  the second tailings stage after the new cell), filled after them as ``EXTRA_STORAGE``.
+
+Both default to 0, so every state of the Stand and of the simulator is unchanged.
 
 Conventions
 
@@ -64,11 +80,12 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping, Optional, Sequence, Tuple
 
 __all__ = [
-    "LINKS", "MEASURE_KNOBS", "KNOBS",
+    "LINKS", "MEASURE_KNOBS", "KNOBS", "EXTRA_STORAGE",
     "Model", "load_model", "State", "Result", "evaluate", "next_measure", "knob_max", "binding_link",
-    "round_kt", "validate_state",
+    "round_kt", "validate_state", "lead_years",
     "Truck", "Lhd", "Fan", "Level", "Stope", "Dam",
     "active_trucks", "active_lhds", "active_rigs", "producing_stopes", "truck_decline", "fleet_power_kw",
+    "depth_trucks",
     "ramp_length_km", "haul_cycle", "haulage", "HaulCycle", "Haulage",
     "stopes", "Stopes", "development_capacity_ktpa", "centroid_after",
     "fans_running", "air_supply_m3s", "air_demand_m3s", "hold_units", "Hold", "air", "Air", "level_air", "LevelAir",
@@ -119,6 +136,9 @@ _KNOB_LADDER: Dict[str, str] = {
 
 #: The seven measure knobs.
 KNOBS: Tuple[str, ...] = tuple(_KNOB_LADDER)
+
+#: Name of the storage of ``State.tailings_extra_t`` among the dams of ``Tailings.dams``.
+EXTRA_STORAGE = "tsf-stage2"
 
 # State tokens of the twins that this library reads or reports (spec 1.2).
 _ROLE_PRODUCTION = "production"
@@ -316,6 +336,12 @@ class Model:
              "the two ladder.m_water lists differ in length")
         for stage in self.p("ladder.m_tailings.dams"):
             need(all(name in self.dams for name in stage), "ladder.m_tailings.dams names an unknown dam")
+        for knob, ladder in _KNOB_LADDER.items():
+            leads = self.p(f"ladder.{knob}.lead_years")
+            need(len(leads) == len(self.p(ladder)) and all(lead >= 0 for lead in leads),
+                 f"ladder.{knob}.lead_years needs one lead time per stage of {ladder}")
+        need(self.p("ladder.depth_trucks.lead_years") >= 0, "ladder.depth_trucks.lead_years is negative")
+        self.p(f"truck.{self.p('ladder.depth_trucks.model')}.payload_t")
         for key in self.declines:
             self.p(f"decline.{key}.portal_m")
             self.p(f"decline.{key}.surface_km")
@@ -339,6 +365,15 @@ def knob_max(model: Model, knob: str) -> int:
     return len(model.p(_KNOB_LADDER[knob])) - 1
 
 
+def lead_years(model: Model, knob: str, stage: int) -> float:
+    """Years from the decision to service of one stage of a measure knob (``ladder.<knob>.lead_years``).
+
+    Stage 0 is the mine as it is and has lead time 0. The Stand switches a knob at once (a
+    what-if); the horizon of the advisor brings the stage into service only after this time.
+    """
+    return float(model.p(f"ladder.{knob}.lead_years")[stage])
+
+
 # --- state -------------------------------------------------------------------------------------
 
 @dataclass(frozen=True)
@@ -360,6 +395,11 @@ class State:
         centroid_m          elevation of the production centroid, m; None = stope.centroid_baseline_m
         flooded_levels      names of the flooded levels, e.g. ("lvl-m050", "lvl-000")
         tailings_placed_t   tailings placed since the epoch, t
+
+    Horizon measures beyond the last stages of the knobs (module docstring; analytic only):
+        extra_trucks        trucks in service beyond the m_haul stage (the haulage stage that keeps
+                            pace with depth)
+        tailings_extra_t    storage built beyond the dams of the registry, t
 
     Active units; None derives them from the knobs (trucks 01..N, LHDs 01..N, the first N stopes of
     the activation order). Pass a unit that is in service even when it is momentarily held,
@@ -387,6 +427,8 @@ class State:
     centroid_m: Optional[float] = None
     flooded_levels: Tuple[str, ...] = ()
     tailings_placed_t: float = 0.0
+    extra_trucks: int = 0
+    tailings_extra_t: float = 0.0
     active_trucks: Optional[Tuple[str, ...]] = None
     active_lhds: Optional[Tuple[str, ...]] = None
     active_rigs: Optional[int] = None
@@ -455,10 +497,14 @@ def validate_state(model: Model, state: State) -> None:
         raise ValueError("grade_gpt must be positive")
     if state.tailings_placed_t < 0:
         raise ValueError("tailings_placed_t is negative")
+    if not isinstance(state.extra_trucks, int) or isinstance(state.extra_trucks, bool) or state.extra_trucks < 0:
+        raise ValueError(f"extra_trucks={state.extra_trucks!r} is not a non-negative integer")
+    if state.tailings_extra_t < 0:
+        raise ValueError("tailings_extra_t is negative")
     if state.active_rigs is not None and state.active_rigs < 0:
         raise ValueError("active_rigs is negative")
     known = {
-        "active_trucks": {u.name for u in model.trucks},
+        "active_trucks": {u.name for u in _truck_pool(model, state)},
         "active_lhds": {u.name for u in model.lhds},
         "producing_set": {s.name for s in model.stopes},
         "flooded_levels": {lv.name for lv in model.levels},
@@ -472,12 +518,44 @@ def validate_state(model: Model, state: State) -> None:
 
 # --- fleet -------------------------------------------------------------------------------------
 
+def depth_trucks(model: Model, count: int, fleet: Sequence[Truck] = ()) -> Tuple[Truck, ...]:
+    """``count`` trucks beyond the registry: the haulage stage that keeps pace with depth.
+
+    They are of model ``ladder.depth_trucks.model`` (payload and engine of ``truck.<model>.*``)
+    and numbered after the last truck of the registry. Each goes to the decline with fewer trucks
+    among ``fleet`` and the trucks added before it; a tie goes to the decline with the deeper
+    design bottom (``decline.<key>.design_bottom_m``).
+    """
+    kind = model.p("ladder.depth_trucks.model")
+    payload, engine = float(model.p(f"truck.{kind}.payload_t")), float(model.p(f"truck.{kind}.engine_kw"))
+    on_decline = {key: 0 for key in model.declines}
+    for unit in fleet:
+        on_decline[unit.home_decline] += 1
+    deepest_first = sorted(model.declines, key=lambda key: model.p(f"decline.{key}.design_bottom_m"))
+    last = max((u.number for u in model.trucks), default=0)
+    added = []
+    for index in range(count):
+        decline = min(deepest_first, key=lambda key: on_decline[key])   # the first of equals wins
+        number = last + index + 1
+        added.append(Truck(f"truck-{number:02d}", number, payload, engine, decline))
+        on_decline[decline] += 1
+    return tuple(added)
+
+
+def _truck_pool(model: Model, state: State) -> Tuple[Truck, ...]:
+    """The registry trucks and the depth trucks the state's ``extra_trucks`` call for."""
+    wanted = model.p("ladder.m_haul.trucks")[state.m_haul] + state.extra_trucks
+    return model.trucks + depth_trucks(model, max(0, wanted - len(model.trucks)), model.trucks)
+
+
 def active_trucks(model: Model, state: State) -> Tuple[Truck, ...]:
-    """Trucks in service: ``state.active_trucks``, else trucks 01..N of the ``m_haul`` stage."""
+    """Trucks in service: ``state.active_trucks``, else trucks 01..N of the ``m_haul`` stage and
+    ``state.extra_trucks`` more (the next trucks of the registry, then ``depth_trucks``)."""
+    pool = _truck_pool(model, state)
     if state.active_trucks is not None:
         wanted = set(_names(state.active_trucks))
-        return tuple(u for u in model.trucks if u.name in wanted)
-    return model.trucks[:model.p("ladder.m_haul.trucks")[state.m_haul]]
+        return tuple(u for u in pool if u.name in wanted)
+    return pool[:model.p("ladder.m_haul.trucks")[state.m_haul] + state.extra_trucks]
 
 
 def active_lhds(model: Model, state: State) -> Tuple[Lhd, ...]:
@@ -861,8 +939,12 @@ class Dewatering:
 
     ``margin`` is the working pump capacity of ps-p150 over the whole inflow scaled by
     ``24 / water.pumping_norm_h``; ``margin_lower`` the same for ps-m050 and its share of the
-    inflow. ``pumped_m3h`` and ``flood_rate_m3h`` are the steady state of the cascade with every
-    pump that is allowed to run: what reaches the ponds and what stays underground.
+    inflow. ``standby_pumps`` is the number of sound pumps of ps-p150 beyond the working ones and
+    ``margin_next_failure`` the margin after one more pump fails: equal to ``margin`` while a
+    standby pump takes over, lower once the reserve is used up (one failed pump at baseline:
+    x2.54 now, x1.27 after the next failure). ``pumped_m3h`` and ``flood_rate_m3h`` are the
+    steady state of the cascade with every pump that is allowed to run: what reaches the ponds
+    and what stays underground.
     ``limiting`` is true while a level is flooded; only then ``capacity_ktpa`` is finite: the
     stoping capacity of the producing stopes on levels that are not flooded.
     """
@@ -873,6 +955,8 @@ class Dewatering:
     capacity_lower_m3h: float
     margin: float
     margin_lower: float
+    standby_pumps: int
+    margin_next_failure: float
     pumped_m3h: float
     flood_rate_m3h: float
     flooded_levels: Tuple[str, ...]
@@ -887,13 +971,16 @@ def dewatering(model: Model, state: State) -> Dewatering:
     upper = inflow * p("water.upper_share")
     lower = inflow - upper
     # ps-p150: the standby pump only replaces a failed one, so at most `pumps_working` run.
-    main_pumps = max(0, min(p("water.ps_p150.pumps_working"), p("water.ps_p150.pumps") - state.pumps_failed_p150))
+    sound = p("water.ps_p150.pumps") - state.pumps_failed_p150
+    main_pumps = max(0, min(p("water.ps_p150.pumps_working"), sound))
+    after_next = max(0, min(p("water.ps_p150.pumps_working"), sound - 1))
     capacity_main = main_pumps * p("water.ps_p150.pump_m3h")
     # ps-m050: the standby pump joins at a high sump level, so every pump can run.
     capacity_lower_norm = p("water.ps_m050.pumps_working") * p("water.ps_m050.pump_m3h")
     capacity_lower = p("water.ps_m050.pumps") * p("water.ps_m050.pump_m3h")
     norm = HOURS_PER_DAY / p("water.pumping_norm_h")
     margin = capacity_main / (inflow * norm) if inflow > 0 else math.inf
+    margin_next = after_next * p("water.ps_p150.pump_m3h") / (inflow * norm) if inflow > 0 else math.inf
     margin_lower = capacity_lower_norm / (lower * norm) if lower > 0 else math.inf
     # Water leaves the mine only through ps-p150; the lower share must first pass ps-m050.
     pumped = min(capacity_main, upper + min(capacity_lower, lower))
@@ -906,7 +993,9 @@ def dewatering(model: Model, state: State) -> Dewatering:
         capacity = min(len(dry), st.n_producing) * st.per_stope_ktpa
     return Dewatering(
         inflow_m3h=inflow, inflow_upper_m3h=upper, inflow_lower_m3h=lower, capacity_main_m3h=capacity_main,
-        capacity_lower_m3h=capacity_lower, margin=margin, margin_lower=margin_lower, pumped_m3h=pumped,
+        capacity_lower_m3h=capacity_lower, margin=margin, margin_lower=margin_lower,
+        standby_pumps=max(0, sound - p("water.ps_p150.pumps_working")), margin_next_failure=margin_next,
+        pumped_m3h=pumped,
         flood_rate_m3h=inflow - pumped, flooded_levels=flooded, limiting=limiting, capacity_ktpa=capacity)
 
 
@@ -1112,19 +1201,25 @@ class Tailings:
     capacity_ktpa: float
 
 
-def tailings(model: Model, m_tailings: int = 0, placed_t: float = 0.0, rate_ktpa: float = 0.0) -> Tailings:
-    """Fill the built dams in their order with ``placed_t`` and rank the storage that is left."""
+def tailings(model: Model, m_tailings: int = 0, placed_t: float = 0.0, rate_ktpa: float = 0.0,
+             extra_t: float = 0.0) -> Tailings:
+    """Fill the built dams in their order with ``placed_t`` and rank the storage that is left.
+
+    ``extra_t`` is storage built beyond the dams of the registry (``State.tailings_extra_t``), filled
+    last and listed as ``EXTRA_STORAGE``.
+    """
     stages = model.p("ladder.m_tailings.dams")
-    built = stages[m_tailings]
+    built = [(name, model.dams[name].capacity_t, model.dams[name].stored_start_t) for name in stages[m_tailings]]
+    if extra_t > 0:
+        built.append((EXTRA_STORAGE, extra_t, 0.0))
     remaining = placed_t
     dams = []
     active = None
-    for name in built:
-        dam = model.dams[name]
-        added = min(dam.capacity_t - dam.stored_start_t, remaining)
+    for name, capacity_t, stored_start_t in built:
+        added = min(capacity_t - stored_start_t, remaining)
         remaining -= added
-        stored = dam.stored_start_t + added
-        free = dam.capacity_t - stored
+        stored = stored_start_t + added
+        free = capacity_t - stored
         if free <= 0:
             token = "full"
         elif active is None:
@@ -1132,9 +1227,9 @@ def tailings(model: Model, m_tailings: int = 0, placed_t: float = 0.0, rate_ktpa
         else:
             token = "standby"
         dams.append(DamFill(name=name, state=token, stored_t=stored, free_t=free,
-                            fill_pct=stored / dam.capacity_t * PERCENT))
+                            fill_pct=stored / capacity_t * PERCENT))
     for name in stages[-1]:
-        if name not in built:
+        if name not in stages[m_tailings]:
             dams.append(DamFill(name=name, state="planned", stored_t=0.0, free_t=0.0, fill_pct=0.0))
     free_t = sum(d.free_t for d in dams)
     years_left = free_t / (rate_ktpa * KILO) if rate_ktpa > 0 else math.inf
@@ -1253,7 +1348,7 @@ def evaluate(model: Model, state: Optional[State] = None) -> Result:
     stoping = stopes(model, state)
     pumping = dewatering(model, state)
     mill = plant(model, state.m_plant, state.line_down)
-    storage = tailings(model, state.m_tailings, state.tailings_placed_t)
+    storage = tailings(model, state.m_tailings, state.tailings_placed_t, extra_t=state.tailings_extra_t)
     capacity = {
         "haulage": haul.capacity_ktpa,
         "ventilation": vent.capacity_ktpa,
@@ -1268,7 +1363,7 @@ def evaluate(model: Model, state: Optional[State] = None) -> Result:
     without_water = min(value for link, value in capacity.items() if link != "water")
     rate_tph = without_water * KILO / model.hours_per_year
     balance = water_balance(model, rate_tph, rate_tph, pumping.pumped_m3h, state.m_water)
-    storage = tailings(model, state.m_tailings, state.tailings_placed_t, achievable)
+    storage = tailings(model, state.m_tailings, state.tailings_placed_t, achievable, state.tailings_extra_t)
     grade = _grade(model, state)
     gold = Gold(milled_ktpa=achievable, grade_gpt=grade, recovery_pct=recovery_pct(model, grade),
                 oz_per_year=gold_oz(model, achievable * KILO, grade))

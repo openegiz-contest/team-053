@@ -564,6 +564,16 @@
   },
   "tsf.measure_X1_t": {"value": 6000000, "unit": "t", "source": "ASSUMPTION: new tailings cell, measure X1"},
   "tsf.min_years": {"value": 3.0, "unit": "years", "source": "ASSUMPTION: lead time to permit and build storage"},
+  "tsf.measure_X2_t": {
+    "value": 6000000,
+    "unit": "t",
+    "source": "ASSUMPTION: NOT PUBLISHED: second tailings stage after the new cell (a further cell or a raise of cell 5), added by the advisor's horizon when the new cell would be full; sized like the new cell (tsf.measure_X1_t) for want of any published design. The company reports only the expansion of dams 2 and 3 (FACT D1 'Tailings Dams 2 and 3'). Analytic only: the stage has no twin"
+  },
+  "tsf.measure_X2_lead_years": {
+    "value": 2.0,
+    "unit": "years from the decision to service",
+    "source": "ASSUMPTION: upper end of the 1-2 years of a new cell (ladder.m_tailings.lead_years): a second cell on new ground or a raise of an operating cell; not published"
+  },
   "gold.g_per_oz": {
     "value": 31.1035,
     "unit": "g/oz",
@@ -730,6 +740,26 @@
     "unit": "kt/yr",
     "source": "ASSUMPTION: the company estimate econ.capex_expansion_usd_m is stated for the expansion to 2-2.5 Mtpa as a whole and is applied to both targets; no split between 2.0 and 2.5 Mtpa and no cost of the +200 kt step (crushing and milling equipment ordered in H1 2026, amount not disclosed) is published, so the 1000 and 1200 targets carry no capex figure"
   },
+  "econ.cit_rate": {
+    "value": 20,
+    "unit": "% of the margin after AISC",
+    "source": "FACT D4 'Kazakhstan corporate income tax rate': 20 % of taxable income. Kazakhstan corporate income tax at the statutory rate of 20 % of taxable income, applied by the advisor to the extra margin after AISC (price less AISC times the extra gold) of each year; capex is not deducted (no tax depreciation) and a negative margin is offset within the group. Primary sources: Tax Code of the Republic of Kazakhstan of 18 July 2025 No. 214-VIII ZRK, Article 357 para. 2 subpara. 5 (20 % for activities other than those of subparas. 1-4), https://adilet.zan.kz/rus/docs/K2500000214 , read on 16 October 2026; the H1 2026 RNS (https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024): effective rate about 22.4 % 'against the Kazakhstan corporate income tax rate of 20%'. The mineral extraction tax is not a separate charge here: the same RNS reconciles operating cash cost and AISC from cost of sales and names the mineral extraction tax among the drivers of cost of sales, so AISC already contains it"
+  },
+  "econ.discount_rate_pct": {
+    "value": 5,
+    "unit": "% per year, real",
+    "source": "ASSUMPTION: discount rate of the simple NPV of the advisor's ten-year economics: 5 % real is the rate most often quoted for gold projects in public study summaries (NPV at 5 %); the company publishes none. Price and AISC are held constant, so the cash flows are real; the cash of each year is discounted from the end of that year to 1 January 2027 (sim.epoch)"
+  },
+  "econ.truck_capex_usd_m": {
+    "value": 1.5,
+    "unit": "US$m per truck",
+    "source": "ASSUMPTION: NOT PUBLISHED: purchase price of one 45 t underground articulated truck (the AD45 class), order of magnitude US$1.5m. The company discloses neither the number, the type nor the cost of the transport equipment bought (facts D1, list of figures not found in the raw text); the only public figure for mine equipment is the 'Mining equipment' line of US$29m in the 2026-2028 plan (FACT B1). Shown apart from the published capex: the economics are given with and without it"
+  },
+  "econ.tsf_capex_usd_per_t": {
+    "value": 1.0,
+    "unit": "US$ per t of storage",
+    "source": "ASSUMPTION: NOT PUBLISHED: construction cost of new tailings storage, US$1 per tonne of capacity (US$6m for a 6 Mt cell). The only public figures are 'Tailings dumps' US$1m in the 2026-2028 plan (FACT B1) and an undisclosed part of the H1 2026 non-sustaining capex (FACT D1 'Tailings dam construction cost': not found). Shown apart from the published capex: the economics are given with and without it"
+  },
   "ladder.m_haul.trucks": {
     "value": [5, 7, 10, 12],
     "unit": "active trucks by stage of m_haul",
@@ -789,6 +819,56 @@
     "value": [["tsf-dam4", "tsf-dam2", "tsf-dam3"], ["tsf-dam4", "tsf-dam2", "tsf-dam3", "tsf-cell5"]],
     "unit": "names of the built tailings dams in fill order, by stage of m_tailings",
     "source": "ASSUMPTION: measure ladder of spec 3.1 and fill order of spec 2.7: dam 4, dam 2, dam 3 at stage 0; stage 1 adds the new cell tsf-cell5 (tsf.measure_X1_t), filled last"
+  },
+  "ladder.m_haul.lead_years": {
+    "value": [0, 0.5, 0.5, 0.5],
+    "unit": "years from the decision to service, by stage of m_haul",
+    "source": "ASSUMPTION: underground trucks are bought, not built: delivery and commissioning of 45 t articulated trucks take months, taken as half a year, the planning step of the horizon (ladder.horizon.steps_per_year); stage 0 is the fleet in service. The company reports that it purchased 'Additional transport equipment' in H1 2026 (FACT D1) but gives no count, type or delivery time"
+  },
+  "ladder.m_stopes.lead_years": {
+    "value": [0, 0.5, 1.0, 1.0],
+    "unit": "years from the decision to service, by stage of m_stopes",
+    "source": "ASSUMPTION: stage 1 opens one more stope of the production levels with one more LHD and drill rig, bought in about half a year; stages 2 and 3 open the '-2' and '-3' stopes and the level -50 m (spec 2.5), which also need access drives and stope preparation, taken as one year; lead times are not published"
+  },
+  "ladder.m_vent.lead_years": {
+    "value": [0, 1.0, 2.5],
+    "unit": "years from the decision to service, by stage of m_vent",
+    "source": "ASSUMPTION: stage 1 equips the proposed raise VPV (FACT A2 'Ventilation raise VPV (proposed)': 7.0 m2 from +324 to -200 m, about 520 m) with a surface fan: a raise-bored airway of that length and its fan take about a year; stage 2 sinks the new shaft VS3 (vent.measure_V2): a new ventilation shaft takes 2-3 years from decision to service, taken as 2.5 years; not published"
+  },
+  "ladder.m_dev.lead_years": {
+    "value": [0, 0.5],
+    "unit": "years from the decision to service, by stage of m_dev",
+    "source": "ASSUMPTION: a second development crew with its jumbo and loader (dev.advance_boosted): hiring, training and equipment take about half a year; not published"
+  },
+  "ladder.m_plant.lead_years": {
+    "value": [0, 0.5, 2.0, 2.0],
+    "unit": "years from the decision to service, by stage of m_plant",
+    "source": "ASSUMPTION: stage 1 (+200 kt/yr at the existing plant): the crushing and milling equipment was already ordered in H1 2026 (FACT D1 'Crushing and milling equipment': ordered), so its installation is taken as half a year from the decision; stages 2 and 3 (lines 4-6) take the company's own schedule, FACT D1 'Estimated cost of expansion to 2–2.5 Mtpa': the increase to 2-2.5 Mtpa 'within 24 months' (Q3 2025 RNS), i.e. 2.0 years from the decision for both stages, one project"
+  },
+  "ladder.m_water.lead_years": {
+    "value": [0, 0.5, 1.0],
+    "unit": "years from the decision to service, by stage of m_water",
+    "source": "ASSUMPTION: stage 1 (reclaim water from the tailings pond) needs a pump barge and a return pipeline, about half a year; stage 2 (extra intake of water.measure_W2.extra_intake_m3h) also needs a water-use permit, taken as one year; not published"
+  },
+  "ladder.m_tailings.lead_years": {
+    "value": [0, 1.5],
+    "unit": "years from the decision to service, by stage of m_tailings",
+    "source": "ASSUMPTION: the new tailings cell tsf-cell5 (tsf.measure_X1_t): design, permit and a starter dam take 1-2 years, taken as 1.5 years; not published (dam heights and raise schedule are a gap of the facts file, section C)"
+  },
+  "ladder.depth_trucks.model": {
+    "value": "AD45",
+    "unit": "truck model",
+    "source": "ASSUMPTION: the haulage stage that keeps pace with depth over the advisor's horizon (spec 3.4): beyond the last stage of m_haul (12 trucks, all of the registry) trucks are added one at a time, of the model of trucks 05-12 (truck.AD45.payload_t, truck.AD45.engine_kw); each goes to the decline with fewer trucks, a tie to the decline with the deeper design bottom (TU1, decline.tu1.design_bottom_m). Analytic only: these trucks have no twin"
+  },
+  "ladder.depth_trucks.lead_years": {
+    "value": 0.5,
+    "unit": "years from the decision to service",
+    "source": "ASSUMPTION: as the trucks of the m_haul stages (ladder.m_haul.lead_years): bought, delivered and commissioned in about half a year"
+  },
+  "ladder.horizon.steps_per_year": {
+    "value": 2,
+    "unit": "steps per year",
+    "source": "ASSUMPTION: the ten-year horizon of the advisor (spec 3.4, 2027-2036) is computed in half-year steps from the decision on 1 January 2027 (sim.epoch): every lead time is a multiple of half a year, and a measure is in service from the start of the half-year in which its lead time ends"
   },
   "water.pumping_norm_h": {
     "value": 20,

@@ -241,6 +241,17 @@ class FixtureStandTest(unittest.TestCase):
         for row in report["ladder"]:                              # one economics block per target
             self.assertEqual(row["economics"]["gold_price_usd_oz"], 4615)
         self.assertEqual([row["economics"]["capex_usd_m"] for row in report["ladder"]], [None, None, 125, 125])
+        # the horizon of each target (section 11 item 3): the year it is held to, and the economics after tax
+        self.assertEqual([row["horizon"]["held_to_year"] for row in report["ladder"]], [2036, 2036, 2034, 2030])
+        self.assertEqual([row["horizon"]["label"] for row in report["ladder"]],
+                         ["держится до 2036 г.", "держится до 2036 г.", "держится до 2034 г.", "держится до 2030 г."])
+        for row in report["ladder"]:
+            self.assertEqual(row["economics"]["cit_rate_pct"], 20)
+            if not row["horizon"]["holds"]:
+                self.assertIsNone(row["economics"]["variants"]["disclosed"]["payback_year"])
+        self.assertEqual(report["projection"]["label"], "держится до 2036 г.")
+        self.assertTrue(all(step["in_service_text"] for step in report["sequence"]))
+        self.assertEqual(report["kpi"]["dewatering_margin_next_failure"], 2.54)
 
     def test_fixture_files(self):
         state = load_json(os.path.join(FIXTURE_DIR, "state.json"))
@@ -429,7 +440,11 @@ class FixtureStandTest(unittest.TestCase):
         items = self.client.json("/api/advisor")[1]["effects"]["items"]
         economics = [item for item in items if item["id"] == "economics"]
         self.assertEqual(len(economics), 1)
-        self.assertIn("простая окупаемость", economics[0]["text"])
+        # section 11 item 3: the ten-year economics and the hold year, never a payback for a target not held
+        self.assertIn("держится до 2034 г.", economics[0]["text"])
+        self.assertIn("окупаемость не указывается", economics[0]["text"])
+        projection = self.client.json("/api/advisor")[1]["projection"]
+        self.assertEqual((projection["target_ktpa"], projection["held_to_year"]), (2000, 2034))
         self.client.post({"action": "reset"})
 
     def test_knob_minus_plus(self):

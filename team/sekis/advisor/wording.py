@@ -116,6 +116,29 @@ def flooded_phrase(names: Mapping[str, str], levels: Sequence[str]) -> str:
     return "затоплены горизонты " + ", ".join(marks)
 
 
+def _plural(count: int, one: str, few: str, many: str) -> str:
+    """Russian noun form after a whole number: 1 насос, 2 насоса, 5 насосов."""
+    if count % 10 == 1 and count % 100 != 11:
+        return one
+    if count % 10 in (2, 3, 4) and count % 100 not in (12, 13, 14):
+        return few
+    return many
+
+
+def reserve_phrase(dewatering: cap.Dewatering) -> str:
+    """Standby of the main pumping station: «резерв: 1 насос», or «резерва нет: при отказе ещё
+    одного насоса ×1,27» once a failed pump has used the standby up."""
+    if dewatering.standby_pumps > 0:
+        count = dewatering.standby_pumps
+        return f"резерв: {count} {_plural(count, 'насос', 'насоса', 'насосов')}"
+    return f"резерва нет: при отказе ещё одного насоса ×{num(dewatering.margin_next_failure, 2)}"
+
+
+def decline_label(names: Mapping[str, str], key: str) -> str:
+    """«ТУ-1» from the registry name «Транспортный уклон ТУ-1»."""
+    return _decline_label(names, key)
+
+
 # --- the state of each link ------------------------------------------------------------------
 
 def link_detail(model: cap.Model, names: Mapping[str, str], link: str, res: cap.Result) -> str:
@@ -139,7 +162,7 @@ def link_detail(model: cap.Model, names: Mapping[str, str], link: str, res: cap.
     if link == "development":
         return f"проходка уклонов {num(res.dev_advance_vm_per_year)} м по вертикали в год"
     if link == "dewatering":
-        text = f"запас производительности насосов ×{num(res.dewatering.margin, 2)}"
+        text = f"запас производительности насосов ×{num(res.dewatering.margin, 2)}; {reserve_phrase(res.dewatering)}"
         if res.dewatering.flooded_levels:
             text += f"; {flooded_phrase(names, res.dewatering.flooded_levels)}"
         return text
@@ -204,11 +227,16 @@ def _stage_text(model: cap.Model, names: Mapping[str, str], link: str,
     """The stage itself, without its effect on the units that wait for air."""
     old, new = before.state, after.state
     if link == "haulage":
-        added = [c.truck for c in after.haulage.cycles
-                 if c.truck not in {b.truck for b in before.haulage.cycles}]
+        added = [c for c in after.haulage.cycles if c.truck not in {b.truck for b in before.haulage.cycles}]
         noun = "самосвала" if len(added) == 1 else "самосвалов"
-        return (f"ввод {noun} {numbers([int(t.rsplit('-', 1)[-1]) for t in added])} "
-                f"(парк: {len(before.haulage.cycles)} {ARROW} {len(after.haulage.cycles)} машин)")
+        fleet = f"парк: {len(before.haulage.cycles)} {ARROW} {len(after.haulage.cycles)} машин"
+        beyond = [c for c in added if c.truck not in names]
+        if beyond:   # trucks beyond the registry: the haulage stage that keeps pace with depth
+            declines = sorted({_decline_label(names, c.decline) for c in beyond})
+            return (f"ввод {noun} {model.p('ladder.depth_trucks.model')} "
+                    f"{numbers([int(c.truck.rsplit('-', 1)[-1]) for c in added])} на уклоне {', '.join(declines)} "
+                    f"сверх парка реестра ({fleet})")
+        return f"ввод {noun} {numbers([int(c.truck.rsplit('-', 1)[-1]) for c in added])} ({fleet})"
     if link == "ventilation":
         added = [fan for fan in after.air.fans_running if fan not in before.air.fans_running]
         return (f"ввод в работу: {_names(names, added)} (подача воздуха "
@@ -332,88 +360,223 @@ def apply_message(reason: str, binding: str, steps: Sequence[Any]) -> str:
     return f"Мер до цели: {len(steps)} ({', '.join(parts)})."
 
 
-# --- economics, projection, baseline ---------------------------------------------------------
+# --- economics, horizon, baseline ------------------------------------------------------------
 
 U_USD_M = "млн долл."
 U_USD_OZ = "долл./унц."
+_EPS = 1.0e-9   # comparison of times
 
 
-def _years(value: float) -> str:
-    """«0,8 года», «1,0 года», «2,5 года» (one decimal takes the genitive singular)."""
+def years_phrase(value: float) -> str:
+    """«0,5 года», «1 год», «1,5 года», «2 года», «5 лет»."""
+    if abs(value - round(value)) < _EPS:
+        count = int(round(value))
+        return f"{count} {_plural(count, 'год', 'года', 'лет')}"
     return f"{num(value, 1)} года"
 
 
-def economics_notes(model: cap.Model, row: Mapping[str, Any]) -> Dict[str, str]:
-    """Russian notes of an economics row: the basis of the price, of the AISC and of the capex."""
+def _moment(time: float) -> str:
+    """«начала 2029 г.», «середины 2027 г.» for a time on the half-year grid."""
+    year = int(time + _EPS)
+    return f"середины {year} г." if time - year > _EPS else f"начала {year} г."
+
+
+def when_text(time: float, first: float) -> str:
+    """When a measure enters service: «с начала 2029 г.», «с середины 2027 г.»."""
+    return f"с {_moment(time)}"
+
+
+def when_short(time: float, first: float) -> str:
+    """Compact form for tables: «2029», «II пол. 2027»."""
+    year = int(time + _EPS)
+    return f"II пол. {year}" if time - year > _EPS else str(year)
+
+
+def in_service_text(time: float, lead: float, first: float) -> str:
+    """«в работе с середины 2027 г. (срок ввода 0,5 года, решение не позднее начала 2027 г.)»."""
+    if lead <= _EPS:
+        return f"сразу, с {_moment(time)}: операционное действие"
+    return (f"в работе с {_moment(time)} (срок ввода {years_phrase(lead)}, решение не позднее "
+            f"{_moment(time - lead)})")
+
+
+def storage_stage_text(before: cap.Result, after: cap.Result, size_t: float) -> str:
+    """The second tailings stage, which no document of the company describes."""
+    return (f"вторая ступень хвостохранилища после новой карты: {num(size_t / cap.KILO)} тыс. т "
+            f"(допущение, проект не опубликован; свободная ёмкость {num(before.tailings.free_t / cap.KILO)} "
+            f"{ARROW} {num(after.tailings.free_t / cap.KILO)} тыс. т)")
+
+
+def horizon_note(link: str, shown: Optional[int], mine: Optional[int], crossed: Sequence[Any]) -> str:
+    """Why a year of the horizon falls short because of storage, and the declines whose design
+    bottom the centroid passes that year; empty otherwise."""
+    parts = []
+    if link == "tailings":
+        parts.append("фабрика стоит: нет ёмкости хвостохранилища" if not shown else
+                     f"хвостохранилище заполнено в этом году: переработано {num(shown)} тыс. т")
+    for label, bottom in crossed:
+        parts.append(f"центр добычи ниже проектного дна уклона {label} ({num(bottom)} м): формула откатки "
+                     f"считает горизонт доступным")
+    return "; ".join(parts)
+
+
+def binding_runs(rows: Sequence[Mapping[str, Any]]) -> Dict[str, Any]:
+    """The binding link of each year in runs: «2027–2028: вентиляция; 2029–2036: фабрика»."""
+    runs: List[Dict[str, Any]] = []
+    for row in rows:
+        if runs and runs[-1]["link"] == row["binding_link"] and runs[-1]["to"] == row["year"] - 1:
+            runs[-1]["to"] = row["year"]
+        else:
+            runs.append({"from": row["year"], "to": row["year"], "link": row["binding_link"],
+                         "name": link_name(row["binding_link"])})
+    text = "; ".join((f"{r['from']}" if r["from"] == r["to"] else f"{r['from']}{DASH}{r['to']}")
+                     + f": {r['name'].lower()}" for r in runs)
+    return {"runs": runs, "text": text}
+
+
+_FAILURE_RU = {
+    "ventilation": "воздуха на новые самосвалы не хватает, а все ступени вентиляции уже введены (ствол ВС-3)",
+    "tailings": "ёмкость хвостохранилища исчерпана: нужна ёмкость сверх второй ступени",
+    "plant": "мощность фабрики на последней ступени",
+    "stopes": "все ступени очистного фронта уже введены",
+    "development": "проходка уклонов на последней ступени",
+    "water": "все ступени водоснабжения уже введены",
+    "haulage": "откатке не хватает самосвалов, а новые не повышают выдачу",
+    "dewatering": "водоотлив ограничивает добычу",
+}
+
+
+def hold_label(hold: Mapping[str, Any], last_year: int) -> str:
+    """«держится до 2036 г.», «держится до 2031 г.», «не достигается до 2036 г.»."""
+    if hold["reached_year"] is None:
+        return f"не достигается до {last_year} г."
+    return f"держится до {hold['held_to_year']} г."
+
+
+def hold_text(target: float, hold: Mapping[str, Any], last_year: int, row: Optional[Mapping[str, Any]],
+              pending: Optional[Mapping[str, Any]]) -> str:
+    """One sentence on when the target is reached, how long it holds and what ends it."""
+    head = f"Цель {num(target)} {U_KTPA}"
+    reason = ""
+    if row is not None:
+        reason = (f"узкое место {EM_DASH} {row['binding_link_name'].lower()} "
+                  f"({num(row['achievable_ktpa'])} тыс. т за год)")
+        if hold.get("failure_link"):
+            reason += f": {_FAILURE_RU.get(hold['failure_link'], link_lower(hold['failure_link']))}"
+        elif pending:
+            reason += f": мера ещё не введена {EM_DASH} {pending['text']} ({pending['in_service_text']})"
+    if hold["reached_year"] is None:
+        return f"{head} не достигается до {last_year} г.: {reason}."
+    text = f"{head} достигается в {hold['reached_year']} г. и держится до {hold['held_to_year']} г."
+    if hold["holds"]:
+        return text
+    text += f" В {hold['lost_year']} г. {reason}."
+    if hold.get("again_year"):
+        text += f" Снова достигается в {hold['again_year']} г."
+    return text
+
+
+def depth_rule_text(rule: Mapping[str, Any], depth_m: float) -> str:
+    """The rule that keeps haulage up with depth, and the metres per truck from the haulage formula."""
+    text = (f"Когда откатка на глубине полугодия опускается ниже нужного фабрике, вводится ещё один самосвал: "
+            f"следующий по реестру, а сверх 12 машин реестра {EM_DASH} {rule['model']} (допущение).")
+    if rule.get("metres_per_truck"):
+        text += (f" По формуле откатки при парке {rule['fleet_trucks']} машин на отметке {num(depth_m)} м каждые "
+                 f"≈{num(rule['metres_per_truck'])} м понижения центра добычи отнимают тоннаж одного самосвала "
+                 f"({num(rule['truck_ktpa'])} тыс. т/год).")
+    return text
+
+
+def storage_horizon_note(stages: Sequence[Mapping[str, Any]], runs_out: Optional[int], last_year: int,
+                         short_kt: int = 0) -> str:
+    """The storage stages of the horizon, whether storage lasts to its end and, if not, the ore
+    the plant could still have milled had there been room for its tailings."""
+    if not stages:
+        text = "Хвостохранилище: новых ступеней не требуется."
+    else:
+        parts = []
+        for stage in stages:
+            what = ("новая карта" if stage["kind"] == "measure"
+                    else "вторая ступень (допущение, проект не опубликован)")
+            parts.append(f"{what} {EM_DASH} в работе с {_moment(stage['time'])} (решение не позднее "
+                         f"{_moment(stage['decided'])})")
+        text = "Хвостохранилище: " + "; ".join(parts) + "."
+    if runs_out is not None:
+        text += f" В {runs_out} г. ёмкость кончается: нужна ёмкость сверх второй ступени"
+        if short_kt > 0:
+            text += f" (до {last_year} г. ещё ≈{num(short_kt)} тыс. т)"
+        return text + "."
+    return text + f" Ёмкости хватает до {last_year} г."
+
+
+def payback_text(variant: Mapping[str, Any], last_year: int, disclosed: bool) -> str:
+    """The payback year of a variant of the ten-year cash, or why there is none."""
+    reason = variant["payback_reason"]
+    if reason == "paid_back":
+        return f"окупается в {variant['payback_year']} г."
+    if reason == "not_held":
+        return f"не указывается: цель не удерживается до {last_year} г."
+    if reason == "no_outlay":
+        return ("не считается: капзатраты не раскрыты" if disclosed
+                else "не считается: денежный поток ни в одном году не отрицателен")
+    return f"не окупается до {last_year} г."
+
+
+def horizon_economics_notes(model: cap.Model, econ: Mapping[str, Any]) -> Dict[str, str]:
+    """Russian notes of the ten-year economics: bases, capex, caveats and a summary."""
     first_step = model.p("plant.stages_ktpa")[0]
-    if row["capex_disclosed"]:
-        capex = (f"расчётная стоимость по данным компании для расширения до 2{DASH}2,5 млн т/год, 3-й квартал 2025 г.; "
-                 f"разбивки по ступеням и состава затрат нет")
-    elif row["target_ktpa"] == first_step:
+    if econ["capex_disclosed"]:
+        capex = (f"≈{num(econ['capex_usd_m'])} {U_USD_M} {EM_DASH} расчётная стоимость расширения до "
+                 f"2{DASH}2,5 млн т/год по данным компании (3-й квартал 2025 г.), распределена поровну на срок "
+                 f"ввода линий; разбивки по ступеням и состава затрат нет")
+    elif econ["target_ktpa"] == first_step:
         capex = ("не раскрыто: в отчёте за первое полугодие 2026 г. сказано, что новое дробильное и мельничное "
                  "оборудование для ступени +200 тыс. т/год заказано, сумма не приводится")
     else:
-        capex = "не раскрыто: в отчётах компании нет суммы для мер этой ступени"
-    summary = (f"{num(row['gold_gain_koz_year'], 1)} тыс. унц./год к устойчивой базе "
-               f"{num(row['baseline_gold_koz_year'], 1)}")
-    if row["gold_gain_koz_year"] is not None and row["gold_gain_koz_year"] > 0:
-        summary = "+" + summary
+        capex = "не раскрыто: в отчётах компании нет суммы для мер этой цели"
+    assumed = (f"оценка, не опубликовано: самосвал {num(model.p('econ.truck_capex_usd_m'), 1)} {U_USD_M}, "
+               f"ёмкость хвостохранилища {num(model.p('econ.tsf_capex_usd_per_t'), 1)} долл. за тонну "
+               f"(за вычетом ёмкости, которая нужна и без расширения)")
+    totals = econ["totals"]
+    summary = (f"за {econ['first_year']}{DASH}{econ['last_year']} гг. золота {num(totals['gold_koz'], 1)} тыс. унц., "
+               f"к базе {'+' if totals['gain_koz'] > 0 else ''}{num(totals['gain_koz'], 1)} тыс. унц.")
     return {
         "price_basis": "средняя цена реализации золота за первое полугодие 2026 г. (без серебра)",
         "aisc_basis": ("AISC за первое полугодие 2026 г. в пересчитанной базе: за вычетом выручки от серебра, "
-                       "без разовых статей и невозмещаемого НДС; принят неизменным при росте выпуска"),
+                       "без разовых статей и невозмещаемого НДС; принят неизменным при росте выпуска. НДПИ входит "
+                       "в AISC: компания считает AISC от себестоимости реализации и называет НДПИ среди её "
+                       "составляющих (отчёт за первое полугодие 2026 г.)"),
+        "tax_basis": (f"корпоративный подоходный налог {num(econ['cit_rate_pct'])} % с маржи прироста "
+                      f"(Налоговый кодекс РК, ст. 357; капзатраты из базы налога не вычитаются)"),
+        "discount_basis": (f"ставка дисконтирования {num(econ['discount_rate_pct'])} % в реальном выражении "
+                           f"(допущение), поток года {EM_DASH} на его конец, приведение к началу "
+                           f"{econ['first_year']} г."),
         "capex_note": capex,
+        "assumed_note": assumed,
+        "reference_text": ("база сравнения: рудник без мер расширения и без нарушений, хвостохранилище "
+                           "расширяется по мере заполнения"),
+        "caveats": ("цена золота и AISC постоянны; без финансирования, оборотного капитала и амортизации; "
+                    "стоимость вентиляции, очистного фронта, проходки, водоснабжения и ступени +200 тыс. т "
+                    "не раскрыта и в расчёт не входит"),
         "summary": summary,
     }
 
 
 def economics_item(row: Mapping[str, Any]) -> Dict[str, Any]:
-    """Item of «Что изменилось» for a new target: what its extra gold is worth and the payback."""
-    econ = row["economics"]
+    """Item of «Что изменилось» for a new target: how long it holds and its ten-year economics."""
+    econ, horizon = row["economics"], row["horizon"]
+    totals, after = econ["totals"], econ["variants"]["disclosed"]
     target = num(row["target_ktpa"])
-    gain = econ["gold_gain_koz_year"]
-    if gain is None or gain <= 0:
-        text = (f"Цель {target} {U_KTPA}: прироста золота к устойчивой базе "
-                f"{num(econ['baseline_gold_koz_year'], 1)} {U_KOZ} нет.")
+    text = (f"Цель {target} {U_KTPA}: {horizon['label']}; за {econ['first_year']}{DASH}{econ['last_year']} гг. "
+            f"золота {'+' if totals['gain_koz'] > 0 else ''}{num(totals['gain_koz'], 1)} тыс. унц. к базе, маржа "
+            f"после налога {num(totals['margin_after_tax_usd_m'], 1)} {U_USD_M}")
+    if econ["capex_disclosed"]:
+        text += (f", капитальные затраты ≈{num(econ['capex_usd_m'])} {U_USD_M} (по расчёту компании, 3-й кв. "
+                 f"2025 г.), чистая приведённая стоимость {num(after['npv_usd_m'], 1)} {U_USD_M} при "
+                 f"{num(econ['discount_rate_pct'])} %; окупаемость {after['payback_text'].rstrip('.')}.")
     else:
-        if econ["capex_disclosed"]:
-            capex = (f"капитальные затраты ≈{num(econ['capex_usd_m'])} {U_USD_M} (по расчёту компании, "
-                     f"3-й кв. 2025 г.)")
-            if econ["payback_years"] is not None:
-                capex += f", простая окупаемость {_years(econ['payback_years'])}"
-        else:
-            capex = "капитальные затраты не раскрыты"
-        text = (f"Цель {target} {U_KTPA}: золота +{num(gain, 1)} {U_KOZ} к устойчивой базе "
-                f"{num(econ['baseline_gold_koz_year'], 1)}; по цене {num(econ['gold_price_usd_oz'])} {U_USD_OZ} "
-                f"это {num(econ['value_usd_m_year'], 1)} {U_USD_M} в год, при полных затратах "
-                f"{num(econ['aisc_usd_oz'])} {U_USD_OZ} операционная маржа {num(econ['margin_usd_m_year'], 1)} "
-                f"{U_USD_M} в год; {capex}.")
-    return _item("economics", "Экономика цели", f"{U_USD_M} в год", None, econ["value_usd_m_year"],
-                 NEUTRAL, text)
-
-
-def projection_note(link: str, shown: Optional[int], physical: Optional[int]) -> str:
-    """Why a projection year falls short because of the tailings storage; empty otherwise."""
-    if link != "tailings":
-        return ""
-    if not shown:
-        return "фабрика стоит: нет ёмкости хвостохранилища"
-    return f"хвостохранилище заполнено в этом году: переработано {num(shown)} из {num(physical)} тыс. т"
-
-
-def storage_note(last_year: int, runs_out: Optional[int], measure: Optional[Mapping[str, Any]]) -> Optional[str]:
-    """The year storage runs out, and the measure that prevents it, for the head of the projection."""
-    if runs_out is None:
-        return None
-    text = f"Ёмкость хвостохранилища закончится в {runs_out} г.; после этого фабрика стоит."
-    if measure and measure.get("knob"):
-        later = measure.get("storage_runs_out_year")
-        horizon = (f"ёмкости хватит до конца прогноза ({last_year} г.)" if later is None
-                   else f"ёмкость закончится в {later} г.")
-        text += f" Мера: {measure['text']}; с ней {horizon}."
-    else:
-        text += " Все ступени меры по хвостохранилищу уже введены: нужна ёмкость сверх новой карты."
-    return text
+        text += f"; капитальные затраты не раскрыты; окупаемость {after['payback_text'].rstrip('.')}."
+    return _item("economics", "Экономика цели", U_USD_M, None, after["npv_usd_m"], NEUTRAL, text)
 
 
 def baseline_text(row: Mapping[str, Any]) -> str:

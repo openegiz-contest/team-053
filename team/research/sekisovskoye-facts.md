@@ -449,3 +449,9 @@ Note the conflict with D2 (OVOS) p.33, which gives a geological reserve of 2,327
 - Coordinates 50°19'43.17" N, 82°35'47.81" E (D1 p.1).
 - SATREPS "Next-generation Smart Mining Plus for Sustainable Resources Development" (Hokkaido University, Nazarbayev University; April 2025 to March 2030) names AltynGold's Sekisovskoye mine as its site: JICA ex-ante evaluation `https://www2.jica.go.jp/ja/evaluation/pdf/2024_202313276_1_s.pdf`, JST page `https://www.jst.go.jp/global/english/kadai/r0601_kazakhstan.html`.
 - Fleet reported in a 2020 company release (secondary, im-mining `https://im-mining.com/?p=64026`): 3 Cat R1300 LHDs, 3 Cat AD30 trucks delivered 2020; Epiroc T1D jumbos on order. Consistent with the OVOS equipment list in section A4.
+
+### D4. Taxes
+
+| Parameter | Value | Unit | Source | Status |
+|---|---|---|---|---|
+| Kazakhstan corporate income tax rate | 20 | % of taxable income | Tax Code of the Republic of Kazakhstan of 18 July 2025 No. 214-VIII ZRK, Article 357 para. 2 subpara. 5, `https://adilet.zan.kz/rus/docs/K2500000214` (read 16 Oct 2026); AltynGold H1 2026 RNS: "against the Kazakhstan corporate income tax rate of 20%", `https://www.investegate.co.uk/announcement/bzw/altyngold--altn/half-year-financial-report/9795024` | CONFIRMED |

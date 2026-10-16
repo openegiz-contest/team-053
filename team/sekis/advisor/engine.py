@@ -220,6 +220,9 @@ class Advisor:
         self.targets: Tuple[float, ...] = tuple(float(v) for v in self.model.p("ladder.m_plant.capacity_ktpa"))
         self.first_year: int = datetime.fromisoformat(self.model.p("sim.epoch")).year
         self.baseline: cap.Result = cap.evaluate(self.model, cap.State())
+        from .horizon import Horizon  # here: horizon builds on the constants of this module
+        #: The ten-year horizon (spec 3.4 steps 4 and 5): schedules with lead times, hold years, economics.
+        self.horizon = Horizon(self, PROJECTION_YEARS)
 
     # --- inputs ------------------------------------------------------------------------------
 
@@ -415,6 +418,9 @@ class Advisor:
             "stockpile_net_tpd": _finite(stock["net_tpd"], 0),
             "stockpile_trend": stock["trend"],
             "dewatering_margin": _finite(res.dewatering.margin, 2),
+            "dewatering_margin_next_failure": _finite(res.dewatering.margin_next_failure, 2),
+            "pumps_standby": res.dewatering.standby_pumps,
+            "dewatering_reserve": wording.reserve_phrase(res.dewatering),
         }
 
     def links(self, res: cap.Result) -> List[Dict[str, Any]]:
@@ -437,153 +443,59 @@ class Advisor:
                 "binding_link_name": wording.link_name(res.binding_link), "reached": plan.reached,
                 "stop_reason": plan.stop_reason}
 
-    # --- economics (decision 11.1) -------------------------------------------------------------
-
-    def economics(self, gold_oz_year: float, target_ktpa: float) -> Dict[str, Any]:
-        """What the gold a target adds over the sustainable baseline is worth, and the payback.
-
-        Value at the realised gold price; operating margin per ounce = price less the published
-        AISC (H1 2026, restated basis), taken as unchanged by the extra output; capex the company
-        estimate where one is published for the target, otherwise ``None`` (not disclosed);
-        payback = capex / extra margin per year. A description of the mine's economics, not advice.
-        """
-        p = self.model.p
-        price, aisc = p("econ.gold_price_usd_oz"), p("econ.aisc_usd_oz")
-        gain_oz = gold_oz_year - self.baseline.gold.oz_per_year
-        margin_usd_m = gain_oz * (price - aisc) / MILLION
-        capex = p("econ.capex_expansion_usd_m") if target_ktpa in p("econ.capex_expansion_targets_ktpa") else None
-        payback = capex / margin_usd_m if capex is not None and margin_usd_m > 0 else None
-        row = {
-            "target_ktpa": target_ktpa,
-            "baseline_gold_koz_year": _finite(self.baseline.gold.oz_per_year / cap.KILO, 1),
-            "gold_gain_koz_year": _finite(gain_oz / cap.KILO, 1),
-            "gold_price_usd_oz": price,
-            "value_usd_m_year": _finite(gain_oz * price / MILLION, 1),
-            "aisc_usd_oz": aisc,
-            "margin_usd_oz": price - aisc,
-            "margin_usd_m_year": _finite(margin_usd_m, 1),
-            "capex_usd_m": capex,
-            "capex_disclosed": capex is not None,
-            "payback_years": _finite(payback, 1),
-            "sources": {"gold_price_usd_oz": "econ.gold_price_usd_oz", "aisc_usd_oz": "econ.aisc_usd_oz",
-                        "capex_usd_m": "econ.capex_expansion_usd_m"},
-        }
-        row.update(wording.economics_notes(self.model, row))
-        return row
-
     # --- ladder (step 4) ---------------------------------------------------------------------
 
     def ladder_start(self, inputs: Inputs) -> cap.State:
         """The baseline measure set under the current disturbances."""
         return self.state(inputs).replace(**{knob: 0 for knob in cap.KNOBS})
 
+    @staticmethod
+    def _with_service(steps: List[Dict[str, Any]], schedule: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Step dicts with the time each would really be in service (spec 3.4, section 11 item 3):
+        ``lead_years``, ``in_service_year`` (2027.5 = 1 July 2027), ``in_service_when`` («II пол.
+        2027») and ``in_service_text``. ``schedule`` lists the entries of the steps in their order."""
+        out = []
+        for step, entry in zip(steps, schedule):
+            out.append(dict(step, lead_years=entry["lead_years"], in_service_year=entry["time"],
+                            in_service_when=entry["when_short"], in_service_text=entry["in_service_text"]))
+        return out
+
+    def _horizon(self, start: cap.State, target: float, stockpile_t: float) -> Dict[str, Any]:
+        return self.horizon.plan(start, target, stockpile_t)
+
     def ladder_row(self, start: cap.State, target: float, stockpile_t: float) -> Dict[str, Any]:
-        """The sequence for one target from ``start`` and the figures of the state it ends in."""
+        """The sequence for one target from ``start``, the figures of the state it ends in at the
+        epoch, and its horizon: schedule, hold years, binding link by year and the ten-year economics."""
         plan = self.plan(start, target)
+        horizon = self._horizon(start, target, stockpile_t)
+        steps = self._with_service([step.to_dict() for step in plan.steps], horizon["sequence_schedule"])
         row: Dict[str, Any] = {"target_ktpa": target,
-                               "steps": [step.to_dict() for step in plan.steps],
+                               "steps": steps,
                                "sequence": plan.links,
                                "measures_count": len(plan.steps)}
         row.update(self._outcome(plan))
         row["measures"] = {knob: getattr(plan.result.state, knob) for knob in cap.KNOBS}
         row["capacities"] = dict(plan.result.capacity_rounded)
         row.update(self.kpi(plan.result, stockpile_t))
-        row["economics"] = self.economics(plan.result.gold.oz_per_year, target)
+        row["horizon"] = {key: value for key, value in horizon.items() if key != "economics"}
+        row["economics"] = horizon["economics"]
         return row
 
     def ladder(self, inputs: Inputs) -> List[Dict[str, Any]]:
         """For each target: the sequence from the baseline measure set under the current
-        disturbances, the figures of the state it ends in and the economics of the target."""
+        disturbances, the figures of the state it ends in, its horizon and its economics."""
         start = self.ladder_start(inputs)
         return [self.ladder_row(start, target, inputs.stockpile_t) for target in self.targets]
 
     # --- projection (step 5) -----------------------------------------------------------------
 
-    def _project(self, state: cap.State, target_ktpa: float) -> Dict[str, Any]:
-        """Ten years of one state: rows, the year storage runs out, the first year the target is missed."""
-        model = self.model
-        centroid = model.p("stope.centroid_baseline_m") if state.centroid_m is None else state.centroid_m
-        placed = state.tailings_placed_t
-        grade = model.p("plant.grade_base") if state.grade_gpt is None else state.grade_gpt
-        rows: List[Dict[str, Any]] = []
-        runs_out: Optional[int] = None
-        missed: Optional[int] = None
-        gold_total = 0.0
-        for year in range(self.first_year, self.first_year + PROJECTION_YEARS):
-            res = cap.evaluate(model, state.replace(centroid_m=centroid, tailings_placed_t=placed))
-            physical = dict(res.capacity_ktpa, tailings=math.inf)
-            link = cap.binding_link(physical)
-            rate_kt = physical_kt = min(physical.values())
-            free_kt = res.tailings.free_t / cap.KILO
-            if free_kt <= rate_kt:
-                rate_kt, link = free_kt, "tailings"
-                runs_out = runs_out or year
-            ore_t = rate_kt * cap.KILO
-            gold_oz = cap.gold_oz(model, ore_t, grade)
-            gold_total += gold_oz
-            without_water = min(min(v for k, v in physical.items() if k != "water"), free_kt)
-            tph = without_water * cap.KILO / model.hours_per_year
-            water = cap.water_balance(model, tph, tph, res.dewatering.pumped_m3h, state.m_water)
-            placed += ore_t
-            storage = cap.tailings(model, state.m_tailings, placed, rate_kt)
-            shown = cap.round_kt(rate_kt)
-            met = shown >= target_ktpa
-            if not met and missed is None:
-                missed = year
-            rows.append({
-                "year": year,
-                "achievable_ktpa": shown,
-                "binding_link": link,
-                "binding_link_name": wording.link_name(link),
-                "target_met": met,
-                "centroid_m": _finite(centroid, 1),
-                "gold_oz": _finite(gold_oz, 0),
-                "gold_koz": _finite(gold_oz / cap.KILO, 2),
-                "gold_total_koz": _finite(gold_total / cap.KILO, 2),
-                "tailings_stored_kt": _finite(storage.stored_t / cap.KILO, 0),
-                "tailings_free_kt": _finite(storage.free_t / cap.KILO, 0),
-                "tailings_years_left": _finite(storage.years_left, 1),
-                "water_deficit_m3h": _finite(water.deficit_m3h, 1),
-                "note": wording.projection_note(link, shown, cap.round_kt(physical_kt)),
-            })
-            centroid = cap.centroid_after(model, centroid, ore_t)
-        return {"rows": rows, "storage_runs_out_year": runs_out, "target_missed_year": missed,
-                "gold_total_koz": _finite(gold_total / cap.KILO, 2)}
-
     def projection(self, inputs: Inputs) -> Dict[str, Any]:
-        """Ten years of the current measure set and disturbances.
-
-        Each year the seven links other than tailings are evaluated at the depth the production
-        centroid has reached; the year's ore is the smallest of them, or what the tailings
-        storage can still take. The ore then lowers the centroid, fills the dams and pours gold.
-        The storage link itself (the rate that keeps a reserve of years) is a planning rule and
-        does not cap the tonnage of a year; the free volume does. A year in which storage runs
-        out, and every year after it, carries a ``note``; ``storage_measure`` names the stage of
-        the tailings measure that would prevent it and the year storage then runs out.
-        """
-        state = self.state(inputs)
-        result = self._project(state, inputs.target_ktpa)
-        measure = None
-        if result["storage_runs_out_year"] is not None:
-            measure = self._storage_measure(state, inputs.target_ktpa)
-        result.update({"first_year": self.first_year, "last_year": self.first_year + PROJECTION_YEARS - 1,
-                       "target_ktpa": inputs.target_ktpa, "storage_measure": measure,
-                       "storage_note": wording.storage_note(self.first_year + PROJECTION_YEARS - 1,
-                                                            result["storage_runs_out_year"], measure)})
-        return result
-
-    def _storage_measure(self, state: cap.State, target_ktpa: float) -> Dict[str, Any]:
-        """The next stage of the tailings measure and the year storage runs out with it."""
-        before = cap.evaluate(self.model, state)
-        move = cap.next_measure(self.model, state, "tailings")
-        if move is None:
-            return {"knob": None, "to_stage": None, "text": None, "storage_runs_out_year": None}
-        knob, new_state = move
-        after = cap.evaluate(self.model, new_state)
-        with_measure = self._project(new_state, target_ktpa)
-        return {"knob": knob, "to_stage": getattr(new_state, knob),
-                "text": wording.measure_text(self.model, self.names, "tailings", before, after),
-                "storage_runs_out_year": with_measure["storage_runs_out_year"]}
+        """The horizon of the current target from the current state: the stages of the current
+        knob set and the remaining steps of the sequence come into service after their lead
+        times from the epoch, the planner adds trucks and storage as depth and fill require, and
+        the mine is stepped through 2027-2036. With the full measure set of a target it equals
+        that target's ladder row (``horizon`` and ``economics``)."""
+        return dict(self._horizon(self.state(inputs), inputs.target_ktpa, inputs.stockpile_t))
 
     # --- effects (step 6) --------------------------------------------------------------------
 
@@ -664,13 +576,16 @@ class Advisor:
         ``target_reached``, ``links`` (eight rows), ``next_measure`` (a step or ``None``),
         ``measures_needed``, ``sequence`` (steps from the current state to the target),
         ``sequence_outcome``, ``conditions`` (disturbances no action removes), ``kpi`` (steady
-        state), ``sustainable_baseline``, ``ladder`` (one row per target, with ``economics``),
-        ``projection``, ``effects``, ``calibration``.
+        state), ``sustainable_baseline``, ``ladder`` (one row per target, with ``horizon`` and
+        ``economics``), ``projection`` (the horizon of the current state), ``effects``,
+        ``calibration``. Every step of ``sequence`` and of the ladder carries the time it would
+        really be in service (``lead_years``, ``in_service_year``, ``in_service_text``).
         """
         state = self.state(inputs)
         plan = self.plan(state, inputs.target_ktpa)
         res = plan.start
-        steps = [step.to_dict() for step in plan.steps]
+        projection = self.projection(inputs)
+        steps = self._with_service([step.to_dict() for step in plan.steps], projection["sequence_schedule"])
         return {
             "schema": SCHEMA,
             "report_revision": inputs.revision,
@@ -692,7 +607,7 @@ class Advisor:
             "kpi": self.kpi(res, inputs.stockpile_t),
             "sustainable_baseline": self.sustainable_baseline(),
             "ladder": self.ladder(inputs),
-            "projection": self.projection(inputs),
+            "projection": projection,
             "effects": self.effects(before, inputs),
             "calibration": self.calibration(),
         }
@@ -740,9 +655,10 @@ class Advisor:
         else:
             reason = plan.stop_reason
         binding = plan.start.binding_link
+        schedule = self.projection(inputs)["sequence_schedule"]
         return {"mode": mode, "revision": inputs.revision, "target_ktpa": inputs.target_ktpa,
                 "binding_link": binding, "changes": changes,
-                "steps": [step.to_dict() for step in steps], "reason": reason,
+                "steps": self._with_service([step.to_dict() for step in steps], schedule), "reason": reason,
                 "message": wording.apply_message(reason, binding, steps)}
 
     # --- the twin ----------------------------------------------------------------------------

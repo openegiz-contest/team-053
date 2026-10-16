@@ -57,12 +57,14 @@ REPORT_KEYS = {
     "projection", "effects", "calibration",
 }
 STEP_KEYS = {"kind", "link", "link_name", "measure", "knob", "from_stage", "to_stage", "set", "text",
-             "cap_before_ktpa", "cap_after_ktpa"}
+             "cap_before_ktpa", "cap_after_ktpa", "lead_years", "in_service_year", "in_service_when",
+             "in_service_text"}
 KPI_KEYS = {
     "gold_koz_year", "gold_gain_koz_year", "grade_gpt", "recovery_pct", "air_demand_m3s", "air_supply_m3s",
     "air_margin_pct", "air_used_m3s", "air_spare_m3s", "units_held_vent", "water_deficit_m3h", "discharge_m3h", "permit_m3h", "permit_use_pct", "tailings_free_kt",
     "tailings_years_left", "stockpile_t", "stockpile_days_left", "stockpile_mine_tpd", "stockpile_plant_tpd",
-    "stockpile_net_tpd", "stockpile_trend", "dewatering_margin",
+    "stockpile_net_tpd", "stockpile_trend", "dewatering_margin", "dewatering_margin_next_failure", "pumps_standby",
+    "dewatering_reserve",
 }
 # The opening ROM stockpile (params.json stockpile.start_t, derivation in its source) and the days it
 # lasts at the baseline draw: 1000 kt/yr over 365 days less 926.1 kt/yr over 360 days = 167 t/day.
@@ -270,8 +272,32 @@ class TestReport(AdvisorCase):
             self.report(tu1_closed=1, tu2_closed=1)
 
 
+PROJECTION_ROW_KEYS = {
+    "year", "achievable_ktpa", "mined_ktpa", "binding_link", "binding_link_name", "mine_link", "mine_link_name",
+    "mine_ktpa", "target_met", "centroid_m", "gold_oz", "gold_koz", "gold_total_koz", "tailings_stored_kt",
+    "tailings_free_kt", "tailings_years_left", "water_deficit_m3h", "stockpile_kt", "trucks", "halves", "measures",
+    "note",
+}
+HORIZON_KEYS = {
+    "first_year", "last_year", "target_ktpa", "schedule", "sequence_schedule", "rows", "binding_runs", "trucks_end",
+    "depth_trucks", "trucks_beyond_registry", "storage_runs_out_year", "target_missed_year", "gold_total_koz",
+    "depth_rule", "storage_short_kt", "storage_note", "reached_year", "held_to_year", "holds", "lost_year",
+    "again_year", "lost_link", "lost_link_name", "failure_year", "failure_link", "failure_ktpa", "label", "text",
+}
+# The horizon of the four targets from the baseline (spec 3.4, section 11 item 3): the first year the
+# target is met, the last year of that run, the link that ends it and the link with no stage left.
+HOLD = {1000: (2027, 2036, None, None), 1200: (2028, 2036, None, None),
+        2000: (2030, 2034, "tailings", "tailings"), 2500: (2030, 2030, "haulage", "ventilation")}
+BINDING_BY_YEAR = {
+    1000: ["plant"] * 10,
+    1200: ["plant"] * 10,
+    2000: ["ventilation", "plant", "ventilation"] + ["plant"] * 5 + ["tailings"] * 2,
+    2500: ["ventilation"] * 3 + ["plant"] + ["haulage"] * 4 + ["tailings"] * 2,
+}
+
+
 class TestProjection(AdvisorCase):
-    """Spec 3.4 step 5: ten years of the current measure set."""
+    """Spec 3.4 step 5: the horizon of the current state, 2027-2036, with lead times."""
 
     def rows(self, **knobs):
         projection = self.report(**knobs)["projection"]
@@ -281,87 +307,245 @@ class TestProjection(AdvisorCase):
         projection, rows = self.rows()
         self.assertEqual([row["year"] for row in rows], list(range(2027, 2037)))
         self.assertEqual((projection["first_year"], projection["last_year"]), (2027, 2036))
+        self.assertEqual(set(projection), HORIZON_KEYS | {"economics"})
         for row in rows:
-            self.assertEqual(set(row), {
-                "year", "achievable_ktpa", "binding_link", "binding_link_name", "target_met", "centroid_m",
-                "gold_oz", "gold_koz", "gold_total_koz", "tailings_stored_kt", "tailings_free_kt",
-                "tailings_years_left", "water_deficit_m3h", "note"})
+            self.assertEqual(set(row), PROJECTION_ROW_KEYS)
+            self.assertEqual(len(row["halves"]), 2)
 
-    def test_first_year_is_the_current_state(self):
+    def test_first_year_draws_the_stockpile(self):
+        # trucks 06-07 wait for the VPV fan until 2028; the plant mills 1000 kt from 926 kt hoisted
+        # and the opening stockpile (94.3 kt) falls by the difference
         _, rows = self.rows()
-        self.assertEqual((rows[0]["achievable_ktpa"], rows[0]["binding_link"], rows[0]["centroid_m"]),
-                         (926, "haulage", 75.0))
-        self.assertAlmostEqual(rows[0]["gold_koz"], BASELINE_GOLD_KOZ, delta=0.05)
+        first = rows[0]
+        self.assertEqual((first["achievable_ktpa"], first["binding_link"], first["target_met"]), (1000, "plant", True))
+        # the five trucks of the baseline hoist it, a little below 926 kt as the centroid drops 18 m in the year
+        reference = self.advisor.horizon.reference(cap.State(), STOCKPILE_T)["rows"][0]
+        self.assertEqual(first["mined_ktpa"], reference["mined_ktpa"])
+        self.assertAlmostEqual(first["mined_ktpa"], BASELINE_KTPA - 16, delta=3)
+        self.assertAlmostEqual(first["stockpile_kt"], STOCKPILE_T / 1000 - (1000 - first["mined_ktpa"]), delta=1.5)
+        self.assertAlmostEqual(first["gold_koz"], GOLD_KOZ[1000], delta=0.05)
 
-    def test_tailings_fill_is_monotonic_and_conserved(self):
-        for knobs in ({}, FULL[1200], FULL[2500]):
-            _, rows = self.rows(**knobs)
+    def test_tailings_fill_with_the_ore_milled(self):
+        for knobs in ({}, dict(target_ktpa=1200, **FULL[1200]), dict(target_ktpa=2500, **FULL[2500])):
+            projection, rows = self.rows(**knobs)
             stored = [row["tailings_stored_kt"] for row in rows]
-            free = [row["tailings_free_kt"] for row in rows]
             self.assertEqual(stored, sorted(stored))
-            self.assertEqual(free, sorted(free, reverse=True))
-            self.assertGreater(stored[1], stored[0])
-            for row in rows:
-                self.assertAlmostEqual(row["tailings_stored_kt"] + row["tailings_free_kt"], stored[0] + free[0],
+            free_start = 3172 + 2863.755   # dam 4 at 90 %, dams 2 and 3 empty: stored + free at the epoch
+            self.assertAlmostEqual(stored[0] - rows[0]["achievable_ktpa"], 2863.755, delta=1.5)
+            for before, row in zip(rows, rows[1:]):   # what is milled in a year is what the dams take
+                self.assertAlmostEqual(row["tailings_stored_kt"] - before["tailings_stored_kt"], row["achievable_ktpa"],
                                        delta=1.5)
-            added = [b - a for a, b in zip(stored, stored[1:])]
-            for row, tonnes in zip(rows[1:], added):  # what is milled in a year is what the dams take
-                self.assertAlmostEqual(tonnes, row["achievable_ktpa"], delta=1.5)
+            for row in rows:
+                self.assertGreaterEqual(row["tailings_free_kt"], 0)
+            added = sum(e["storage_kt"] for e in projection["schedule"])
+            self.assertAlmostEqual(stored[-1] + rows[-1]["tailings_free_kt"], free_start + added, delta=1.5)
 
-    def test_year_storage_runs_out(self):
-        # 3 172 kt free at the epoch (dam 4 at 90 %, dams 2 and 3 empty), about 0.9 Mt a year: full in 2030
-        projection, rows = self.rows()
-        free_start = sum(d.capacity_t - d.stored_start_t for name, d in self.advisor.model.dams.items()
-                         if name != "tsf-cell5") / 1000
-        self.assertAlmostEqual(free_start, 3172, delta=1)
-        self.assertEqual(projection["storage_runs_out_year"], 2030)
-        by_year = {row["year"]: row for row in rows}
-        self.assertGreater(by_year[2029]["tailings_free_kt"], 0)
-        self.assertEqual(by_year[2030]["tailings_free_kt"], 0)
-        self.assertEqual(by_year[2030]["binding_link"], "tailings")
-        self.assertAlmostEqual(sum(by_year[y]["achievable_ktpa"] for y in (2027, 2028, 2029, 2030)), free_start,
-                               delta=2)
-        self.assertEqual((by_year[2031]["achievable_ktpa"], by_year[2031]["gold_oz"]), (0, 0))
-        self.assertTrue(all(row["binding_link"] != "tailings" for row in rows[:3]))
+    def test_measures_enter_service_after_their_lead_time(self):
+        for row in self.advisor.report(self.base)["ladder"]:
+            last = {}
+            for entry in row["horizon"]["schedule"]:
+                self.assertGreaterEqual(entry["time"] + 1e-9, 2027 + entry["lead_years"], entry)
+                self.assertAlmostEqual(entry["time"] * 2, round(entry["time"] * 2), msg=entry)   # half-year grid
+                self.assertAlmostEqual(entry["decided"], entry["time"] - entry["lead_years"])
+                self.assertGreaterEqual(entry["decided"], 2027)
+                if entry["origin"] == "ladder" and entry["kind"] == "measure":   # decided at the epoch
+                    self.assertEqual(entry["time"], max(2027 + entry["lead_years"], last.get(entry["knob"], 2027)))
+                if entry["knob"]:
+                    self.assertGreaterEqual(entry["time"], last.get(entry["knob"], 2027))
+                    last[entry["knob"]] = entry["time"]
+            for step in row["steps"]:      # the ladder text says when each step would really be available
+                self.assertIn("в работе с", step["in_service_text"])
+                self.assertEqual(step["in_service_year"], 2027 + step["lead_years"])
+        params = json.loads((TEAM / "model" / "params.json").read_text(encoding="utf-8"))
+        self.assertEqual(params["ladder.m_plant.lead_years"]["value"], [0, 0.5, 2.0, 2.0])
+        self.assertIn("'within 24 months'", params["ladder.m_plant.lead_years"]["source"])
+        self.assertEqual(params["ladder.m_vent.lead_years"]["value"], [0, 1.0, 2.5])
 
-    def test_new_cell_moves_the_year_out_of_the_horizon(self):
-        projection, rows = self.rows(m_tailings=1)
-        self.assertIsNone(projection["storage_runs_out_year"])
-        self.assertGreater(rows[-1]["tailings_free_kt"], 0)
+    def test_lead_times_shift_the_projection(self):
+        params = json.loads((TEAM / "model" / "params.json").read_text(encoding="utf-8"))
 
-    def test_depth_lowers_haulage_year_by_year(self):
-        _, rows = self.rows(m_tailings=1)
-        rates = [row["achievable_ktpa"] for row in rows]
-        centroids = [row["centroid_m"] for row in rows]
-        self.assertTrue(all(row["binding_link"] == "haulage" for row in rows))
-        self.assertEqual(rates, sorted(rates, reverse=True))
+        def hold_of(changes, target=2000):
+            changed = json.loads(json.dumps(params))
+            for pid, value in changes.items():
+                changed[pid]["value"] = value
+            adv = Advisor(params=changed)
+            inputs = replace(adv.default_inputs().with_knobs({"target_ktpa": target}), revision=1)
+            return adv.report(inputs)["projection"]
+
+        default = hold_of({})
+        late = hold_of({"ladder.m_plant.lead_years": [0, 0.5, 3.5, 3.5]})
+        zero = hold_of({f"ladder.{knob}.lead_years": [0] * len(params[f"ladder.{knob}.lead_years"]["value"])
+                        for knob in cap.KNOBS})
+        self.assertEqual(default["reached_year"], 2030)
+        self.assertEqual(late["reached_year"], 2031)            # lines 4-5 in mid-2030 instead of 2029
+        self.assertEqual(zero["reached_year"], 2027)            # every measure at once, as on the Stand
+        self.assertLess(late["gold_total_koz"], default["gold_total_koz"] + 1e-9)
+        plant = [e for e in late["schedule"] if e["knob"] == "m_plant" and e["stage"] == 2][0]
+        self.assertEqual(plant["time"], 2030.5)
+        self.assertEqual([r["achievable_ktpa"] for r in zero["rows"]][:2], [2000, 2000])
+
+    def test_depth_lowers_haulage_and_trucks_keep_pace(self):
+        reference = self.advisor.horizon.reference(cap.State(), STOCKPILE_T)["rows"]
+        centroids = [row["centroid_m"] for row in reference]
         self.assertEqual(centroids, sorted(centroids, reverse=True))
-        # the centroid drops by ore / 51 462 t per metre: 926 kt lowers it by 18 m
-        self.assertAlmostEqual(centroids[0] - centroids[1], 926110 / 51462, delta=0.1)
-        # spec 2.3: 926 -> 840 kt/yr between +75 m and +25 m; the model passes +25 m between 2029 and 2030
-        self.assertGreater(rates[2], 840)
-        self.assertLess(rates[4], 840)
+        rates = [row["achievable_ktpa"] for row in reference[1:]]
+        self.assertEqual(rates, sorted(rates, reverse=True))           # the five trucks of the baseline
+        self.assertTrue(all(row["binding_link"] == "haulage" for row in reference[1:]))
+        for before, row in zip(reference, reference[1:]):              # ore / 51 462 t per metre
+            self.assertAlmostEqual(before["centroid_m"] - row["centroid_m"], row["mined_ktpa"] * 1000 / 51462, delta=0.2)
+        # spec 2.3: 926 -> 841 -> 770 kt/yr at +75, +25, -25 m
+        self.assertLess(reference[-1]["achievable_ktpa"], 770)
+        horizon = {row["target_ktpa"]: row["horizon"] for row in self.advisor.report(self.base)["ladder"]}
+        trucks = [row["trucks"] for row in horizon[2000]["rows"]]
+        self.assertEqual(trucks, sorted(trucks))
+        self.assertEqual((trucks[0], trucks[-1]), (10, 15))
+        rule = horizon[2000]["depth_rule"]
+        self.assertEqual((rule["fleet_trucks"], rule["model"]), (10, "AD45"))
+        self.assertAlmostEqual(rule["metres_per_truck"], 58, delta=2)
+        self.assertIn("≈58 м понижения центра добычи", rule["text"])
 
-    def test_first_year_the_target_is_missed(self):
-        self.assertEqual(self.rows()[0]["target_missed_year"], 2027)             # 926 against 1000
-        met, rows = self.rows(m_haul=1, m_vent=1)                                # plant 1000 until the dams are full
-        self.assertEqual((met["target_missed_year"], met["storage_runs_out_year"]), (2030, 2030))
-        self.assertEqual([row["target_met"] for row in rows[:4]], [True, True, True, False])
-        self.assertEqual([row["binding_link"] for row in rows[:4]], ["plant", "plant", "plant", "tailings"])
-        thin, rows = self.rows(m_haul=1)      # without the fan trucks 06 and 07 wait for air from the first year
-        self.assertEqual((thin["target_missed_year"], rows[0]["binding_link"], rows[0]["achievable_ktpa"]),
-                         (2027, "ventilation", 926))
-        base_rows = self.rows()[1]
-        self.assertEqual([row["achievable_ktpa"] for row in rows], [row["achievable_ktpa"] for row in base_rows])
-        deep, _ = self.rows(target_ktpa=2500, **FULL[2500])                      # depth takes haulage below 2500
-        self.assertEqual(deep["target_missed_year"], 2028)
+    def test_the_projection_of_a_full_set_is_its_ladder_row(self):
+        for target in (1000, 2500):
+            knobs = {} if target == 1000 else FULL[2500]
+            report = self.report(target_ktpa=target, **knobs)
+            row = next(r for r in self.advisor.report(self.base)["ladder"] if r["target_ktpa"] == target)
+            def plain(rows):
+                return [{k: v for k, v in r.items() if k != "measures"} for r in rows]
+
+            def when(rows):
+                return [sorted((m["time"], m["kind"], m["link"], m["stage"]) for m in r["measures"]) for r in rows]
+            self.assertEqual(plain(report["projection"]["rows"]), plain(row["horizon"]["rows"]), target)
+            self.assertEqual(when(report["projection"]["rows"]), when(row["horizon"]["rows"]))
+            self.assertEqual(report["projection"]["label"], row["horizon"]["label"])
+            self.assertEqual(report["projection"]["economics"]["variants"], row["economics"]["variants"])
 
     def test_gold_accumulates(self):
-        projection, rows = self.rows(**FULL[1200])
+        projection, rows = self.rows(target_ktpa=1200, **FULL[1200])
         self.assertAlmostEqual(rows[-1]["gold_total_koz"], sum(row["gold_koz"] for row in rows), delta=0.1)
         self.assertEqual(projection["gold_total_koz"], rows[-1]["gold_total_koz"])
         totals = [row["gold_total_koz"] for row in rows]
         self.assertEqual(totals, sorted(totals))
+
+
+class TestHorizon(AdvisorCase):
+    """Spec section 11 item 3: each target held over 2027-2036, or the year it can no longer be held."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.ladder = {row["target_ktpa"]: row for row in cls.advisor.report(cls.base)["ladder"]}
+
+    def test_hold_years_of_the_four_targets(self):
+        for target, (reached, held_to, lost_link, failure) in HOLD.items():
+            horizon = self.ladder[target]["horizon"]
+            self.assertEqual(set(horizon), HORIZON_KEYS, target)
+            self.assertEqual((horizon["reached_year"], horizon["held_to_year"]), (reached, held_to), target)
+            self.assertEqual(horizon["holds"], held_to == 2036, target)
+            self.assertEqual((horizon["lost_link"], horizon["failure_link"]), (lost_link, failure), target)
+            self.assertEqual(horizon["label"], f"держится до {held_to} г.")
+            self.assertTrue(horizon["text"].startswith(f"Цель {wording.num(target)} тыс. т/год достигается в {reached} г."))
+        self.assertIn("воздуха на новые самосвалы не хватает", self.ladder[2500]["horizon"]["text"])
+        self.assertIn("нужна ёмкость сверх второй ступени", self.ladder[2000]["horizon"]["text"])
+
+    def test_binding_link_by_year(self):
+        for target, links in BINDING_BY_YEAR.items():
+            rows = self.ladder[target]["horizon"]["rows"]
+            self.assertEqual([row["binding_link"] for row in rows], links, target)
+            self.assertEqual([row["target_met"] for row in rows],
+                             [HOLD[target][0] <= row["year"] <= HOLD[target][1] for row in rows], target)
+        runs = self.ladder[2500]["horizon"]["binding_runs"]
+        self.assertEqual(runs["text"], "2027–2029: вентиляция; 2030: фабрика; 2031–2034: откатка; "
+                                       "2035–2036: хвостохранилище")
+
+    def test_schedules_are_deterministic(self):
+        again = Advisor().report(self.base)["ladder"]
+        self.assertEqual(json.dumps(again, sort_keys=True), json.dumps(list(self.ladder.values()), sort_keys=True))
+        when = {t: [(e["time"], e["kind"], e["link"], e["stage"]) for e in self.ladder[t]["horizon"]["schedule"]
+                    if e["origin"] == "horizon"] for t in self.ladder}
+        self.assertEqual(when[1000], [(2030.0, "measure", "tailings", 1), (2036.0, "storage", "tailings", 1)])
+        self.assertEqual(when[1200], [(2030.5, "depth_truck", "haulage", 1), (2034.5, "storage", "tailings", 1),
+                                      (2034.5, "depth_truck", "haulage", 2), (2034.5, "measure", "ventilation", 2)])
+        self.assertEqual(when[2000], [(2029.0, "depth_truck", "haulage", 1), (2030.0, "depth_truck", "haulage", 2),
+                                      (2031.5, "depth_truck", "haulage", 3), (2032.5, "storage", "tailings", 1),
+                                      (2033.0, "depth_truck", "haulage", 4), (2034.5, "depth_truck", "haulage", 5)])
+        self.assertEqual(when[2500], [(2029.0, "depth_truck", "haulage", 1), (2029.0, "depth_truck", "haulage", 2),
+                                      (2032.0, "storage", "tailings", 1)])
+
+    def test_trucks_are_added_one_at_a_time(self):
+        horizon = self.ladder[2000]["horizon"]
+        trucks = [e for e in horizon["schedule"] if e["kind"] == "depth_truck"]
+        self.assertEqual([e["trucks"] for e in trucks], [1] * 5)
+        self.assertTrue(trucks[0]["text"].startswith("ввод самосвала № 11 (парк: 10 → 11 машин)"))
+        self.assertTrue(trucks[2]["text"].startswith("ввод самосвала AD45 № 13 на уклоне ТУ-1 сверх парка реестра"))
+        self.assertEqual((horizon["trucks_end"], horizon["depth_trucks"], horizon["trucks_beyond_registry"]), (15, 5, 3))
+        self.assertEqual(self.ladder[2500]["horizon"]["trucks_beyond_registry"], 2)
+
+    def test_storage_runs_out_at_the_higher_targets(self):
+        for target, year in ((1000, None), (1200, None), (2000, 2035), (2500, 2035)):
+            horizon = self.ladder[target]["horizon"]
+            self.assertEqual(horizon["storage_runs_out_year"], year, target)
+            stages = [e for e in horizon["schedule"] if e["link"] == "tailings"]
+            self.assertEqual([e["kind"] for e in stages], ["measure", "storage"], target)
+            self.assertEqual(stages[1]["storage_kt"], 6000)
+            self.assertIn("вторая ступень (допущение, проект не опубликован)", horizon["storage_note"])
+        self.assertAlmostEqual(self.ladder[2000]["horizon"]["storage_short_kt"], 2706, delta=5)
+        self.assertIn("ещё ≈2 706 тыс. т", self.ladder[2000]["horizon"]["storage_note"])
+        # every ton of storage is used: both higher targets mill the same 15.2 Mt over ten years
+        milled = {t: sum(r["achievable_ktpa"] for r in self.ladder[t]["horizon"]["rows"]) for t in (2000, 2500)}
+        self.assertAlmostEqual(milled[2000], milled[2500], delta=3)
+        self.assertAlmostEqual(milled[2000], 3172 + 6000 + 6000, delta=3)
+
+    def test_the_ladder_and_its_effects_say_the_same(self):
+        for target, row in self.ladder.items():
+            econ, horizon = row["economics"], row["horizon"]
+            self.assertEqual(econ["holds"], horizon["holds"])
+            if target == 1000:     # the default target: no change, no item
+                continue
+            item = self.advisor.effects(self.inputs(revision=1),
+                                        self.inputs(revision=2, target_ktpa=target))["items"][-1]
+            self.assertEqual(item["id"], "economics")
+            self.assertIn(horizon["label"], item["text"])
+            if not horizon["holds"]:
+                self.assertIn("окупаемость не указывается", item["text"])
+                self.assertNotIn("окупается в", item["text"])
+
+
+class TestHorizonDisturbed(AdvisorCase):
+    """The horizon starts from the current disturbances: repairs at once, conditions all along."""
+
+    def test_repairs_come_first_and_at_once(self):
+        report = self.report(fan_vs2_off=1, line_down=2)
+        schedule = report["projection"]["schedule"]
+        repairs = [e for e in schedule if e["kind"] == "disturbance"]
+        self.assertEqual({e["knob"] for e in repairs}, {"fan_vs2_off", "line_down"})
+        self.assertTrue(all(e["time"] == 2027.0 and e["lead_years"] == 0 for e in repairs))
+        self.assertTrue(report["next_measure"]["in_service_text"].startswith("сразу"))
+        self.assertEqual(report["projection"]["rows"][0]["achievable_ktpa"], 1000)
+
+    def test_a_disturbance_is_repaired_at_once_even_when_the_target_is_met(self):
+        report = self.report(target_ktpa=2500, pumps_failed_p150=1, **FULL[2500])
+        self.assertIsNone(report["next_measure"])          # the target is met at the epoch: no step
+        repairs = [e for e in report["projection"]["schedule"] if e["kind"] == "disturbance"]
+        self.assertEqual([(e["knob"], e["time"]) for e in repairs], [("pumps_failed_p150", 2027.0)])
+        flooded = replace(self.inputs(m_haul=1, m_vent=1), flooded_levels=("lvl-m050",))
+        pumped = [e for e in self.advisor.report(flooded)["projection"]["schedule"] if e["kind"] == "disturbance"]
+        self.assertEqual([(e["knob"], e["time"], e["set"]) for e in pumped], [("pumps_failed_p150", 2027.0, {})])
+
+    def test_a_lower_grade_lasts_the_horizon(self):
+        low = self.report(grade_gpt=1.76)["projection"]
+        base = self.advisor.report(self.base)["projection"]
+        self.assertEqual([r["achievable_ktpa"] for r in low["rows"]], [r["achievable_ktpa"] for r in base["rows"]])
+        self.assertAlmostEqual(low["rows"][0]["gold_koz"], 47.8, delta=0.05)
+        # the reference has the same grade, so the gain is the extra ore at the lower grade
+        self.assertLess(low["economics"]["totals"]["gain_koz"], base["economics"]["totals"]["gain_koz"])
+
+    def test_every_disturbance_gives_a_strict_json_horizon(self):
+        for knobs in (dict(pumps_failed_p150=3), dict(tu1_closed=1), dict(tu2_closed=1), dict(inflow_factor=2.18),
+                      dict(target_ktpa=2500, m_plant=3, line_down=2), dict(target_ktpa=2000, m_haul=3, fan_vs2_off=1)):
+            with self.subTest(**knobs):
+                report = self.report(**knobs)
+                text = json.dumps(report["projection"], allow_nan=False, ensure_ascii=False)
+                self.assertEqual(len(json.loads(text)["rows"]), 10)
 
 
 class TestDisturbances(AdvisorCase):
@@ -666,10 +850,10 @@ class TestEffects(AdvisorCase):
         self.assertEqual(target["target_ktpa"]["text"], "Цель по переработке повышена: 1\u00a0000 → 2\u00a0500 тыс. т/год.")
         self.assertEqual(target["measures_needed"]["text"], "Число мер до цели выросло: 2 → 15.")
         self.assertEqual(target["economics"]["text"],
-                         "Цель 2\u00a0500 тыс. т/год: золота +88,1 тыс. унц./год к устойчивой базе 51,9; по цене "
-                         "4\u00a0615 долл./унц. это 406,8 млн долл. в год, при полных затратах 1\u00a0995 долл./унц. "
-                         "операционная маржа 230,9 млн долл. в год; капитальные затраты ≈125 млн долл. (по расчёту "
-                         "компании, 3-й кв. 2025 г.), простая окупаемость 0,5 года.")
+                         "Цель 2 500 тыс. т/год: держится до 2030 г.; за 2027–2036 гг. золота +396,4 тыс. унц. "
+                         "к базе, маржа после налога 830,9 млн долл., капитальные затраты ≈125 млн долл. (по расчёту "
+                         "компании, 3-й кв. 2025 г.), чистая приведённая стоимость 539,7 млн долл. при 5 %; "
+                         "окупаемость не указывается: цель не удерживается до 2036 г.")
 
     def test_flooding_and_recovery(self):
         failed = self.inputs(revision=2, pumps_failed_p150=3)
@@ -826,34 +1010,6 @@ class TestDisturbancesFirst(AdvisorCase):
         self.assertIsNone(report["next_measure"])
 
 
-class TestProjectionNotes(AdvisorCase):
-    """Fix round 2, item 2: years without tailings storage say why the plant stands."""
-
-    def test_rows_carry_the_reason(self):
-        projection = self.report(target_ktpa=2500, **FULL[2500])["projection"]
-        by_year = {row["year"]: row for row in projection["rows"]}
-        self.assertEqual(projection["storage_runs_out_year"], 2031)
-        self.assertEqual(by_year[2030]["note"], "")
-        self.assertTrue(by_year[2031]["note"].startswith("хвостохранилище заполнено в этом году: переработано 230 из "))
-        for year in range(2032, 2037):
-            self.assertEqual((by_year[year]["achievable_ktpa"], by_year[year]["gold_oz"]), (0, 0))
-            self.assertEqual(by_year[year]["note"], "фабрика стоит: нет ёмкости хвостохранилища")
-
-    def test_the_measure_that_prevents_it(self):
-        projection = self.report()["projection"]
-        measure = projection["storage_measure"]
-        self.assertEqual((measure["knob"], measure["to_stage"], measure["storage_runs_out_year"]),
-                         ("m_tailings", 1, None))
-        self.assertIn("новая карта хвостохранилища", measure["text"])
-        self.assertEqual(projection["storage_note"],
-                         "Ёмкость хвостохранилища закончится в 2030 г.; после этого фабрика стоит. Мера: "
-                         + measure["text"] + "; с ней ёмкости хватит до конца прогноза (2036 г.).")
-        full = self.report(target_ktpa=2500, **FULL[2500])["projection"]   # the new cell is already built
-        self.assertIsNone(full["storage_measure"]["knob"])
-        self.assertIn("нужна ёмкость сверх новой карты", full["storage_note"])
-        self.assertIsNone(self.report(m_tailings=1)["projection"]["storage_note"])
-
-
 class TestStockpileDirection(AdvisorCase):
     """Fix round 2, item 3: the stockpile falls when the plant takes more than the mine delivers."""
 
@@ -900,29 +1056,110 @@ class TestStockpileDirection(AdvisorCase):
 
 
 class TestEconomics(AdvisorCase):
-    """Fix round 2, item 6: the value of the extra gold of each target, from published figures."""
+    """Spec section 11 item 3: ten-year economics of each target against the mine as it is, after tax."""
 
-    def test_each_target(self):
-        ladder = {row["target_ktpa"]: row["economics"] for row in self.advisor.report(self.base)["ladder"]}
-        expected = {1000: (4.1, None), 1200: (15.3, None), 2000: (60.1, 0.8), 2500: (88.1, 0.5)}
-        for target, (gain, payback) in expected.items():
-            econ = ladder[target]
-            self.assertAlmostEqual(econ["gold_gain_koz_year"], gain, delta=0.05)
-            self.assertEqual((econ["gold_price_usd_oz"], econ["aisc_usd_oz"], econ["margin_usd_oz"]),
-                             (4615, 1995, 2620))
-            self.assertAlmostEqual(econ["value_usd_m_year"], gain * 4.615, delta=0.3)
-            self.assertAlmostEqual(econ["margin_usd_m_year"], gain * 2.620, delta=0.2)
-            self.assertEqual(econ["payback_years"], payback)
-            self.assertEqual(econ["capex_disclosed"], payback is not None)
-            self.assertEqual(econ["capex_usd_m"], 125 if payback is not None else None)
-            for key in ("price_basis", "aisc_basis", "capex_note", "summary"):
-                self.assertRegex(econ[key], CYRILLIC)
-        self.assertTrue(ladder[1200]["capex_note"].startswith("не раскрыто: "))
-        self.assertIn("дробильное и мельничное оборудование", ladder[1200]["capex_note"])
-        self.assertTrue(ladder[1000]["capex_note"].startswith("не раскрыто"))
-        self.assertIn("пересчитанной базе", ladder[2000]["aisc_basis"])
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.ladder = {row["target_ktpa"]: row for row in cls.advisor.report(cls.base)["ladder"]}
 
-    def test_every_figure_is_a_fact_of_params(self):
+    def test_keys_and_published_figures(self):
+        for target, row in self.ladder.items():
+            econ = row["economics"]
+            self.assertEqual((econ["gold_price_usd_oz"], econ["aisc_usd_oz"], econ["margin_usd_oz"]), (4615, 1995, 2620))
+            self.assertEqual((econ["cit_rate_pct"], econ["discount_rate_pct"]), (20, 5))
+            self.assertEqual([y["year"] for y in econ["years"]], list(range(2027, 2037)))
+            self.assertEqual(set(econ["variants"]), {"disclosed", "with_assumed"})
+            self.assertEqual(econ["capex_disclosed"], target >= 2000)
+            self.assertEqual(econ["capex_usd_m"], 125 if target >= 2000 else None)
+            self.assertNotIn("payback_years", json.dumps(econ))          # no one-year payback any more
+            for key in ("price_basis", "aisc_basis", "tax_basis", "discount_basis", "capex_note", "assumed_note",
+                        "reference_text", "caveats", "summary"):
+                self.assertRegex(econ[key], CYRILLIC, key)
+        self.assertTrue(self.ladder[1200]["economics"]["capex_note"].startswith("не раскрыто: "))
+        self.assertIn("дробильное и мельничное оборудование", self.ladder[1200]["economics"]["capex_note"])
+        self.assertIn("пересчитанной базе", self.ladder[2000]["economics"]["aisc_basis"])
+        self.assertIn("НДПИ входит в AISC", self.ladder[2000]["economics"]["aisc_basis"])
+        self.assertIn("ст. 357", self.ladder[2000]["economics"]["tax_basis"])
+        self.assertIn("цена золота и AISC постоянны; без финансирования", self.ladder[2000]["economics"]["caveats"])
+
+    def test_cash_and_npv_follow_the_yearly_rows(self):
+        for target, row in self.ladder.items():
+            econ = row["economics"]
+            rows = row["horizon"]["rows"]
+            cumulative = {"cash_usd_m": 0.0, "cash_with_assumed_usd_m": 0.0, "cash_pre_tax_usd_m": 0.0}
+            npv = dict.fromkeys(cumulative, 0.0)
+            for y, horizon_row in zip(econ["years"], rows):
+                self.assertAlmostEqual(y["gold_koz"], horizon_row["gold_koz"], delta=0.01)
+                self.assertAlmostEqual(y["gain_koz"], y["gold_koz"] - y["reference_gold_koz"], delta=0.02)
+                self.assertAlmostEqual(y["margin_usd_m"], y["gain_koz"] * 2.620, delta=0.05)
+                self.assertAlmostEqual(y["tax_usd_m"], y["margin_usd_m"] * 0.20, delta=0.02)
+                self.assertAlmostEqual(y["margin_after_tax_usd_m"], y["margin_usd_m"] - y["tax_usd_m"], delta=0.02)
+                self.assertAlmostEqual(y["cash_usd_m"], y["margin_after_tax_usd_m"] - y["capex_published_usd_m"], delta=0.02)
+                self.assertAlmostEqual(y["cash_with_assumed_usd_m"], y["cash_usd_m"] - y["capex_assumed_usd_m"], delta=0.02)
+                self.assertAlmostEqual(y["cash_pre_tax_usd_m"], y["margin_usd_m"] - y["capex_published_usd_m"], delta=0.02)
+                self.assertAlmostEqual(y["discount_factor"], 1.05 ** -(y["year"] - 2026), delta=1e-4)
+                for key in cumulative:
+                    cumulative[key] += y[key]
+                    npv[key] += y[key] * 1.05 ** -(y["year"] - 2026)
+                self.assertAlmostEqual(y["cumulative_usd_m"], cumulative["cash_usd_m"], delta=0.05)
+                self.assertAlmostEqual(y["cumulative_with_assumed_usd_m"], cumulative["cash_with_assumed_usd_m"], delta=0.05)
+            disclosed, assumed = econ["variants"]["disclosed"], econ["variants"]["with_assumed"]
+            self.assertAlmostEqual(disclosed["cash_usd_m"], cumulative["cash_usd_m"], delta=0.05)
+            self.assertAlmostEqual(assumed["cash_usd_m"], cumulative["cash_with_assumed_usd_m"], delta=0.05)
+            self.assertAlmostEqual(disclosed["pre_tax"]["cash_usd_m"], cumulative["cash_pre_tax_usd_m"], delta=0.05)
+            self.assertAlmostEqual(disclosed["npv_usd_m"], npv["cash_usd_m"], delta=0.05)
+            self.assertAlmostEqual(assumed["npv_usd_m"], npv["cash_with_assumed_usd_m"], delta=0.05)
+            self.assertAlmostEqual(disclosed["pre_tax"]["npv_usd_m"], npv["cash_pre_tax_usd_m"], delta=0.05)
+            self.assertAlmostEqual(econ["totals"]["gain_koz"], sum(y["gain_koz"] for y in econ["years"]), delta=0.1)
+            self.assertAlmostEqual(econ["totals"]["capex_published_usd_m"], 125 if target >= 2000 else 0, delta=0.01)
+            self.assertAlmostEqual(disclosed["capex_usd_m"], econ["totals"]["capex_published_usd_m"], delta=0.01)
+            self.assertLess(disclosed["npv_usd_m"], disclosed["pre_tax"]["npv_usd_m"])
+
+    def test_capex_schedule(self):
+        econ = self.ladder[2000]["economics"]
+        published = {y["year"]: y["capex_published_usd_m"] for y in econ["years"]}
+        self.assertEqual((published[2027], published[2028]), (62.5, 62.5))   # US$125m over the 24 months
+        self.assertEqual(sum(published.values()), 125)
+        items = econ["capex_items"]
+        self.assertEqual([i["basis"] for i in items].count("published"), 1)
+        trucks = sum(i["entry"]["trucks"] for i in items if i["basis"] == "assumed")
+        storage_kt = sum(i["entry"]["storage_kt"] for i in items if i["basis"] == "assumed")
+        reference_kt = sum(i["entry"]["storage_kt"] for i in econ["reference_capex_items"])
+        self.assertEqual((trucks, storage_kt, reference_kt), (10, 12000, 6000))
+        # 10 trucks x US$1.5m + (12 Mt - the 6 Mt the mine needs anyway) x US$1/t
+        self.assertAlmostEqual(econ["totals"]["capex_assumed_usd_m"], 10 * 1.5 + 6.0, delta=0.01)
+        not_costed = {e["knob"] for e in econ["not_costed"]}
+        self.assertEqual(not_costed, {"m_plant", "m_water", "m_stopes", "m_vent", "m_dev"})
+        self.assertEqual([e["stage"] for e in econ["not_costed"] if e["knob"] == "m_plant"], [1])
+
+    def test_never_a_payback_for_a_target_it_cannot_hold(self):
+        for knobs in ({}, dict(fan_vs2_off=1), dict(grade_gpt=1.76), dict(tu2_closed=1, line_down=2)):
+            for row in self.report(**knobs)["ladder"]:
+                econ, horizon = row["economics"], row["horizon"]
+                for variant in econ["variants"].values():
+                    if not horizon["holds"]:
+                        self.assertIsNone(variant["payback_year"], (knobs, row["target_ktpa"]))
+                        self.assertIsNone(variant["pre_tax"]["payback_year"])
+                        self.assertEqual(variant["payback_reason"], "not_held")
+                        self.assertEqual(variant["payback_text"], "не указывается: цель не удерживается до 2036 г.")
+                    elif variant["payback_year"] is not None:
+                        self.assertGreaterEqual(variant["payback_year"], 2027)
+        self.assertFalse(self.ladder[2000]["horizon"]["holds"])
+        self.assertFalse(self.ladder[2500]["horizon"]["holds"])
+
+    def test_payback_years_of_the_held_targets(self):
+        for target in (1000, 1200):
+            econ = self.ladder[target]["economics"]
+            disclosed, assumed = econ["variants"]["disclosed"], econ["variants"]["with_assumed"]
+            self.assertEqual((disclosed["payback_year"], disclosed["payback_reason"]), (None, "no_outlay"))
+            self.assertEqual(disclosed["payback_text"], "не считается: капзатраты не раскрыты")
+            self.assertEqual((assumed["payback_year"], assumed["payback_text"]), (2028, "окупается в 2028 г."))
+            cumulative = [y["cumulative_with_assumed_usd_m"] for y in econ["years"]]
+            self.assertLess(cumulative[0], 0)
+            self.assertTrue(all(value >= 0 for value in cumulative[1:]))
+
+    def test_every_figure_is_sourced_in_params(self):
         params = json.loads((TEAM / "model" / "params.json").read_text(encoding="utf-8"))
         for pid in ("econ.gold_price_usd_oz", "econ.aisc_usd_oz", "econ.capex_expansion_usd_m"):
             self.assertTrue(params[pid]["source"].startswith("FACT D1 '"), pid)
@@ -930,13 +1167,23 @@ class TestEconomics(AdvisorCase):
         self.assertEqual(params["econ.gold_price_usd_oz"]["value"], 4615)
         self.assertEqual(params["econ.aisc_usd_oz"]["value"], 1995)
         self.assertEqual(params["econ.capex_expansion_usd_m"]["value"], 125)
+        cit = params["econ.cit_rate"]
+        self.assertEqual(cit["value"], 20)
+        for text in ("Article 357", "adilet.zan.kz", "against the Kazakhstan corporate income tax rate of 20%",
+                     "mineral extraction tax"):
+            self.assertIn(text, cit["source"])
+        for pid in ("econ.truck_capex_usd_m", "econ.tsf_capex_usd_per_t", "tsf.measure_X2_t"):
+            self.assertTrue(params[pid]["source"].startswith("ASSUMPTION: NOT PUBLISHED: "), pid)
+        self.assertTrue(params["econ.discount_rate_pct"]["source"].startswith("ASSUMPTION: "))
 
     def test_wording_describes_and_does_not_advise(self):
         report = self.advisor.report(self.base)
         texts = [row["economics"][key] for row in report["ladder"]
-                 for key in ("price_basis", "aisc_basis", "capex_note", "summary")]
+                 for key in ("price_basis", "aisc_basis", "tax_basis", "capex_note", "assumed_note", "caveats",
+                             "summary")]
+        texts += [row["horizon"]["text"] for row in report["ladder"]]
         texts += [self.advisor.effects(self.inputs(revision=1), self.inputs(revision=2, target_ktpa=t))["items"][-1]["text"]
-                  for t in (1200, 2000)]
+                  for t in (1200, 2000, 2500)]
         for text in texts:
             for word in ("рекоменд", "стоит купить", "инвестир", "выгодн", "советуем", "покуп"):
                 self.assertNotIn(word, text.lower(), text)
@@ -944,9 +1191,28 @@ class TestEconomics(AdvisorCase):
     def test_effects_of_a_new_target(self):
         items = self.advisor.effects(self.inputs(revision=1), self.inputs(revision=2, target_ktpa=1200))["items"]
         self.assertEqual(items[-1]["id"], "economics")
+        self.assertIn("держится до 2036 г.", items[-1]["text"])
         self.assertIn("капитальные затраты не раскрыты", items[-1]["text"])
         same = self.advisor.effects(self.inputs(revision=1), self.inputs(revision=2, m_haul=1))["items"]
         self.assertNotIn("economics", [item["id"] for item in same])
+
+
+class TestDewateringReserve(AdvisorCase):
+    """The pump margin and the standby, so that a single pump failure shows on the bar."""
+
+    def test_margin_now_and_after_the_next_failure(self):
+        base = self.advisor.report(self.base)
+        one = self.report(pumps_failed_p150=1)
+        self.assertEqual((base["kpi"]["dewatering_margin"], base["kpi"]["dewatering_margin_next_failure"],
+                          base["kpi"]["pumps_standby"]), (2.54, 2.54, 1))
+        self.assertEqual((one["kpi"]["dewatering_margin"], one["kpi"]["dewatering_margin_next_failure"],
+                          one["kpi"]["pumps_standby"]), (2.54, 1.27, 0))
+        self.assertEqual(base["kpi"]["dewatering_reserve"], "резерв: 1 насос")
+        self.assertEqual(one["kpi"]["dewatering_reserve"], "резерва нет: при отказе ещё одного насоса ×1,27")
+        self.assertEqual(base["links"][4]["detail"], "запас производительности насосов ×2,54; резерв: 1 насос")
+        self.assertIn("резерва нет", one["links"][4]["detail"])
+        stopped = self.report(pumps_failed_p150=3)["kpi"]
+        self.assertEqual((stopped["dewatering_margin"], stopped["dewatering_margin_next_failure"]), (0.0, 0.0))
 
 
 class TestCalibrationHonesty(AdvisorCase):
@@ -1605,7 +1871,7 @@ class TestPackageSource(unittest.TestCase):
 
     def test_package_files(self):
         self.assertEqual({path.name for path in PACKAGE.glob("*.py")},
-                         {"__init__.py", "engine.py", "service.py", "wording.py"})
+                         {"__init__.py", "engine.py", "horizon.py", "service.py", "wording.py"})
 
     def test_imports(self):
         for path in PACKAGE.glob("*.py"):
@@ -1619,7 +1885,7 @@ class TestPackageSource(unittest.TestCase):
             self.assertLessEqual(imported, allowed, path.name)
 
     def test_engine_and_wording_do_not_touch_the_network(self):
-        for name in ("engine.py", "wording.py"):
+        for name in ("engine.py", "horizon.py", "wording.py"):
             source = (PACKAGE / name).read_text(encoding="utf-8")
             for module in ("urllib", "http", "socket", "paho", "ditto"):
                 self.assertNotRegex(source, rf"import\s+{module}|from\s+\S*{module}\S*\s+import", name)

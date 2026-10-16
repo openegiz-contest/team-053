@@ -2005,9 +2005,9 @@
     "decline": "tu2",
     "chainage_m": 2231.0,
     "elevation": 50.0,
-    "pos_x": -200.0,
+    "pos_x": -372.3,
     "pos_y": 50.0,
-    "pos_z": 10.0,
+    "pos_z": -84.5,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -2051,9 +2051,9 @@
     "decline": "tu2",
     "chainage_m": 1146.1,
     "elevation": 181.3,
-    "pos_x": 163.1,
+    "pos_x": -9.2,
     "pos_y": 181.3,
-    "pos_z": 150.0,
+    "pos_z": 62.5,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -2096,10 +2096,10 @@
     "speed": 15.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 379.3,
-    "pos_x": 332.3,
-    "pos_y": 379.3,
-    "pos_z": 192.0,
+    "elevation": 389.6,
+    "pos_x": -38.6,
+    "pos_y": 389.6,
+    "pos_z": 126.6,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -2143,9 +2143,9 @@
     "decline": "tu2",
     "chainage_m": 968.3,
     "elevation": 202.8,
-    "pos_x": 50.0,
+    "pos_x": -122.3,
     "pos_y": 202.8,
-    "pos_z": 150.0,
+    "pos_z": 62.5,
     "trips_today": 2.0,
     "tonnes_today": 60.0
    }
@@ -2189,9 +2189,9 @@
     "decline": "tu1",
     "chainage_m": 3140.0,
     "elevation": 50.0,
-    "pos_x": -200.0,
+    "pos_x": -372.3,
     "pos_y": 50.0,
-    "pos_z": 10.0,
+    "pos_z": -84.5,
     "trips_today": 2.0,
     "tonnes_today": 90.0
    }
@@ -2234,10 +2234,10 @@
     "speed": 0.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 431.4,
-    "pos_x": -100.0,
-    "pos_y": 431.4,
-    "pos_z": -113.0,
+    "elevation": 445.6,
+    "pos_x": 585.0,
+    "pos_y": 445.6,
+    "pos_z": -98.0,
     "trips_today": 0.0,
     "tonnes_today": 0.0
    }
@@ -2280,10 +2280,10 @@
     "speed": 0.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 431.4,
-    "pos_x": -170.0,
-    "pos_y": 431.4,
-    "pos_z": -99.0,
+    "elevation": 445.6,
+    "pos_x": 515.0,
+    "pos_y": 445.6,
+    "pos_z": -84.0,
     "trips_today": 0.0,
     "tonnes_today": 0.0
    }
@@ -2326,10 +2326,10 @@
     "speed": 0.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 431.4,
-    "pos_x": -156.0,
-    "pos_y": 431.4,
-    "pos_z": -99.0,
+    "elevation": 445.6,
+    "pos_x": 529.0,
+    "pos_y": 445.6,
+    "pos_z": -84.0,
     "trips_today": 0.0,
     "tonnes_today": 0.0
    }
@@ -2372,10 +2372,10 @@
     "speed": 0.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 431.4,
-    "pos_x": -142.0,
-    "pos_y": 431.4,
-    "pos_z": -99.0,
+    "elevation": 445.6,
+    "pos_x": 543.0,
+    "pos_y": 445.6,
+    "pos_z": -84.0,
     "trips_today": 0.0,
     "tonnes_today": 0.0
    }
@@ -2418,10 +2418,10 @@
     "speed": 0.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 431.4,
-    "pos_x": -128.0,
-    "pos_y": 431.4,
-    "pos_z": -99.0,
+    "elevation": 445.6,
+    "pos_x": 557.0,
+    "pos_y": 445.6,
+    "pos_z": -84.0,
     "trips_today": 0.0,
     "tonnes_today": 0.0
    }
@@ -2464,10 +2464,10 @@
     "speed": 0.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 431.4,
-    "pos_x": -114.0,
-    "pos_y": 431.4,
-    "pos_z": -99.0,
+    "elevation": 445.6,
+    "pos_x": 571.0,
+    "pos_y": 445.6,
+    "pos_z": -84.0,
     "trips_today": 0.0,
     "tonnes_today": 0.0
    }
@@ -2510,10 +2510,10 @@
     "speed": 0.0,
     "decline": "none",
     "chainage_m": 0.0,
-    "elevation": 431.4,
-    "pos_x": -100.0,
-    "pos_y": 431.4,
-    "pos_z": -99.0,
+    "elevation": 445.6,
+    "pos_x": 585.0,
+    "pos_y": 445.6,
+    "pos_z": -84.0,
     "trips_today": 0.0,
     "tonnes_today": 0.0
    }
@@ -2546,9 +2546,9 @@
     "state": "idle",
     "stope": "stp-p150-1",
     "tonnes_today": 336.0,
-    "pos_x": -200.0,
+    "pos_x": -372.3,
     "pos_y": 150.0,
-    "pos_z": 10.0
+    "pos_z": -84.5
    }
   },
   "kz.sekis:lhd-02": {
@@ -2579,9 +2579,9 @@
     "state": "idle",
     "stope": "stp-p100-1",
     "tonnes_today": 336.0,
-    "pos_x": -200.0,
+    "pos_x": -372.3,
     "pos_y": 100.0,
-    "pos_z": 10.0
+    "pos_z": -84.5
    }
   },
   "kz.sekis:lhd-03": {
@@ -2612,9 +2612,9 @@
     "state": "loading_truck",
     "stope": "stp-p050-1",
     "tonnes_today": 336.0,
-    "pos_x": -200.0,
+    "pos_x": -372.3,
     "pos_y": 50.0,
-    "pos_z": 10.0
+    "pos_z": -84.5
    }
   },
   "kz.sekis:lhd-04": {
@@ -2645,9 +2645,9 @@
     "state": "mucking",
     "stope": "stp-000-1",
     "tonnes_today": 336.0,
-    "pos_x": -200.0,
+    "pos_x": -372.3,
     "pos_y": 0.0,
-    "pos_z": 10.0
+    "pos_z": -84.5
    }
   },
   "kz.sekis:lhd-05": {
@@ -2678,9 +2678,9 @@
     "state": "parked",
     "stope": "none",
     "tonnes_today": 0.0,
-    "pos_x": -114.0,
-    "pos_y": 431.3,
-    "pos_z": -85.0
+    "pos_x": 571.0,
+    "pos_y": 445.5,
+    "pos_z": -70.0
    }
   },
   "kz.sekis:lhd-06": {
@@ -2711,9 +2711,9 @@
     "state": "parked",
     "stope": "none",
     "tonnes_today": 0.0,
-    "pos_x": -100.0,
-    "pos_y": 431.3,
-    "pos_z": -85.0
+    "pos_x": 585.0,
+    "pos_y": 445.5,
+    "pos_z": -70.0
    }
   },
   "kz.sekis:lhd-07": {
@@ -2744,9 +2744,9 @@
     "state": "parked",
     "stope": "none",
     "tonnes_today": 0.0,
-    "pos_x": -170.0,
-    "pos_y": 431.3,
-    "pos_z": -71.0
+    "pos_x": 515.0,
+    "pos_y": 445.5,
+    "pos_z": -56.0
    }
   },
   "kz.sekis:lhd-08": {
@@ -2777,9 +2777,9 @@
     "state": "parked",
     "stope": "none",
     "tonnes_today": 0.0,
-    "pos_x": -156.0,
-    "pos_y": 431.3,
-    "pos_z": -71.0
+    "pos_x": 529.0,
+    "pos_y": 445.5,
+    "pos_z": -56.0
    }
   },
   "kz.sekis:lhd-09": {
@@ -2810,9 +2810,9 @@
     "state": "parked",
     "stope": "none",
     "tonnes_today": 0.0,
-    "pos_x": -142.0,
-    "pos_y": 431.3,
-    "pos_z": -71.0
+    "pos_x": 543.0,
+    "pos_y": 445.5,
+    "pos_z": -56.0
    }
   },
   "kz.sekis:lhd-10": {
@@ -2843,9 +2843,9 @@
     "state": "parked",
     "stope": "none",
     "tonnes_today": 0.0,
-    "pos_x": -128.0,
-    "pos_y": 431.3,
-    "pos_z": -71.0
+    "pos_x": 557.0,
+    "pos_y": 445.5,
+    "pos_z": -56.0
    }
   },
   "kz.sekis:rig-01": {
@@ -2874,9 +2874,9 @@
     "state": "drilling",
     "stope": "stp-p100-1",
     "metres_today": 52.8,
-    "pos_x": -170.0,
+    "pos_x": -342.3,
     "pos_y": 100.0,
-    "pos_z": 10.0
+    "pos_z": -84.5
    }
   },
   "kz.sekis:rig-02": {
@@ -2905,7 +2905,7 @@
     "state": "tramming",
     "stope": "none",
     "metres_today": 21.6,
-    "pos_x": -290.0,
+    "pos_x": -378.8,
     "pos_y": 100.0,
     "pos_z": 40.0
    }
@@ -2936,9 +2936,9 @@
     "state": "parked",
     "stope": "none",
     "metres_today": 0.0,
-    "pos_x": -142.0,
-    "pos_y": 431.1,
-    "pos_z": -57.0
+    "pos_x": 543.0,
+    "pos_y": 445.3,
+    "pos_z": -42.0
    }
   },
   "kz.sekis:rig-04": {
@@ -2967,9 +2967,9 @@
     "state": "parked",
     "stope": "none",
     "metres_today": 0.0,
-    "pos_x": -128.0,
-    "pos_y": 431.1,
-    "pos_z": -57.0
+    "pos_x": 557.0,
+    "pos_y": 445.3,
+    "pos_z": -42.0
    }
   },
   "kz.sekis:rig-05": {
@@ -2998,9 +2998,9 @@
     "state": "parked",
     "stope": "none",
     "metres_today": 0.0,
-    "pos_x": -114.0,
-    "pos_y": 431.1,
-    "pos_z": -57.0
+    "pos_x": 571.0,
+    "pos_y": 445.3,
+    "pos_z": -42.0
    }
   },
   "kz.sekis:water": {

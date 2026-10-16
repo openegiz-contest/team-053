@@ -793,6 +793,72 @@ class TestStateAndApi(ModelCase):
             self.assertTrue(hasattr(cap, name), name)
 
 
+class TestHorizonMeasures(ModelCase):
+    """Spec 3.4, section 11 item 3: the analytic measures beyond the last knob stages and the lead times."""
+
+    def test_defaults_leave_every_state_unchanged(self):
+        for knobs in ({}, FULL_1200, FULL_2000, FULL_2500, dict(fan_vs2_off=True), dict(tu2_closed=True)):
+            plain = self.evaluate(**knobs)
+            same = self.evaluate(**knobs, extra_trucks=0, tailings_extra_t=0.0)
+            self.assertEqual(plain.capacity_ktpa, same.capacity_ktpa)
+
+    def test_extra_trucks_are_the_next_of_the_registry_then_depth_trucks(self):
+        names = [u.name for u in cap.active_trucks(self.model, cap.State(m_haul=1, extra_trucks=2))]
+        self.assertEqual(names, [f"truck-{n:02d}" for n in range(1, 10)])
+        beyond = cap.active_trucks(self.model, cap.State(m_haul=3, extra_trucks=3))
+        added = beyond[12:]
+        self.assertEqual([u.name for u in added], ["truck-13", "truck-14", "truck-15"])
+        # the decline with fewer trucks (TU1 has 5 of the 12, TU2 7), a tie to the deeper TU1
+        self.assertEqual([u.home_decline for u in added], ["tu1", "tu1", "tu1"])
+        self.assertEqual([u.home_decline for u in cap.depth_trucks(self.model, 5, self.model.trucks)],
+                         ["tu1", "tu1", "tu1", "tu2", "tu1"])
+        self.assertEqual({(u.payload_t, u.engine_kw) for u in added}, {(45.0, 439.0)})
+        more = self.evaluate(**FULL_2500, extra_trucks=1)
+        self.assertGreater(more.capacity_ktpa["haulage"], self.evaluate(**FULL_2500).capacity_ktpa["haulage"])
+        self.assertAlmostEqual(more.air.demand_m3s - 596.3, 0.06 * 439, delta=0.1)
+
+    def test_a_depth_truck_without_air_waits(self):
+        # 667 m3/s carry the 2.5 Mtpa fleet and two more AD45s; the third waits for air
+        two = self.evaluate(**FULL_2500, extra_trucks=2)
+        three = self.evaluate(**FULL_2500, extra_trucks=3)
+        self.assertEqual(two.air.held_trucks, ())
+        self.assertEqual(three.air.held_trucks, ("truck-15",))
+        # the units left working are those of two extra trucks: the third adds no tonnes
+        self.assertEqual(cap.round_kt(three.capacity_ktpa["ventilation"]),
+                         cap.round_kt(min(two.capacity_ktpa["haulage"], two.capacity_ktpa["stopes"])))
+        self.assertLessEqual(three.achievable_ktpa, two.achievable_ktpa + 1e-9)
+
+    def test_extra_storage_is_filled_last(self):
+        p = self.model.p
+        storage = cap.tailings(self.model, 1, 9_500_000, 2500, p("tsf.measure_X2_t"))
+        self.assertEqual([d.name for d in storage.dams][-1], cap.EXTRA_STORAGE)
+        self.assertEqual(storage.active_dam, cap.EXTRA_STORAGE)
+        free_built = 3171_195 + 6_000_000   # dam 4 at 90 %, dams 2 and 3 empty, the new cell
+        self.assertAlmostEqual(storage.free_t, free_built + p("tsf.measure_X2_t") - 9_500_000, delta=1000)
+        res = self.evaluate(m_tailings=1, tailings_extra_t=p("tsf.measure_X2_t"))
+        self.assertGreater(res.tailings.free_t, self.evaluate(m_tailings=1).tailings.free_t)
+
+    def test_lead_times(self):
+        self.assertEqual([cap.lead_years(self.model, "m_plant", s) for s in range(4)], [0, 0.5, 2.0, 2.0])
+        self.assertEqual([cap.lead_years(self.model, "m_vent", s) for s in range(3)], [0, 1.0, 2.5])
+        for knob in cap.KNOBS:
+            self.assertEqual(cap.lead_years(self.model, knob, 0), 0)
+            self.assertEqual(len(self.model.p(f"ladder.{knob}.lead_years")), cap.knob_max(self.model, knob) + 1)
+
+    def test_invalid_horizon_states_are_rejected(self):
+        for changes in (dict(extra_trucks=-1), dict(extra_trucks=1.5), dict(tailings_extra_t=-1.0)):
+            with self.assertRaises(ValueError, msg=changes):
+                cap.evaluate(self.model, cap.State(**changes))
+
+    def test_pump_reserve(self):
+        base, one, two = (self.evaluate(pumps_failed_p150=n).dewatering for n in (0, 1, 2))
+        self.assertEqual((base.standby_pumps, one.standby_pumps, two.standby_pumps), (1, 0, 0))
+        self.assertAlmostEqual(base.margin_next_failure, base.margin, delta=1e-9)
+        self.assertAlmostEqual(one.margin, 2.538, delta=0.001)
+        self.assertAlmostEqual(one.margin_next_failure, one.margin / 2, delta=1e-9)
+        self.assertEqual(two.margin_next_failure, 0)
+
+
 class TestLibrarySource(unittest.TestCase):
     """Spec 0.3: a parameter enters code only through params.json."""
 
