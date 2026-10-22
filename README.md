@@ -20,8 +20,9 @@ make stand-smoke
 
 1. Создаёт пароли и токены в `deploy/compose/.env` (`scripts/compose-env.sh`); существующий файл не трогает.
 2. Проверяет Docker, версию Compose, память и свободные порты (`scripts/compose-preflight.sh`).
-3. Запускает платформу OpenEgiz: Eclipse Ditto, MongoDB, InfluxDB, Telegraf, Mosquitto, Grafana. Если платформа не поднялась с первого раза, делает вторую попытку.
-4. Собирает образ команды `team053/sekis:local` (`team/Dockerfile`) и запускает контейнеры из `team/compose.yml`: `sekis-setup` создаёт в Ditto 22 типа и 96 двойников и сбрасывает сценарий, затем стартуют имитатор `sekis-sim`, советник `sekis-advisor` и стенд `sekis-stand`.
+   Затем скачивает образы платформы и базовые образы сборок; при сбое сети повторяет до пяти раз с паузами 15–90 с (`scripts/stand-pull.sh`).
+3. Запускает платформу OpenEgiz: Eclipse Ditto, MongoDB, InfluxDB, Telegraf, Mosquitto, Grafana. Если платформа не поднялась с первого раза, делает ещё две попытки — через 30 и через 60 с.
+4. Собирает образ команды `team053/sekis:local` (`team/Dockerfile`) и запускает контейнеры из `team/compose.yml`: `sekis-setup` создаёт в Ditto 22 типа и 96 двойников и сбрасывает сценарий, затем стартуют имитатор `sekis-sim`, советник `sekis-advisor` и стенд `sekis-stand`; если не вышло, ещё одна попытка через 30 с.
 5. Ждёт, пока стенд действительно работает (`scripts/stand-wait.sh`: `/api/state` отдаёт 96 двойников, часы имитации идут, советник отвечает; предел 300 с), и печатает адреса и вход администратора Grafana (`scripts/stand-urls.sh`).
 
 `make stand-twins` запускает только платформу и создаёт двойников, без имитатора, советника и стенда.

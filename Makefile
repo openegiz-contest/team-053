@@ -75,11 +75,16 @@ clean: stand-forget
 stand:
 	@bash scripts/compose-env.sh
 	@bash scripts/compose-preflight.sh
+	@bash scripts/stand-pull.sh
 	@$(MAKE) --no-print-directory stand-platform || { \
-	  echo "Платформа не запустилась с первой попытки, пробую ещё раз."; \
-	  $(MAKE) --no-print-directory stand-platform; }
+	  echo "Платформа не запустилась с первой попытки, пробую ещё раз через 30 с."; \
+	  sleep 30; $(MAKE) --no-print-directory stand-platform; } || { \
+	  echo "Платформа не запустилась со второй попытки, пробую ещё раз через 60 с."; \
+	  sleep 60; $(MAKE) --no-print-directory stand-platform; }
 	@touch $(STAND_MARKER)
 	$(COMPOSE_STAND) up -d --build --wait --wait-timeout 600 || { \
+	  echo "Стенд не запустился с первой попытки, пробую ещё раз через 30 с."; \
+	  sleep 30; $(COMPOSE_STAND) up -d --build --wait --wait-timeout 600; } || { \
 	  echo "ОШИБКА: стенд не запустился. Журнал подготовки двойников:"; \
 	  $(COMPOSE_STAND) logs --no-color sekis-setup; exit 1; }
 	@bash scripts/stand-wait.sh
@@ -96,9 +101,12 @@ stand-platform:
 stand-twins:
 	@bash scripts/compose-env.sh
 	@bash scripts/compose-preflight.sh
+	@bash scripts/stand-pull.sh
 	@$(MAKE) --no-print-directory stand-platform || { \
-	  echo "Платформа не запустилась с первой попытки, пробую ещё раз."; \
-	  $(MAKE) --no-print-directory stand-platform; }
+	  echo "Платформа не запустилась с первой попытки, пробую ещё раз через 30 с."; \
+	  sleep 30; $(MAKE) --no-print-directory stand-platform; } || { \
+	  echo "Платформа не запустилась со второй попытки, пробую ещё раз через 60 с."; \
+	  sleep 60; $(MAKE) --no-print-directory stand-platform; }
 	@touch $(STAND_MARKER)
 	$(COMPOSE_STAND) up --build --no-deps --exit-code-from sekis-setup sekis-setup
 
