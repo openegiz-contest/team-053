@@ -29,6 +29,10 @@
 //
 // Calm by default: few labels (see relabel), the declines a thin quiet line
 // drawn behind the stopes unless they are the subject (see declineLooks).
+//
+// «Проезд с самосвалом» puts the camera behind one haul truck and keeps it
+// there as the truck moves, down the decline and under the ground (see ride);
+// the same button, Esc or a drag on the scene returns the orbit camera.
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -70,6 +74,22 @@ const PUMP_PIXELS = 10;   // drawn length of a pump at the preset distances
 const STOUT = 1.45;      // working units are drawn thicker than to scale, to stay visible
 const MAX_JUMP = 1900;   // m: a longer move between two samples is shown as a jump
 const MAX_PITCH = 14 * Math.PI / 180;   // a unit is drawn pitched along a decline, never steeper
+
+// The ride with a truck: the camera `back` metres behind the truck on its
+// track and `lift` above it, looking along its way, tilted up from the truck by
+// RIDE_AIM (the tangent; the truck stays in the lower third of the frame, over
+// the legend). Under the ground it comes nearer and stays under the ground
+// too: the ground is drawn from above only, so from below it hides nothing.
+const RIDE_SURFACE = { back: 38, lift: 12 };
+const RIDE_UNDER = { back: 27, lift: 7 };
+const RIDE_AIM = 0.1;
+const RIDE_DEPTH = [1, 7];   // m of the truck under the ground: the camera begins … has gone under it
+const RIDE_TURN_S = 0.2;     // s: the camera turns after the truck with this time constant
+const RIDE_JUMP = 300;       // m moved in one frame: the truck has jumped, its track starts again
+const RIDE_NEAR = 4;         // m: near plane while riding (the usual 25 m would cut the truck)
+const RIDE_ZOOM = [0.6, 2.5];   // the least and the most of the ride distances, by the zoom buttons
+// A truck on its way: the ride starts with the first of them.
+const MOVING_TRUCK = new Set(['surface_haul', 'descending', 'tram_level', 'hauling_up']);
 
 // Camera presets: the target, the direction the camera looks from (azimuth
 // from the south towards the east, elevation above the horizon) and distance;
@@ -445,6 +465,7 @@ export async function mount(container, geometry) {
   // ------------------------------------------------------------- overlay
   /** A preset is a camera position and a theme (which labels come first, what is dimmed). */
   function applyPreset(id) {
+    leaveRide(false);
     presetId = id;
     overlay.setPreset(id);
     const view = VIEWS[id];
@@ -467,9 +488,21 @@ export async function mount(container, geometry) {
       dirty = true;
     },
     onZoom(direction) {
+      if (ride) {   // riding: nearer to the truck or farther from it
+        ride.zoom = clamp(ride.zoom * (direction > 0 ? 0.8 : 1.25), RIDE_ZOOM[0], RIDE_ZOOM[1]);
+        dirty = true;
+        return;
+      }
       const offset = camera.position.clone().sub(controls.target);
       const distance = clamp(offset.length() * (direction > 0 ? 0.72 : 1.39), controls.minDistance, controls.maxDistance);
       flyTo(controls.target, controls.target.clone().add(offset.setLength(distance)), 260);
+    },
+    onRide(on) {
+      if (on) startRide(pickTruck(null));
+      else leaveRide(true);
+    },
+    onNextTruck() {
+      if (ride) startRide(pickTruck(ride.id));
     },
   });
   overlay.setPreset(presetId);
@@ -542,9 +575,11 @@ export async function mount(container, geometry) {
    * and turns) in the «Уклоны» preset, when it is closed, or when it or a truck
    * on it is selected; otherwise a thin line, open green or closed red turned
    * quieter (less saturated, darker), so that it does not run over the stopes.
+   * While the camera rides with a truck, its decline is the strong one.
    */
   function declineLooks(dimmed) {
-    const truck = selectedId && things[selectedId] && things[selectedId].kind === 'haul_truck' ? F(selectedId).decline : null;
+    const truckId = ride ? ride.id : selectedId;   // the truck the camera rides with, or the selected one
+    const truck = truckId && things[truckId] && things[truckId].kind === 'haul_truck' ? F(truckId).decline : null;
     const truckDecline = typeof truck === 'string' && truck !== 'none' ? NS + 'decline-' + truck : null;
     const looks = new Map();
     let key = '';
@@ -813,6 +848,66 @@ export async function mount(container, geometry) {
     }
   }
 
+  // ---------------------------------------------------------------- ride
+  // The camera rides with one truck (step: followTruck); the orbit camera is
+  // kept and returned to when the ride ends.
+  let ride = null;   // { id, before: { position, target, near }, track, yaw, back, lift, zoom, cut }
+  const rideLook = new THREE.Vector3();
+  const rideTail = new THREE.Vector3();
+
+  /**
+   * The truck to ride with: the first on its way (by id), counted after
+   * `after` when it is given (the next truck), else the first truck.
+   */
+  function pickTruck(after) {
+    const ids = Object.keys(objects).filter((id) => objects[id].kind === 'haul_truck' && vehicles.has(id)).sort();
+    const from = after ? ids.indexOf(after) + 1 : 0;
+    const order = [...ids.slice(from), ...ids.slice(0, from)];
+    return order.find((id) => id !== after && MOVING_TRUCK.has(F(id).state)) || order[0] || null;
+  }
+
+  /** The caption of the ride: the truck's name and the line of its label (state · payload). */
+  function rideCaption() {
+    const status = statusLine(things[ride.id]);
+    return { name: shortName(ride.id, things), line: status.text, tone: status.tone };
+  }
+
+  function startRide(id) {
+    if (!id || !vehicles.has(id)) return;
+    if (!ride) {
+      ride = { before: { position: camera.position.clone(), target: controls.target.clone(), near: camera.near }, zoom: 1 };
+      fly = null;
+      cameraMoved = true;
+      controls.enabled = false;   // the ride moves the camera; a drag ends it (onPointerMove)
+      camera.near = RIDE_NEAR;
+      camera.updateProjectionMatrix();
+    }
+    Object.assign(ride, { id, track: [], yaw: 0, back: RIDE_SURFACE.back, lift: RIDE_SURFACE.lift, cut: true });
+    overlay.setRide(rideCaption());
+    derive(performance.now(), false);   // the truck's decline is drawn strong
+    labelsDueAt = 0;
+    dirty = true;
+  }
+
+  /** End the ride; `restore` flies the camera back to where it was before. */
+  function leaveRide(restore) {
+    if (!ride) return;
+    const { before } = ride;
+    ride = null;
+    camera.near = before.near;
+    camera.updateProjectionMatrix();
+    controls.enabled = true;
+    // The orbit target in front of the camera and beyond the orbit's least
+    // distance, so that a flight starts from the ride's own view.
+    camera.getWorldDirection(rideLook);
+    controls.target.copy(camera.position).addScaledVector(rideLook, controls.minDistance * 1.5);
+    overlay.setRide(null);
+    derive(performance.now(), false);
+    labelsDueAt = 0;
+    dirty = true;
+    if (restore) flyTo(before.target, before.position);
+  }
+
   // -------------------------------------------------------------- labels
   let labelsDueAt = 0;
   let labelCount = 0;
@@ -905,6 +1000,7 @@ export async function mount(container, geometry) {
       let position = labelPositions.get(id);
       if (v) {
         if (v.parked && !selected) continue;
+        if (ride && id === ride.id) continue;   // the caption of the ride names it
         if (!position) {
           position = new THREE.Vector3();
           labelPositions.set(id, position);
@@ -1081,6 +1177,8 @@ export async function mount(container, geometry) {
     container.dispatchEvent(new CustomEvent('sekis:select', { bubbles: true, detail: { thingId: id } }));
   };
   const onPointerMove = (event) => {
+    // A drag on the scene ends the ride and returns the orbit camera.
+    if (ride && press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 5) leaveRide(true);
     if (press || event.buttons) return;
     const now = performance.now();
     if (now - hoverAt < 140) return;
@@ -1104,6 +1202,10 @@ export async function mount(container, geometry) {
   });
   root.addEventListener('pointermove', onPointerMove);
   root.addEventListener('pointerleave', onPointerLeave);
+  const onKeyDown = (event) => {
+    if (event.key === 'Escape' && ride) leaveRide(true);
+  };
+  document.addEventListener('keydown', onKeyDown);
 
   // ---------------------------------------------------------- frame loop
   const position = new THREE.Vector3();
@@ -1116,6 +1218,87 @@ export async function mount(container, geometry) {
   const color = new THREE.Color();
   let lastStepAt = 0;
   let moving = false;
+
+  /** Move a unit along its route to where it is at `now`; true while it is on the way. */
+  function advance(v, now) {
+    if (!v.path) return false;
+    const k = clamp((now - v.startedAt) / v.duration, 0, 1);
+    pointAlong(v.path, v.cum, k * v.length, v.position, direction);
+    // A (near) vertical leg of a route keeps the heading the unit had.
+    if (Math.hypot(direction.x, direction.z) > 0.3 * direction.length()) v.direction.copy(direction).normalize();
+    if (k >= 1) v.path = null;
+    return true;
+  }
+
+  /**
+   * Heading of the ride: from the point of the truck's track `back` metres
+   * behind it to the truck, so that the camera comes round a bend or a turn of
+   * the decline after the truck instead of swinging about it; the truck's own
+   * heading until the track is that long. The track keeps the truck's
+   * positions of the frames drawn, as far back as needed.
+   */
+  function trackYaw(v, back) {
+    const track = ride.track;
+    const last = track[track.length - 1];
+    if (last && last.distanceTo(v.position) > RIDE_JUMP) track.length = 0;
+    if (!track.length || track[track.length - 1].distanceTo(v.position) > 1) track.push(v.position.clone());
+    let from = v.position;
+    let left = back;
+    for (let i = track.length - 1; i >= 0; i -= 1) {
+      const gap = from.distanceTo(track[i]);
+      if (gap >= left) {
+        rideTail.lerpVectors(from, track[i], left / gap);
+        if (i > 1) track.splice(0, i - 1);   // older points are not needed again
+        const dx = v.position.x - rideTail.x;
+        const dz = v.position.z - rideTail.z;
+        if (Math.hypot(dx, dz) > 2) return Math.atan2(dz, dx);
+        break;
+      }
+      left -= gap;
+      from = track[i];
+    }
+    return Math.atan2(v.direction.z, v.direction.x);
+  }
+
+  /**
+   * The camera of the ride: behind the truck on its track and above it, turned
+   * smoothly, looking over it along its way. The truck's own position is
+   * already interpolated between samples (advance), so the camera follows it
+   * exactly. Under the ground the camera comes nearer and is kept under the
+   * ground, eased in as the truck goes down from RIDE_DEPTH[0] to
+   * RIDE_DEPTH[1] under it.
+   */
+  function followTruck(now, dt) {
+    const v = vehicles.get(ride.id);
+    if (!v) return;
+    if (advance(v, now)) moving = true;
+    const yaw = trackYaw(v, ride.back);
+    const ground = terrain ? terrain.heightAt(v.position.x, v.position.z) : null;
+    const depth = ground === null ? 0 : ground - v.position.y;
+    const under = clamp((depth - RIDE_DEPTH[0]) / (RIDE_DEPTH[1] - RIDE_DEPTH[0]), 0, 1);
+    const back = (RIDE_SURFACE.back + (RIDE_UNDER.back - RIDE_SURFACE.back) * under) * ride.zoom;
+    const lift = (RIDE_SURFACE.lift + (RIDE_UNDER.lift - RIDE_SURFACE.lift) * under) * ride.zoom;
+    const k = ride.cut ? 1 : 1 - Math.exp(-dt / RIDE_TURN_S);
+    const turn = Math.atan2(Math.sin(yaw - ride.yaw), Math.cos(yaw - ride.yaw));
+    ride.yaw += turn * k;
+    ride.back += (back - ride.back) * k;
+    ride.lift += (lift - ride.lift) * k;
+    ride.cut = false;
+    const cx = Math.cos(ride.yaw);
+    const cz = Math.sin(ride.yaw);
+    camera.position.set(v.position.x - cx * ride.back, v.position.y + ride.lift, v.position.z - cz * ride.back);
+    if (under > 0 && terrain) {
+      const roof = Math.max(v.position.y + 1, terrain.heightAt(camera.position.x, camera.position.z) - 2);
+      camera.position.y += (Math.min(camera.position.y, roof) - camera.position.y) * under;
+    }
+    rideLook.copy(v.position).addScaledVector(Y_AXIS, 1.5);
+    rideLook.addScaledVector(Y_AXIS, camera.position.distanceTo(rideLook) * RIDE_AIM);
+    controls.target.copy(rideLook);
+    camera.lookAt(rideLook);
+    camera.updateMatrixWorld();
+    // Still turning or moving in: the next frames are drawn too.
+    if (Math.abs(turn) > 0.002 || Math.abs(back - ride.back) > 0.05 || Math.abs(lift - ride.lift) > 0.05) moving = true;
+  }
 
   function step(now) {
     const dt = lastStepAt ? Math.min(0.5, (now - lastStepAt) / 1000) : 0;
@@ -1135,6 +1318,7 @@ export async function mount(container, geometry) {
       }
       moving = true;
     }
+    if (ride) followTruck(now, dt);
 
     // Boxes: stope fills and sump gauges, then the flow beads; the pumps; the units.
     boxes.begin();
@@ -1174,14 +1358,7 @@ export async function mount(container, geometry) {
 
     for (const unit of Object.values(units)) unit.begin();
     for (const v of vehicles.values()) {
-      if (v.path) {
-        const k = clamp((now - v.startedAt) / v.duration, 0, 1);
-        pointAlong(v.path, v.cum, k * v.length, v.position, direction);
-        // A (near) vertical leg of a route keeps the heading the unit had.
-        if (Math.hypot(direction.x, direction.z) > 0.3 * direction.length()) v.direction.copy(direction).normalize();
-        if (k >= 1) v.path = null;
-        moving = true;
-      }
+      if (advance(v, now)) moving = true;
       const wpp = worldPerPixel(v.position);
       const k = unitScale(v);
       const length = v.size[0];
@@ -1505,6 +1682,8 @@ export async function mount(container, geometry) {
         return [rect.left + (scratch.x * 0.5 + 0.5) * size.width, rect.top + (-scratch.y * 0.5 + 0.5) * size.height];
       },
       camera: () => ({ position: camera.position.toArray(), target: controls.target.toArray() }),
+      /** The truck the camera rides with, or null. */
+      ride: () => (ride ? ride.id : null),
       /** Put the camera at `position` looking at `target` (close-ups for review), and draw. */
       look(target, position) {
         fly = null;
@@ -1537,6 +1716,7 @@ export async function mount(container, geometry) {
       }
       derive(now, fresh);
       if (fresh) updateVehicles(now);
+      if (ride) overlay.setRide(rideCaption());
       labelsDueAt = Math.min(labelsDueAt, now + 150);
       dirty = true;
       // The first state is drawn at once; later ones too unless a frame was
@@ -1547,6 +1727,12 @@ export async function mount(container, geometry) {
 
     focus(thingId) {
       if (disposed || !statics) return;
+      if (ride && objects[thingId] && objects[thingId].kind === 'haul_truck') {
+        select(thingId);   // riding: a truck chosen elsewhere is the one to ride with
+        startRide(thingId);
+        return;
+      }
+      leaveRide(false);
       if (!thingId || !objects[thingId]) {
         const kind = thingId && things[thingId] && things[thingId].kind;
         select(null);
@@ -1572,6 +1758,7 @@ export async function mount(container, geometry) {
       else window.removeEventListener('resize', resize);
       if (viewObserver) viewObserver.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('keydown', onKeyDown);
       controls.dispose();
       labels.dispose();
       scene.traverse((object) => {

@@ -324,6 +324,21 @@ class SceneModule(unittest.TestCase):
             self.assertGreaterEqual(min(channels), 0x34, name)                 # not a dark brown
             self.assertLessEqual(max(channels) - min(channels), 0x10, name)    # a grey, warm at most
 
+    def test_ride_with_a_truck(self):
+        # «Проезд с самосвалом»: the camera rides with a truck on its way; the
+        # same button, Esc or a drag returns the orbit camera; no geometry of its own.
+        ui = read(os.path.join(SCENE_DIR, "ui.js")).decode("utf-8")
+        self.assertIn("text: 'Проезд с самосвалом'", ui)
+        self.assertIn("onRide(rideButton.getAttribute('aria-pressed') !== 'true')", ui)
+        index = read(os.path.join(SCENE_DIR, "index.js")).decode("utf-8")
+        self.assertIn("const MOVING_TRUCK = new Set(['surface_haul', 'descending', 'tram_level', 'hauling_up']);", index)
+        self.assertIn("if (event.key === 'Escape' && ride) leaveRide(true);", index)
+        self.assertIn("if (ride && press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 5) leaveRide(true);", index)
+        self.assertIn("document.removeEventListener('keydown', onKeyDown);", index)
+        self.assertIn("if (restore) flyTo(before.target, before.position);", index)
+        # The caption is the truck's label: its short name and its status line.
+        self.assertIn("return { name: shortName(ride.id, things), line: status.text, tone: status.tone };", index)
+
     def test_ui_text_is_russian(self):
         text = read(os.path.join(SCENE_DIR, "ui.js")).decode("utf-8")
         for preset in ("Рудник", "Уклоны", "Вентиляция", "Водоотлив", "Фабрика и хвосты"):

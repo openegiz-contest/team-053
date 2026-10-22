@@ -1,9 +1,9 @@
 // DOM chrome of the scene: its own style sheet (scoped by the s3d- prefix; the
 // colours are the page tokens), the camera preset bar (with the grade and the
-// «Снимок» switches and the zoom buttons), the legend line, the
-// attribution of the surface data (required by the licences wherever the data
-// is shown), the debug overlay and the message shown when the graphics context
-// is lost.
+// «Снимок» switches, the zoom buttons, and the ride with a truck and its
+// caption), the legend line, the attribution of the surface data (required by
+// the licences wherever the data is shown), the debug overlay and the message
+// shown when the graphics context is lost.
 
 import { STOPE_ORDER, VEHICLE_MARKS, stateLabel, stopeColor } from '../panels/dict.js';
 import { el, fmt, setText } from '../panels/format.js';
@@ -54,6 +54,7 @@ const CSS = `
 .s3d-seg button:hover { background: var(--surface-2, #18212b); color: var(--text, #e9eef4); }
 .s3d-seg button[aria-pressed="true"] { background: var(--surface-3, #202b37); color: var(--text, #e9eef4);
   font-weight: 600; }
+.s3d-label.s3d-ride { align-self: flex-start; font-size: 11.5px; pointer-events: none; cursor: default; }
 .s3d-legend { position: absolute; left: 6px; bottom: 21px; max-width: calc(100% - 12px); display: flex;
   flex-wrap: wrap; gap: 1px 11px; padding: 2px 6px; border-radius: 3px; background: rgba(10, 14, 19, 0.78);
   font: 10.5px/1.5 var(--font, system-ui, sans-serif); color: var(--text-3, #73839a); pointer-events: none; }
@@ -85,9 +86,10 @@ export const PRESETS = [
 ];
 
 /**
- * Build the chrome inside `root`. Handlers: onPreset(id), onGrade(on), onPhoto(on), onZoom(direction).
+ * Build the chrome inside `root`. Handlers: onPreset(id), onGrade(on), onPhoto(on), onZoom(direction),
+ * onRide(on), onNextTruck().
  */
-export function createOverlay(root, palette, { onPreset, onGrade, onPhoto, onZoom }) {
+export function createOverlay(root, palette, { onPreset, onGrade, onPhoto, onZoom, onRide, onNextTruck }) {
   const style = el('style', { text: CSS });
   const swallow = (node) => {
     // Keep clicks on the chrome away from the orbit controls and the picker.
@@ -111,13 +113,27 @@ export function createOverlay(root, palette, { onPreset, onGrade, onPhoto, onZoo
     title: 'Показать на рельефе спутниковый снимок Sentinel-2 (30.09.2026, 10 м) вместо условной поверхности',
     onclick: () => onPhoto(photoButton.getAttribute('aria-pressed') !== 'true'),
   });
+  // The camera rides with a truck; the caption names it, with the line of its label.
+  const rideButton = el('button', {
+    type: 'button', 'aria-pressed': 'false', text: 'Проезд с самосвалом',
+    title: 'Камера едет за самосвалом в рейсе, по уклону и под землю; выход — эта кнопка, Esc или перетаскивание сцены',
+    onclick: () => onRide(rideButton.getAttribute('aria-pressed') !== 'true'),
+  });
+  const nextButton = el('button', {
+    type: 'button', hidden: true, text: 'Следующий', title: 'Ехать со следующим самосвалом', onclick: () => onNextTruck(),
+  });
+  const rideName = el('b');
+  const rideLine = el('span');
+  const rideCaption = el('div', { class: 's3d-label s3d-ride', role: 'status', hidden: true }, rideName, rideLine);
   const bar = el('div', { class: 's3d-bar' },
     swallow(el('div', { class: 's3d-seg', role: 'group', 'aria-label': 'Ракурс' }, presetButtons)),
     swallow(el('div', { class: 's3d-seg' }, gradeButton)),
     swallow(el('div', { class: 's3d-seg' }, photoButton)),
     swallow(el('div', { class: 's3d-seg', role: 'group', 'aria-label': 'Масштаб' },
       el('button', { type: 'button', text: '+', title: 'Приблизить', 'aria-label': 'Приблизить', onclick: () => onZoom(1) }),
-      el('button', { type: 'button', text: '−', title: 'Отдалить', 'aria-label': 'Отдалить', onclick: () => onZoom(-1) }))));
+      el('button', { type: 'button', text: '−', title: 'Отдалить', 'aria-label': 'Отдалить', onclick: () => onZoom(-1) }))),
+    swallow(el('div', { class: 's3d-seg' }, rideButton, nextButton)),
+    rideCaption);
 
   const swatch = (color, text, cls) => el('span', null,
     el('i', { class: cls || null, style: cls ? `border-color: ${color}` : `background: ${color}` }), text);
@@ -163,6 +179,16 @@ export function createOverlay(root, palette, { onPreset, onGrade, onPhoto, onZoo
     },
     setPhoto(on) {
       photoButton.setAttribute('aria-pressed', String(on));
+    },
+    /** The ride: { name, line, tone } of the truck while riding, null when the camera is free. */
+    setRide(caption) {
+      rideButton.setAttribute('aria-pressed', String(Boolean(caption)));
+      nextButton.hidden = !caption;
+      rideCaption.hidden = !caption;
+      if (!caption) return;
+      setText(rideName, caption.name);
+      setText(rideLine, caption.line);
+      if (rideCaption.dataset.tone !== caption.tone) rideCaption.dataset.tone = caption.tone;
     },
     setAlerts({ air, flood }) {
       if (airAlert.hidden === air) airAlert.hidden = !air;
