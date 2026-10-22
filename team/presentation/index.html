@@ -720,7 +720,7 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
 <!-- 15 -->
 <section class="slide">
   <div class="kicker"><b>Запуск</b> · чистая Ubuntu 24.04 с Docker Engine и Compose v2</div>
-  <h1>Три команды — и стенд работает: запуск с нуля занял 3,6 минуты</h1>
+  <h1>Три команды — и стенд работает: запуск с нуля занял 4,2 минуты</h1>
   <div class="body" style="gap:30px">
     <div style="flex:0 0 700px; display:flex; flex-direction:column; gap:16px">
       <pre class="cmd"><span class="c"># из корня репозитория</span>
@@ -728,9 +728,9 @@ sudo apt-get update &amp;&amp; sudo apt-get install -y make
 make stand
 make stand-smoke</pre>
       <div class="kpis" style="grid-template-columns: 1.25fr 1fr 1fr">
-        <div class="kpi"><div class="l">make stand с нуля</div><div class="v num" style="font-size:42px; white-space:nowrap">216<small>с</small></div><div class="s">отдельная виртуальная машина: Ubuntu&nbsp;24.04.5, 8&nbsp;vCPU, 16&nbsp;ГБ</div></div>
+        <div class="kpi"><div class="l">make stand с нуля</div><div class="v num" style="font-size:42px; white-space:nowrap">252<small>с</small></div><div class="s">отдельная виртуальная машина: Ubuntu&nbsp;24.04.5, 8&nbsp;vCPU, 16&nbsp;ГБ</div></div>
         <div class="kpi"><div class="l">make stand-smoke</div><div class="v num" style="font-size:42px; white-space:nowrap">14–31<small>с</small></div><div class="s">стенд, Ditto, InfluxDB, советник, сценарий</div></div>
-        <div class="kpi"><div class="l">Память</div><div class="v num" style="font-size:42px">≈4<small>ГБ</small></div><div class="s">пик при запуске 4&nbsp;107&nbsp;МиБ, вся машина</div></div>
+        <div class="kpi"><div class="l">Память</div><div class="v num" style="font-size:42px">≈4<small>ГБ</small></div><div class="s">пик при запуске 3&nbsp;971&nbsp;МиБ, вся машина</div></div>
       </div>
       <p class="dim" style="font-size:15.5px; line-height:1.45; margin:0">Ещё: 601 модульный тест (около 140&nbsp;с). Запуск с нуля и 60-минутный прогон — на той же машине 22 октября: ноль перезапусков и ошибок в журналах, поток MQTT до 18,0 сообщения в секунду при пределе 20.</p>
       <div class="card" style="padding:16px 20px">
