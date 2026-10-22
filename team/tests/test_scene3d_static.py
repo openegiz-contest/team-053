@@ -431,6 +431,36 @@ class Landscape(unittest.TestCase):
         self.assertIn("make('sekis-ground', { color: fallback.clone() }, { contours: true })", terrain)
         self.assertIn("make('sekis-instances', {}, { instanced: true })", terrain)
 
+    def test_surface_overlays_fade_in_the_xray_window(self):
+        # Review: in the underground views the houses, trees, walls, roads,
+        # streams and the land-cover colours hid the workings. They now fade
+        # with the ground's x-ray weight, much further than the ground.
+        terrain = read(os.path.join(SCENE_DIR, "terrain.js")).decode("utf-8")
+        landscape = read(os.path.join(SCENE_DIR, "landscape.js")).decode("utf-8")
+        index = read(os.path.join(SCENE_DIR, "index.js")).decode("utf-8")
+        statics = read(os.path.join(SCENE_DIR, "statics.js")).decode("utf-8")
+        kit = read(os.path.join(SCENE_DIR, "kit.js")).decode("utf-8")
+        ground = float(re.search(r"export const XRAY_ALPHA = ([0-9.]+);", terrain).group(1))
+        overlay = float(re.search(r"export const XRAY_OVERLAY = ([0-9.]+);", terrain).group(1))
+        self.assertLessEqual(overlay, ground / 3)
+        grey = float(re.search(r"export const XRAY_GREY = ([0-9.]+);", terrain).group(1))
+        self.assertGreater(grey, 0.5)
+        # The same trigger as the ground: one weight, set together in setXray.
+        self.assertIn("uniforms.xrayOverlay.value = ellipsoid ? XRAY_OVERLAY : 1;", terrain)
+        self.assertIn("const look = contours ? CONTOUR_FRAGMENT + XRAY_GROUND : lines ? XRAY_LINES : XRAY_MODELS;", terrain)
+        # The models blend over the translucent ground: drawn after it.
+        self.assertIn("ground.renderOrder = 3;", index)
+        self.assertEqual(landscape.count("mesh.renderOrder = 4;"), 3)
+        self.assertNotIn("mesh.renderOrder = 2;", landscape)
+        # The thin lines of the scenery thin out; the lines under the ground keep their strength.
+        self.assertIn("make('sekis-lines', { transparent: false }, { lines: true }, THREE.LineBasicMaterial)", terrain)
+        self.assertIn("const thinLines = new THREE.LineSegments(new THREE.BufferGeometry(), groundLook.lines);", index)
+        self.assertIn("geometry.setAttribute('xraySurface',", kit)
+        self.assertIn("lines.use(null, palette.scene(tint), true).path(path);", statics)
+        self.assertIn("lines.use(id, palette.stope('standby')).boxEdges(", statics)
+        # No new draw call: no new scene object for the fade.
+        self.assertEqual(index.count("new THREE.LineSegments("), 4)
+
     def test_tree_and_building_counts_fit_the_budget(self):
         # Spec 4.5: at most 60 000 triangles in all. A tree takes 13 triangles, a house 14.
         landscape = read(os.path.join(SCENE_DIR, "landscape.js")).decode("utf-8")

@@ -316,15 +316,13 @@ class Simulator:
         self.mining.configure(len(cap.producing_stopes(model, state)),
                               [lhd.name for lhd in cap.active_lhds(model, state)],
                               cap.active_rigs(model, state), now, first)
-        # feed grade: a what-if on the ore itself, so ore already broken, loaded or stockpiled
-        # follows the knob (the stopes are rescaled as decision 9.3 says)
+        # feed grade: a what-if on the ore in the ground. The stopes (and the ore broken in them)
+        # take the new grade at once (decision 9.3); ore already on a truck keeps the grade it was
+        # loaded at, and the ROM stockpile is not re-graded: it changes only as loads at the new
+        # grade are tipped on it and blended in (``Plant.add_ore``), the same way back on an
+        # undo or a reset.
         grade = float(state.grade_gpt or p("plant.grade_base"))
-        if grade != self.grade_gpt:
-            ratio = grade / self.grade_gpt
-            self.plant.stock_grade *= ratio
-            for truck in self.haul.trucks:
-                truck.grade *= ratio
-            self.grade_gpt = grade
+        self.grade_gpt = grade
         self.mining.rescale_grades(grade)
         # ventilation
         self.fans_installed = tuple(p("ladder.m_vent.fans")[state.m_vent])

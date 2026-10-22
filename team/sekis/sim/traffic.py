@@ -204,7 +204,13 @@ class Haulage:
     # -- fleet ----------------------------------------------------------------------------------
 
     def set_in_service(self, names: Sequence[str], now: float) -> None:
-        """Bring the named trucks into service and retire the others at the end of their trip."""
+        """Bring the named trucks into service and retire the others.
+
+        A truck taken out of service that stands at the surface (at the ROM pad or under repair)
+        is parked at once: a truck under repair leaves the fleet with its repair, and only the
+        part of the repair it spent in the fleet stays in the maintenance hours. A truck on a
+        trip finishes it (it tips its load, so the mass balance holds) and is parked at the pad.
+        """
         wanted = set(names)
         for trk in self.trucks:
             if trk.name in wanted:
@@ -219,7 +225,13 @@ class Haulage:
                     trk.t_fail = now + self._rng_failure[trk.name].expovariate(1.0 / self.mtbf_s)
                     trk.ramp = self.ramps[self.sim.decline_of[trk.name]]
             elif trk.in_service:
-                trk.retiring = True
+                if trk.phase == P_MAINT:
+                    self.maintenance_s -= max(0.0, trk.t_next - now)
+                    self._park(trk)
+                elif trk.phase == P_PAD:
+                    self._park(trk)
+                else:
+                    trk.retiring = True
         self.active = [trk for trk in self.trucks if trk.in_service]
 
     def warm_start(self, now: float, worked_s: float) -> None:

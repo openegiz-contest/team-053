@@ -752,6 +752,49 @@ class TestTraffic(SimCase):
                     self.assertEqual(snap[name]["chainage_m"], 0.0)
         self.assertTrue(seen)
 
+    def test_a_truck_under_repair_leaves_the_fleet_when_its_stage_is_rolled_back(self):
+        off_fleet = ("parked", "planned")
+        base = {n for n, f in new_sim().snapshot(TRUCKS).items() if f["state"] not in off_fleet}
+        self.assertEqual(len(base), 5)
+        sim = new_sim(target_ktpa=2500, **FULL_2500)
+        broken = None
+        for _ in range(30 * 24 * 6):
+            sim.advance(10)
+            snap = sim.snapshot(TRUCKS)
+            broken = next((n for n in TRUCKS if n not in base and snap[n]["state"] == "maintenance"), None)
+            if broken is not None:
+                break
+        self.assertIsNotNone(broken, "no expansion truck broke down in 30 days")
+        truck = sim.haul.by_name[broken]
+        repair_left_h = (truck.t_next - sim.t) / 3600.0
+        self.assertGreater(repair_left_h, 0.0)
+        maintenance_h = sim.totals()["truck_maintenance_h"]
+        sim.reset_scenario()
+        snap = sim.snapshot(TRUCKS)
+        self.assertEqual(snap[broken]["state"], "parked")
+        self.assertFalse(truck.in_service)
+        self.assertNotIn(truck, sim.haul.active)
+        # only the repair time spent in the fleet stays in the maintenance hours
+        self.assertAlmostEqual(sim.totals()["truck_maintenance_h"], maintenance_h - repair_left_h, places=6)
+        # trucks of the expansion standing at the pad are parked at once too; the ones on a trip
+        # finish it and are parked at the pad
+        for name in TRUCKS:
+            if name not in base and sim.haul.by_name[name].in_service:
+                self.assertTrue(sim.haul.by_name[name].retiring, name)
+                self.assertNotIn(snap[name]["state"], ("maintenance", "shift_break", "held_vent"), name)
+        sim.advance(180)
+        snap = sim.snapshot(TRUCKS)
+        fleet = {n for n in TRUCKS if snap[n]["state"] not in off_fleet}
+        self.assertEqual(fleet, base)
+        in_repair = {n for n in TRUCKS if snap[n]["state"] == "maintenance"}
+        # the Stand header (dict.js unitCounts) counts the base fleet of 5, repairs among them only
+        self.assertLessEqual(in_repair, base)
+        # the parked truck comes back with a fresh breakdown clock when the stage returns
+        sim.apply_scenario(dict(FULL_2500, target_ktpa=2500))
+        self.assertTrue(truck.in_service)
+        self.assertNotEqual(sim.snapshot([broken])[broken]["state"], "maintenance")
+        self.assertGreater(truck.t_fail, sim.t)
+
 
 # ---------------------------------------------------------------------------------------------
 # stopes, rigs, LHDs
@@ -1219,6 +1262,9 @@ class TestDisturbances(SimCase):
         self.assertLess(snap["mon-volchevka"]["discharge_m3h"], 60.0)
 
     def test_grade_drop_lowers_the_gold(self):
+        """The knob re-grades the ore in the ground at once; the ROM stockpile (about 94 kt) is a
+        well-mixed blend of the loads tipped on it, so the feed grade, the recovery and the gold
+        reach the new steady state only as the pile turns over (about a month to half-way)."""
         sim = new_sim()
         sim.advance(30 * 60)                          # 15:30 on day 2: three lines running
         before = sim.snapshot()
@@ -1227,27 +1273,72 @@ class TestDisturbances(SimCase):
         snap = sim.snapshot()
         self.assertAlmostEqual(snap["stp-p150-1"]["grade"], 1.75 * 1.76 / 2.05, places=3)
         self.assertAlmostEqual(snap["stp-m100-2"]["grade"], 2.55 * 1.76 / 2.05, places=3)
-        self.assertAlmostEqual(snap["rom-stockpile"]["grade"], before["rom-stockpile"]["grade"] * 1.76 / 2.05,
-                               delta=0.002)
+        # the pile, and with it the feed, is not re-graded by the knob
+        self.assertEqual(snap["rom-stockpile"]["grade"], before["rom-stockpile"]["grade"])
         self.assertEqual(snap["plant"]["feed_grade"], snap["rom-stockpile"]["grade"])
-        self.assertLess(snap["plant"]["recovery_pct"], before["plant"]["recovery_pct"])
-        self.assertAlmostEqual(snap["plant"]["recovery_pct"], 84.50, delta=0.05)
-        sim.advance(150)                              # the rolling window of the "now" rates
+        self.assertEqual(snap["plant"]["recovery_pct"], before["plant"]["recovery_pct"])
+        sim.advance(150)                              # loads at the new grade start to arrive
         snap = sim.snapshot()
-        ratio = snap["plant"]["gold_poured_oz_day"] / before["plant"]["gold_poured_oz_day"]
-        self.assertAlmostEqual(ratio, 47.8 / 56.0, delta=0.012)
-        self.assertEqual(snap["plant"]["feed_tph"], before["plant"]["feed_tph"])
         loaded = [n for n in TRUCKS if snap[n]["payload"] > 0]
         self.assertTrue(all(snap[n]["grade"] < 2.05 for n in loaded))
-        # a year at this grade: 47.8 koz per 1000 kt milled
-        rate = snap["plant"]["gold_poured_oz_day"] / (snap["plant"]["feed_tph"] * 24)
+        self.assertLess(snap["rom-stockpile"]["grade"], before["rom-stockpile"]["grade"])
+        self.assertGreater(snap["rom-stockpile"]["grade"], before["rom-stockpile"]["grade"] - 0.01)
+        self.assertEqual(snap["plant"]["feed_tph"], before["plant"]["feed_tph"])
+        # day by day the pile grade falls smoothly towards 1.76: half-way in about 25 days
+        grades = [snap["rom-stockpile"]["grade"]]
+        for _ in range(150):
+            sim.advance(24 * 60)
+            snap = sim.snapshot()
+            self.assertEqual(snap["plant"]["feed_grade"], snap["rom-stockpile"]["grade"])
+            grades.append(snap["rom-stockpile"]["grade"])
+        steps = [b - a for a, b in zip(grades, grades[1:])]
+        self.assertLess(max(abs(step) for step in steps), 0.015)
+        self.assertTrue(all(step < 0.0035 for step in steps), steps)   # rounding and the stope mix
+        half = (before["rom-stockpile"]["grade"] + 1.76) / 2
+        half_day = next(day for day, grade in enumerate(grades) if grade <= half)
+        self.assertTrue(15 <= half_day <= 35, half_day)
+        self.assertGreater(grades[10], 1.95)
+        self.assertAlmostEqual(grades[-1], 1.76, delta=0.008)
+        # the steady state: recovery 84.50 % and 47.8 koz per 1000 kt milled
+        self.assertAlmostEqual(snap["plant"]["recovery_pct"], 84.50, delta=0.05)
+        gold, milled = sim.plant.gold_oz, sim.plant.milled_t
+        sim.advance(24 * 60)
+        rate = (sim.plant.gold_oz - gold) / (sim.plant.milled_t - milled)
         self.assertAlmostEqual(rate * 1e6, 47800, delta=600)
-        # undo
+        # undo: the same rule back, no jump
+        low = sim.snapshot()["rom-stockpile"]["grade"]
         sim.apply_scenario({"grade_gpt": 2.05})
         sim.advance(150)
         snap = sim.snapshot()
         self.assertAlmostEqual(snap["stp-p150-1"]["grade"], 1.75, places=3)
-        self.assertAlmostEqual(snap["plant"]["gold_poured_oz_day"], before["plant"]["gold_poured_oz_day"], delta=1.5)
+        self.assertGreaterEqual(snap["rom-stockpile"]["grade"], low)
+        self.assertLess(snap["rom-stockpile"]["grade"], low + 0.01)
+        sim.advance(10 * 24 * 60)
+        self.assertGreater(sim.snapshot()["rom-stockpile"]["grade"], low + 0.03)
+
+    def test_stockpile_grade_is_the_mass_weighted_blend_of_the_loads(self):
+        sim = new_sim()
+        plant = sim.plant
+        plant.stock_t, plant.stock_grade = 90000.0, 2.05
+        plant.add_ore(50.0, 1.51)
+        self.assertAlmostEqual(plant.stock_grade, (90000 * 2.05 + 50 * 1.51) / 90050, places=12)
+        self.assertEqual(plant.stock_t, 90050.0)
+        plant.add_ore(40.0, 2.40)
+        self.assertAlmostEqual(plant.stock_grade, (90000 * 2.05 + 50 * 1.51 + 40 * 2.40) / 90090, places=12)
+        # an empty pad takes the grade of the first load
+        plant.stock_t, plant.stock_grade = 0.0, 2.05
+        plant.add_ore(50.0, 1.51)
+        self.assertEqual(plant.stock_grade, 1.51)
+        # reclaim takes ore at the pile grade (a well-mixed pile): milling alone keeps the grade
+        sim = new_sim()
+        sim.advance(30 * 60)
+        sim.plant.stock_grade = 1.9
+        tonnes, gold, milled = sim.plant.stock_t, sim.plant.gold_oz, sim.plant.milled_t
+        sim.plant.minute(sim.t, 60.0, 0.0, 0.0)
+        self.assertLess(sim.plant.stock_t, tonnes)
+        self.assertEqual(sim.plant.stock_grade, 1.9)
+        self.assertAlmostEqual(sim.plant.gold_oz - gold, cap.gold_oz(MODEL, sim.plant.milled_t - milled, 1.9),
+                               places=9)
 
     def test_line2_down_cuts_the_feed_by_a_third(self):
         sim = new_sim()

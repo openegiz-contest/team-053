@@ -6,7 +6,10 @@
 // pipes, the bench crests of the old pit) and the elevation ruler. The ground
 // itself is the terrain mesh (terrain.js, landscape.js); surface outlines are
 // laid on it. The tailings cells stand on it as embankments with sloped faces
-// (a cell that is still a project is dashed).
+// (a cell that is still a project is dashed). The lines of the scenery (roads,
+// streams, pipes, the yard and the cells) are marked as lying on the ground:
+// they thin out in the x-ray window like the landscape models. The old pit is
+// a landmark of the scene and keeps its lines.
 //
 // Which things are a project is decided by the live twin state, so the whole
 // set is rebuilt when a measure turns a planned object into a working one or a
@@ -291,12 +294,12 @@ export function buildStatics(geometry, palette, live, terrain) {
       : name === 'conveyor' ? 'road' : 'pipe';
     const route = name === 'conveyor' ? conveyorRoute(path) : null;
     if (!route) {
-      lines.use(null, palette.scene(tint)).path(path);
+      lines.use(null, palette.scene(tint), true).path(path);
       continue;
     }
     // The conveyor: a ground line, the inclined gallery on trestles, the crusher house.
     paths[name] = route.path;
-    lines.use(null, palette.scene(tint)).path(route.ground);
+    lines.use(null, palette.scene(tint), true).path(route.ground);
     lines.path(route.after);
     solid.use(plantId, palette.scene('steel'), false);
     const g = route.gallery;
@@ -314,10 +317,10 @@ export function buildStatics(geometry, palette, live, terrain) {
       { key: plantId, walls: palette.scene('building'), roof: palette.scene('roof') });
   }
   if (scenery.yard && scenery.yard.footprint) {
-    lines.use(null, palette.scene('site')).path(drapeOutline(scenery.yard.footprint));
+    lines.use(null, palette.scene('site'), true).path(drapeOutline(scenery.yard.footprint));
   }
   if (scenery['industrial-zone'] && scenery['industrial-zone'].footprint) {
-    lines.use(null, palette.scene('site')).path(drapeOutline(scenery['industrial-zone'].footprint));
+    lines.use(null, palette.scene('site'), true).path(drapeOutline(scenery['industrial-zone'].footprint));
   }
   const damLook = { face: palette.model('dam'), crest: palette.model('damCrest') };
   for (const name of ['tsf-cell-south', 'tsf-cell-southeast']) {
@@ -326,7 +329,7 @@ export function buildStatics(geometry, palette, live, terrain) {
     // No dam number and no capacity: a low bund above the highest ground of the outline.
     const crest = Math.max(...cell.footprint.map(([x, z]) => groundAt(x, z))) + UNNUMBERED_BUND;
     embankment(solid, cell.footprint, crest, cell.y, groundAt, damLook, null);
-    lines.use(null, palette.scene('tsfCell')).outline(cell.footprint, crest + 0.4);
+    lines.use(null, palette.scene('tsfCell'), true).outline(cell.footprint, crest + 0.4);
   }
   const village = scenery.village;
   if (village && Array.isArray(village.anchor)) {

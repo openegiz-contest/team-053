@@ -650,6 +650,95 @@ class TestHorizon(AdvisorCase):
                 self.assertNotIn("окупается в", item["text"])
 
 
+# The Stand at simulated day 8 (2027-01-09 09:30, seed of params.json): the ROM stockpile and the
+# tailings placed since the epoch have moved; the ladder must not.
+DAY8_STOCKPILE_T, DAY8_PLACED_T = 91383.6, 22830.0
+# A stockpile drawn a little lower: in a horizon from it the stockpile runs out in 2027 and the 2027
+# binding link turns to haulage (what the cards showed when they followed the running Stand).
+LOW_STOCKPILE_T, LOW_PLACED_T = 90000.0, 25000.0
+# The ladder of SUBMISSION.md («Цели от базового режима»): target -> (reached, held to, binding link
+# by year, gold over ten years and its gain, koz, margin after tax, capex disclosed and assumed,
+# NPV disclosed and with the assumed costs, M$, payback disclosed and with the assumed costs).
+EPOCH_LADDER = {
+    1000: (2027, 2036, "2027–2036: фабрика", 560.0, 106.7, 223.6, 0.0, 9.0, 162.71, 155.72, None, 2028),
+    1200: (2028, 2036, "2027–2036: фабрика", 661.1, 207.8, 435.5, 0.0, 12.0, 322.23, 312.34, None, 2028),
+    2000: (2030, 2036, "2027–2028: фабрика; 2029: откатка; 2030–2036: фабрика", 1003.4, 550.1, 1153.0,
+           125.0, 27.0, 727.38, 705.44, 2029, 2029),
+    2500: (None, None, "2027–2028: фабрика; 2029–2036: откатка", 1047.3, 594.0, 1245.1, 125.0, 25.5,
+           810.47, 789.04, None, None),
+}
+
+
+class TestLadderFromTheEpoch(AdvisorCase):
+    """The four ladder cards start on 1 January 2027, whatever the stockpile and the tailings of the
+    running Stand; only the projection («Прогноз … из текущего состояния») follows them."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.day8 = replace(cls.base, stockpile_t=DAY8_STOCKPILE_T, tailings_placed_t=DAY8_PLACED_T,
+                           sim_time="2027-01-09T09:30:00")
+        cls.low = replace(cls.base, stockpile_t=LOW_STOCKPILE_T, tailings_placed_t=LOW_PLACED_T,
+                          sim_time="2027-01-12T00:00:00")
+
+    @staticmethod
+    def card(row):
+        """The figures of a card: a ladder row, or the projection (a horizon with its economics)."""
+        h, e = row.get("horizon", row), row["economics"]
+        t, d, w = e["totals"], e["variants"]["disclosed"], e["variants"]["with_assumed"]
+        return (h["reached_year"], h["held_to_year"], h["binding_runs"]["text"], t["gold_koz"], t["gain_koz"],
+                t["margin_after_tax_usd_m"], t["capex_published_usd_m"], t["capex_assumed_usd_m"],
+                d["npv_usd_m"], w["npv_usd_m"], d["payback_year"], w["payback_year"])
+
+    def test_the_epoch_is_what_a_fresh_stand_holds(self):
+        self.assertEqual((self.base.stockpile_t, self.base.tailings_placed_t), (STOCKPILE_T, 0.0))
+        self.assertEqual(self.advisor.epoch_stockpile_t, STOCKPILE_T)
+        self.assertEqual(self.advisor.at_epoch(self.day8), replace(self.base, sim_time=self.day8.sim_time))
+
+    def test_the_ladder_is_the_submission_table(self):
+        for inputs in (self.base, self.day8, self.low):
+            cards = {row["target_ktpa"]: self.card(row) for row in self.advisor.ladder(inputs)}
+            self.assertEqual(cards, EPOCH_LADDER, inputs.sim_time)
+        closest = self.advisor.ladder(self.day8)[-1]["horizon"]
+        self.assertEqual((closest["best_year"], closest["best_ktpa"]), (2030, 2479))
+
+    def test_the_ladder_does_not_drift_with_the_stand(self):
+        fresh, day8 = self.advisor.report(self.base), self.advisor.report(self.day8)
+        self.assertEqual(json.dumps(fresh["ladder"], sort_keys=True), json.dumps(day8["ladder"], sort_keys=True))
+        nearly_full = replace(self.base, stockpile_t=1000.0, tailings_placed_t=2.5e6)
+        self.assertEqual(json.dumps(self.advisor.ladder(nearly_full), sort_keys=True),
+                         json.dumps(fresh["ladder"], sort_keys=True))
+
+    def test_the_knobs_still_change_the_ladder(self):
+        for knobs in (dict(fan_vs2_off=1), dict(tu2_closed=1), dict(m_haul=2, m_plant=3)):
+            fresh = self.advisor.ladder(self.base.with_knobs(knobs))
+            day8 = self.advisor.ladder(self.day8.with_knobs(knobs))
+            self.assertEqual(json.dumps(fresh, sort_keys=True), json.dumps(day8, sort_keys=True), knobs)
+        disturbed = {row["target_ktpa"]: row for row in self.advisor.ladder(self.day8.with_knobs(dict(fan_vs2_off=1)))}
+        self.assertEqual(disturbed[1000]["steps"][0]["measure"], "restore_fan_vs2")   # a repair comes first
+        low_grade = self.advisor.ladder(self.day8.with_knobs(dict(grade_gpt=1.76)))[0]
+        self.assertLess(low_grade["economics"]["totals"]["gold_koz"], EPOCH_LADDER[1000][3])
+
+    def test_the_projection_follows_the_current_state(self):
+        fresh, day8 = self.advisor.projection(self.base), self.advisor.projection(self.day8)
+        low = self.advisor.projection(self.low)
+        # in the base mode the projection at the epoch is the 1.0 Mtpa card
+        self.assertEqual(self.card(fresh), EPOCH_LADDER[1000])
+        self.assertNotEqual(fresh["economics"]["totals"], day8["economics"]["totals"])
+        self.assertAlmostEqual(day8["rows"][0]["stockpile_kt"], fresh["rows"][0]["stockpile_kt"]
+                               - (STOCKPILE_T - DAY8_STOCKPILE_T) / 1000, delta=0.2)
+        self.assertEqual(low["binding_runs"]["text"], "2027: откатка; 2028–2036: фабрика")
+
+    def test_a_change_of_target_names_the_economics_of_its_card(self):
+        before = replace(self.day8, revision=1)
+        after = replace(self.day8.with_knobs(dict(target_ktpa=2000)), revision=2)
+        item = self.advisor.effects(before, after)["items"][-1]
+        fresh = self.advisor.effects(replace(self.base, revision=1),
+                                     replace(self.base.with_knobs(dict(target_ktpa=2000)), revision=2))["items"][-1]
+        self.assertEqual(item["id"], "economics")
+        self.assertEqual(item, fresh)
+
+
 class TestHorizonDisturbed(AdvisorCase):
     """The horizon starts from the current disturbances: repairs at once, conditions all along."""
 

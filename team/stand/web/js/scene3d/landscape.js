@@ -18,7 +18,9 @@
 // ones), buildings of other shapes extruded from their footprints, trees
 // (instanced) in the woods and along the waterways, the waste heaps as mounds,
 // walls and fences. A seeded generator places the trees, so every load draws
-// the same landscape. The models share the ground's x-ray window.
+// the same landscape. The models share the ground's x-ray window and fade
+// much further in it than the ground (terrain.js); they are drawn after the
+// ground (renderOrder 4, the ground has 3), so that they blend over it there.
 
 import * as THREE from 'three';
 import { MeshBuilder } from './kit.js';
@@ -1053,7 +1055,7 @@ export function buildLandscape(data, terrain, colors, materials, keepOut = []) {
   const group = new THREE.Group();
   if (ribbons.triangles) {
     const mesh = new THREE.Mesh(ribbons.geometry, materials.models);
-    mesh.renderOrder = 2;
+    mesh.renderOrder = 4;
     mesh.matrixAutoUpdate = false;
     group.add(mesh);
   }
@@ -1120,7 +1122,7 @@ export function buildLandscape(data, terrain, colors, materials, keepOut = []) {
     });
     mesh.count = list.length;
     mesh.computeBoundingSphere();
-    mesh.renderOrder = 2;
+    mesh.renderOrder = 4;
     mesh.matrixAutoUpdate = false;
     return mesh;
   };
@@ -1261,7 +1263,7 @@ export function buildLandscape(data, terrain, colors, materials, keepOut = []) {
   const merged = solid.build();
   if (merged.triangles) {
     const mesh = new THREE.Mesh(merged.geometry, materials.models);
-    mesh.renderOrder = 2;
+    mesh.renderOrder = 4;
     mesh.matrixAutoUpdate = false;
     group.add(mesh);
   }

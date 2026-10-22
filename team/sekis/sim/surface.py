@@ -565,6 +565,10 @@ class Plant:
         return (day - line.first_stop_day) % self.period_days < self.stop_days
 
     def add_ore(self, tonnes: float, grade: float) -> None:
+        """A load of ``tonnes`` at ``grade`` tipped on the pad. The pile is taken as well mixed:
+        its grade is the mass-weighted blend ``(M x G + t x g) / (M + t)`` of everything tipped
+        on it, and the plant reclaims at that grade (``minute``), so a change of the ore grade
+        reaches the feed, the recovery and the gold only as the pile turns over."""
         total = self.stock_t + tonnes
         if total > 0:
             self.stock_grade = (self.stock_t * self.stock_grade + tonnes * grade) / total

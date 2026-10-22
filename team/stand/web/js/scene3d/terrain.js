@@ -175,13 +175,20 @@ export function createTerrain(block) {
 // shrinks smoothly towards its outline, the window over the workings fades out
 // softly in an oval, without a box edge, from any camera. Inside the window the
 // image is lightened rather than darkened, so that the ground over the workings
-// stays part of the landscape. The same test runs in JavaScript for picking and
-// for the labels, so that hidden workings are not picked or labelled through
-// opaque ground.
+// stays part of the landscape, and its land-cover colours turn grey, so that
+// fields and woods do not patch the view. What stands on the ground (houses,
+// trees, heaps, walls, the road and waterway ribbons, the surface lines of the
+// twin) fades much further with the same weight: outside the window the
+// village and the roads are as before, inside it they no longer hide the
+// workings. The same test runs in JavaScript for picking and for the labels,
+// so that hidden workings are not picked or labelled through opaque ground.
 
 export const XRAY_EDGE = [20, 520];   // m of line of sight inside the ellipsoid (a wide, soft rim)
 export const XRAY_ALPHA = 0.34;       // opacity of the ground at the heart of the window
 export const XRAY_LIGHT = [1.22, 0.025];   // inside the window: colour * gain + lift
+export const XRAY_GREY = 0.8;         // how far the land-cover colours turn grey at the heart of the window
+export const XRAY_OVERLAY = 0.08;     // opacity of what stands on the ground at the heart of the window
+const XRAY_LINE_GONE = [0.1, 0.45];   // weights over which a surface line thins out to nothing
 
 /**
  * Length of the ray from `p` along unit `d` inside the ellipsoid
@@ -231,6 +238,8 @@ uniform vec3 xrayRadii;
 uniform vec2 xrayEdge;
 uniform float xrayAlpha;
 uniform vec2 xrayLight;
+uniform float xrayGrey;
+uniform float xrayOverlay;
 float xrayChord(vec3 p, vec3 d) {
   vec3 q = (p - xrayCenter) / xrayRadii;
   vec3 e = d / xrayRadii;
@@ -265,11 +274,31 @@ const CONTOUR_FRAGMENT = `
 \t}
 #endif`;
 
-const XRAY_FRAGMENT = `
+const XRAY_WEIGHT = `
 \tfloat xrayK = xrayAlpha < 1.0
-\t\t? smoothstep(xrayEdge.x, xrayEdge.y, xrayChord(vXrayWorld, normalize(vXrayWorld - cameraPosition))) : 0.0;
+\t\t? smoothstep(xrayEdge.x, xrayEdge.y, xrayChord(vXrayWorld, normalize(vXrayWorld - cameraPosition))) : 0.0;`;
+
+// The ground: grey, lighter and translucent inside the window.
+const XRAY_GROUND = `
+\tgl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114))), xrayK * xrayGrey);
 \tgl_FragColor.rgb = mix(gl_FragColor.rgb, min(gl_FragColor.rgb * xrayLight.x + xrayLight.y, vec3(1.0)), xrayK);
 \tgl_FragColor.a *= mix(1.0, xrayAlpha, xrayK);`;
+
+// The models on the ground: drawn after it (renderOrder 4, landscape.js), so
+// that they blend over the translucent ground; nearly gone at the heart.
+const XRAY_MODELS = `
+\tgl_FragColor.a *= mix(1.0, xrayOverlay, xrayK);
+\tif (gl_FragColor.a < 0.02) discard;`;
+
+// Lines stay opaque (one pixel wide, drawn before the ground): a surface line
+// thins out instead, a share of its pixels kept by a fixed screen pattern
+// (interleaved gradient noise), and is gone soon after the rim, so that it
+// does not read as the dashed line of a project. A kept pixel is opaque and a
+// dropped one writes no depth, so the ground veil is drawn there as everywhere
+// else. Lines under the ground (`xraySurface` 0) are not touched.
+const XRAY_LINES = `
+\tif (1.0 - smoothstep(${XRAY_LINE_GONE[0].toFixed(2)}, ${XRAY_LINE_GONE[1].toFixed(2)}, xrayK) * vXraySurface
+\t\t<= fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))))) discard;`;
 
 // Instanced models (houses, trees) are shaded here from their turned normals
 // with the light that kit.js bakes into the merged meshes; the `paint`
@@ -290,34 +319,39 @@ const INSTANCE_VERTEX = `
 \t}
 #endif`;
 
-function xrayShader(shader, uniforms, { contours = false, instanced = false } = {}) {
+function xrayShader(shader, uniforms, { contours = false, instanced = false, lines = false } = {}) {
   Object.assign(shader.uniforms, uniforms);
   let vertex = shader.vertexShader
     .replace('#include <common>', '#include <common>\nvarying vec3 vXrayWorld;'
-      + (instanced ? '\nattribute float paint;\nuniform vec3 modelLight;' : ''))
+      + (instanced ? '\nattribute float paint;\nuniform vec3 modelLight;' : '')
+      + (lines ? '\nattribute float xraySurface;\nvarying float vXraySurface;' : ''))
     .replace('#include <project_vertex>', `#include <project_vertex>
 \tvec4 xrayAt = vec4(transformed, 1.0);
 #ifdef USE_INSTANCING
 \txrayAt = instanceMatrix * xrayAt;
 #endif
-\tvXrayWorld = (modelMatrix * xrayAt).xyz;`);
+\tvXrayWorld = (modelMatrix * xrayAt).xyz;` + (lines ? '\n\tvXraySurface = xraySurface;' : ''));
   if (instanced) vertex = vertex.replace('#include <color_vertex>', '#include <color_vertex>' + INSTANCE_VERTEX);
   shader.vertexShader = vertex;
+  // The ground (contours), the thin lines of the twin, or the models on the ground.
+  const look = contours ? CONTOUR_FRAGMENT + XRAY_GROUND : lines ? XRAY_LINES : XRAY_MODELS;
   shader.fragmentShader = shader.fragmentShader
-    .replace('#include <common>', '#include <common>' + GLSL_XRAY + (contours ? GLSL_CONTOURS : ''))
-    .replace('#include <opaque_fragment>', '#include <opaque_fragment>' + (contours ? CONTOUR_FRAGMENT : '')
-      + XRAY_FRAGMENT);
+    .replace('#include <common>', '#include <common>' + GLSL_XRAY + (contours ? GLSL_CONTOURS : '')
+      + (lines ? '\nvarying float vXraySurface;' : ''))
+    .replace('#include <opaque_fragment>', '#include <opaque_fragment>' + XRAY_WEIGHT + look);
 }
 
 /**
  * Materials of the ground and of the landscape models on it, all unlit and
  * coloured per vertex, with the same x-ray window: `material` (the ground:
  * the stylised land cover with contour lines, or the image), `models` (merged
- * meshes whose shade is baked: heaps, walls, footprint buildings) and
- * `instances` (instanced houses and trees, shaded in the vertex shader).
- * Returns { material, models, instances, setXray(ellipsoid), showPhoto(texture),
- * showStyled(color) }; `ellipsoid` is { center: [x, y, z], radii: [rx, ry, rz] }
- * around the workings, or null for an opaque ground.
+ * meshes whose shade is baked: heaps, walls, footprint buildings, the road
+ * and waterway ribbons), `instances` (instanced houses and trees, shaded in
+ * the vertex shader) and `lines` (the thin lines of the twin, statics.js: the
+ * ones marked `xraySurface` thin out in the window).
+ * Returns { material, models, instances, lines, setXray(ellipsoid),
+ * showPhoto(texture), showStyled(color) }; `ellipsoid` is { center: [x, y, z],
+ * radii: [rx, ry, rz] } around the workings, or null for an opaque ground.
  */
 export function terrainMaterial(fallback, light) {
   const uniforms = {
@@ -326,6 +360,8 @@ export function terrainMaterial(fallback, light) {
     xrayEdge: { value: new THREE.Vector2(XRAY_EDGE[0], XRAY_EDGE[1]) },
     xrayAlpha: { value: 1 },
     xrayLight: { value: new THREE.Vector2(XRAY_LIGHT[0], XRAY_LIGHT[1]) },
+    xrayGrey: { value: XRAY_GREY },
+    xrayOverlay: { value: 1 },
     contourOn: { value: 1 },
     contourStep: { value: new THREE.Vector2(CONTOUR[0], CONTOUR[1]) },
     contourDark: { value: new THREE.Vector2(CONTOUR_DARK[0], CONTOUR_DARK[1]) },
@@ -333,10 +369,10 @@ export function terrainMaterial(fallback, light) {
   };
   // Translucent only inside the x-ray window; they write depth, so that a near
   // hill or house hides what stands behind it.
-  const make = (key, options, inject) => {
-    const m = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: true, ...options });
+  const make = (key, options, inject, Material = THREE.MeshBasicMaterial) => {
+    const m = new Material({ vertexColors: true, transparent: true, depthWrite: true, ...options });
     m.onBeforeCompile = (shader) => xrayShader(shader, uniforms, inject);
-    m.customProgramCacheKey = () => key;   // three.js would otherwise share one program among the three
+    m.customProgramCacheKey = () => key;   // three.js would otherwise share one program among them
     return m;
   };
   const material = make('sekis-ground', { color: fallback.clone() }, { contours: true });
@@ -344,14 +380,18 @@ export function terrainMaterial(fallback, light) {
   material.flatShading = true;
   const models = make('sekis-models', {}, {});
   const instances = make('sekis-instances', {}, { instanced: true });
+  // The thin lines stay opaque, in the opaque pass before the ground (see XRAY_LINES).
+  const lines = make('sekis-lines', { transparent: false }, { lines: true }, THREE.LineBasicMaterial);
   return {
     material,
     models,
     instances,
+    lines,
     setXray(ellipsoid) {
       uniforms.xrayCenter.value.fromArray(ellipsoid ? ellipsoid.center : [0, 0, 0]);
       uniforms.xrayRadii.value.fromArray(ellipsoid ? ellipsoid.radii : [1, 1, 1]);
       uniforms.xrayAlpha.value = ellipsoid ? XRAY_ALPHA : 1;
+      uniforms.xrayOverlay.value = ellipsoid ? XRAY_OVERLAY : 1;
     },
     /** «Снимок»: the image on the ground (the vertex hillshade stays), no contours. */
     showPhoto(texture) {

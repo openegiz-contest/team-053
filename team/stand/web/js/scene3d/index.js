@@ -257,7 +257,8 @@ export async function mount(container, geometry) {
   // sight runs on into the workings (the x-ray cut, terrain.js). It writes
   // depth, so that a near hill hides the ground behind it. Until the landscape
   // has arrived it is the plain grid in the meadow colour; the landscape models
-  // (houses, trees, heaps, walls) share its x-ray window.
+  // (houses, trees, heaps, walls, road and waterway ribbons) and the surface
+  // lines of the scenery share its x-ray window and nearly vanish in it.
   const terrain = createTerrain(geometry.terrain);
   const groundLook = terrainMaterial(palette.cover('meadow'), LIGHT_DIR);
   const ground = new THREE.Mesh(terrain ? terrain.geometry : new THREE.BufferGeometry(), groundLook.material);
@@ -288,7 +289,7 @@ export async function mount(container, geometry) {
     basic({ polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
   const ghostLines = new THREE.LineSegments(new THREE.BufferGeometry(),
     new THREE.LineDashedMaterial({ vertexColors: true, dashSize: 9, gapSize: 8 }));
-  const thinLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true }));
+  const thinLines = new THREE.LineSegments(new THREE.BufferGeometry(), groundLook.lines);
   const rulerLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true }));
 
   const boxes = instanced(shaded(new THREE.BoxGeometry(1, 1, 1)), basic(), 320);

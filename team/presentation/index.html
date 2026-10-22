@@ -286,8 +286,8 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
       <!-- row 1 -->
       <rect class="bt" x="0" y="44" width="210" height="80" rx="7"/>
       <text class="t1" x="16" y="74">Имитатор</text><text class="t2" x="16" y="96">sekis-sim, 1 с = 1 мин;</text><text class="t2" x="16" y="114">вентиляция по потребности</text>
-      <rect class="bx" x="300" y="44" width="180" height="80" rx="7"/>
-      <text class="t1" x="316" y="74">Mosquitto</text><text class="t2" x="316" y="96">MQTT, не больше</text><text class="t2" x="316" y="114">20 сообщений/с</text>
+      <rect class="bx" x="300" y="44" width="200" height="80" rx="7"/>
+      <text class="t1" x="316" y="74">Mosquitto</text><text class="t2" x="316" y="96">MQTT: имитатор — до 18</text><text class="t2" x="316" y="114">сообщений/с (предел 20)</text>
       <rect class="bx" x="570" y="44" width="230" height="80" rx="7" style="stroke:#a8b5c3"/>
       <text class="t1" x="586" y="74">Eclipse Ditto</text><text class="t2" x="586" y="96">96 двойников, 22 типа</text><text class="t2" x="586" y="114">MongoDB</text>
       <rect class="bx" x="880" y="44" width="150" height="80" rx="7"/>
@@ -297,12 +297,12 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
       <rect class="bx" x="1300" y="44" width="146" height="80" rx="7"/>
       <text class="t1" x="1316" y="74">Grafana</text><text class="t2" x="1316" y="96">3 дашборда,</text><text class="t2" x="1316" y="114">OpenEgiz Twins</text>
       <path class="ln" d="M210,84 L298,84"/>
-      <path class="ln" d="M480,84 L568,84"/>
+      <path class="ln" d="M500,84 L568,84"/>
       <path class="ln" d="M800,84 L878,84"/>
       <path class="ln" d="M1030,84 L1098,84"/>
       <path class="ln" d="M1250,84 L1298,84"/>
       <text class="t3" x="214" y="140">telemetry/sekis/&lt;name&gt;</text>
-      <text class="t2" x="486" y="140">команда modify</text>
+      <text class="t2" x="506" y="140">команда modify</text>
       <!-- row 2 -->
       <rect class="bt" x="300" y="210" width="290" height="96" rx="7"/>
       <text class="t1" x="316" y="240">Советник по расширению</text><text class="t2" x="316" y="262">sekis-advisor: 8 звеньев, лестница мер,</text><text class="t2" x="316" y="282">цели на 2027–2036, экономика</text>
@@ -373,7 +373,7 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
 <!-- 7 -->
 <section class="slide">
   <div class="kicker"><b>Калибровка</b> · модель против отчётов компании</div>
-  <h1>Модель сверена с отчётами компании: 14 проверок из 16 в допуске, одна справочная, одна вне допуска — с понятной причиной</h1>
+  <h1>Модель сверена с отчётами компании: в допуске 13 из 13 расчётных проверок, 4 из 4 симулятора и 2 из 3 вне подгонки, одна справочная</h1>
   <div class="body" style="gap:24px">
     <div style="flex:1; min-width:0">
       <table class="t">
@@ -390,7 +390,7 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
           <tr><td>C9</td><td>осадок илоотстойников, т/год</td><td><span class="basis b-ind">независимая</span></td><td class="r">64,3</td><td class="r">64,8</td><td class="r">+0,77&nbsp;%</td><td class="r">±2&nbsp;%</td><td class="res-ok">в допуске</td></tr>
           <tr><td>C10</td><td>вода на площадку и фабрику, тыс. м³/год</td><td><span class="basis b-fit">подгонка</span></td><td class="r">1&nbsp;725,72</td><td class="r">1&nbsp;726,0</td><td class="r">+0,02&nbsp;%</td><td class="r">±0,5&nbsp;%</td><td class="res-ok">в допуске</td></tr>
           <tr><td>C11</td><td>баланс массы за прогон, т</td><td><span class="basis b-id">тождество</span></td><td class="r">—</td><td class="r">—</td><td class="r">0,00&nbsp;%</td><td class="r">±0,1&nbsp;%</td><td class="res-ok">в допуске</td></tr>
-          <tr><td>C12</td><td>золото при 2&nbsp;000 тыс. т/год и 2,05 г/т, унц.</td><td><span class="basis b-ind">независимая</span></td><td class="r">более 100&nbsp;000</td><td class="r">112&nbsp;008</td><td class="r">—</td><td class="r">выше отч.</td><td class="res-ok">в допуске</td></tr>
+          <tr><td>C12</td><td>золото при 2&nbsp;000 тыс. т/год и 2,05 г/т, унц.</td><td><span class="basis b-ind">независимая</span></td><td class="r">более 100&nbsp;000</td><td class="r">112&nbsp;008</td><td class="r">+12,01&nbsp;%</td><td class="r">выше отч.</td><td class="res-ok">в допуске</td></tr>
           <tr><td>C13</td><td>добыча I пол. 2026 г. × 2, т/год</td><td><span class="basis b-ind">независимая</span></td><td class="r">916&nbsp;402</td><td class="r">926&nbsp;110</td><td class="r">+1,06&nbsp;%</td><td class="r">±3&nbsp;%</td><td class="res-ok">в допуске</td></tr>
           <tr class="ref"><td>C14</td><td>прогноз компании на 2026 г. против модели при 1,76 г/т, унц.</td><td><span class="basis b-ind">независимая</span></td><td class="r">52&nbsp;000–55&nbsp;000</td><td class="r">47&nbsp;813</td><td class="r">−8,05&nbsp;%</td><td class="r">нет</td><td class="res-ref">справочно</td></tr>
           <tr class="hl"><td>C15</td><td>переработка 2024 г. против мощности двух линий, т/год</td><td><span class="basis b-ind">независимая</span></td><td class="r">593&nbsp;612</td><td class="r">666&nbsp;667</td><td class="r">+12,31&nbsp;%</td><td class="r">±5&nbsp;%</td><td class="res-fail">вне допуска</td></tr>
@@ -400,10 +400,11 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
     </div>
     <div style="width:330px; flex:none; display:flex; flex-direction:column; gap:14px">
       <div class="card" style="padding:16px 18px; font-size:15.5px; line-height:1.42">
-        <b>Основа строки</b><br>
-        <span class="basis b-fit">подгонка</span> параметр подобран по этой цифре — 9 строк;<br>
+        <b>Основа проверки</b> (16 проверок)<br>
+        <span class="basis b-fit">подгонка</span> параметр подобран по этой цифре — 9;<br>
         <span class="basis b-ind">независимая</span> цифра ни для чего не подбиралась — 6;<br>
-        <span class="basis b-id">тождество</span> выполняется по построению — 1.
+        <span class="basis b-id">тождество</span> выполняется по построению — 1.<br>
+        <span class="muted">Стенд считает строки: у C4, C5, C11 их несколько, всего 21. В допуске 19 из 20, справочно 1.</span>
       </div>
       <div class="callout cfail" style="font-size:15.5px; line-height:1.42">
         <b>C15 вне допуска.</b> В 2024&nbsp;г. добыто 750&nbsp;045&nbsp;т, а переработано 593&nbsp;612&nbsp;т: руды хватало, но фабрика работала ниже паспортной мощности двух линий, которую принимает модель.
@@ -640,7 +641,7 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
       <div class="stephead"><b>Обесточена насосная +150</b></div>
       <div style="height:330px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge b">гор. −50 и 0&nbsp;м: «затопление»; водосборники 100&nbsp;%</span><img src="img/s12_ps_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="Насосная +150 обесточена"></div>
       <img class="shot" src="img/s12_ps_next.jpg" style="width:100%" alt="Советник: восстановить насосную">
-      <div style="font-size:16px; line-height:1.4">Гор. −50&nbsp;м затоплен через 3,5&nbsp;мин, гор. 0&nbsp;м — через 10&nbsp;мин (подземная вода — в 24 раза быстрее; на деле 83 и 235&nbsp;ч). Дефицит воды фабрики <b>192,8</b>&nbsp;м³/ч, после затопления — <b>181,8</b>.</div>
+      <div style="font-size:16px; line-height:1.4">Гор. −50&nbsp;м затоплен через 3,5&nbsp;мин, гор. 0&nbsp;м — через 10&nbsp;мин (подземная вода — в 24 раза быстрее; на деле 83 и 235&nbsp;ч). Дефицит воды фабрики <b>192,8</b>&nbsp;м³/ч, после затопления — <b>181,8</b>. После отмены откачка — около 9&nbsp;мин.</div>
     </div>
   </div>
   <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Сценарии» → «Нарушения»</b>; «Рудник» → ракурсы «Уклоны» и «Водоотлив»; отмена — та же кнопка, «Шаг назад» или «Сброс»</span><span class="pg">12 / 15</span></div>
@@ -731,7 +732,7 @@ make stand-smoke</pre>
         <div class="kpi"><div class="l">make stand-smoke</div><div class="v num" style="font-size:42px; white-space:nowrap">14–31<small>с</small></div><div class="s">стенд, Ditto, InfluxDB, советник, сценарий</div></div>
         <div class="kpi"><div class="l">Память</div><div class="v num" style="font-size:42px">≈4<small>ГБ</small></div><div class="s">пик при запуске 4&nbsp;107&nbsp;МиБ, вся машина</div></div>
       </div>
-      <p class="dim" style="font-size:15.5px; line-height:1.45; margin:0">Ещё: 592 модульных теста (около 140&nbsp;с). Запуск с нуля и 60-минутный прогон — на той же машине 22 октября: ноль перезапусков и ошибок в журналах, поток MQTT до 18,0 сообщения в секунду при пределе 20.</p>
+      <p class="dim" style="font-size:15.5px; line-height:1.45; margin:0">Ещё: 601 модульный тест (около 140&nbsp;с). Запуск с нуля и 60-минутный прогон — на той же машине 22 октября: ноль перезапусков и ошибок в журналах, поток MQTT до 18,0 сообщения в секунду при пределе 20.</p>
       <div class="card" style="padding:16px 20px">
         <div class="stephead" style="margin-bottom:10px"><b>С чего начать на стенде</b></div>
         <ul class="clean" style="font-size:17px">

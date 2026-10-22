@@ -94,6 +94,10 @@ function waitText(minutes) {
   return `через ≈${fmt(Math.round(minutes))} мин`;
 }
 
+/** After the pump station is back, the flooded levels are pumped out: 47 360 m³ in about 540 s of Stand time. */
+const PUMP_OUT_MIN = 9;
+const PUMP_OUT_M3 = '47 360';
+
 const FLOOD_LEVELS = [['lvl-m050', 'гор. −50 м'], ['lvl-000', 'гор. 0 м']];
 
 /**
@@ -294,7 +298,11 @@ export function createScenarios({ onChanged }) {
         setText(floodNote, `Затопление показано ускоренно: вода в зумпфах и выработках прибывает в ${fmt(k)} раза `
           + `быстрее часов рудника (час на стенде — ${k === 24 ? 'сутки' : fmt(k) + ' ч'} притока). Пороги: гор. −50 м — `
           + `${fmt(value('water.flood_threshold_m050_m3', 14960))} м³, гор. 0 м — ${fmt(value('water.flood_threshold_000_m3', 44930))} м³; `
-          + 'приток, откачка и поверхность — по часам рудника.');
+          + 'приток, откачка и поверхность — по часам рудника. '
+          + (station.state === 'failed'
+            ? 'После «Восстановить насосную +150» затопленные горизонты откачиваются около 9 мин стенда.'
+            : `Насосная работает, горизонты откачиваются: около ${PUMP_OUT_MIN} мин стенда (${PUMP_OUT_M3} → 0 м³); `
+              + 'пока идёт откачка, «Снять узкое место» только выводит сообщение.'));
       }
     }
 

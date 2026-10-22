@@ -303,21 +303,28 @@ function openRing(footprint) {
   return footprint;
 }
 
-/** Line segments with a colour per vertex and recolourable key ranges. */
+/**
+ * Line segments with a colour per vertex and recolourable key ranges. A line
+ * written after use(key, color, true) lies on the ground: its vertices carry
+ * `xraySurface` 1, and it thins out in the x-ray window (terrain.js).
+ */
 export class LineBuilder {
   constructor() {
     this.pos = [];
     this.col = [];
+    this.surf = [];
     this.ranges = new Map();
     this.key = null;
     this.rgb = [1, 1, 1];
+    this.surface = 0;
     this.start = 0;
   }
 
-  use(key, color) {
+  use(key, color, surface = false) {
     this.flush();
     this.key = key === undefined ? null : key;
     this.rgb = [color.r, color.g, color.b];
+    this.surface = surface ? 1 : 0;
     return this;
   }
 
@@ -330,6 +337,7 @@ export class LineBuilder {
   seg(a, b) {
     this.pos.push(a[0], a[1], a[2], b[0], b[1], b[2]);
     this.col.push(this.rgb[0], this.rgb[1], this.rgb[2], this.rgb[0], this.rgb[1], this.rgb[2]);
+    this.surf.push(this.surface, this.surface);
   }
 
   path(points, closed = false) {
@@ -379,6 +387,9 @@ export class LineBuilder {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     const color = new THREE.Float32BufferAttribute(this.col, 3);
     geometry.setAttribute('color', color);
+    // Always present (a shader attribute without a buffer reads whatever its slot last held); a float,
+    // as a normalised byte attribute did not reach the line shader.
+    geometry.setAttribute('xraySurface', new THREE.Float32BufferAttribute(this.surf, 1));
     geometry.computeBoundingSphere();
     const { ranges } = this;
     const last = new Map();

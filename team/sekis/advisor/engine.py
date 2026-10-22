@@ -479,9 +479,23 @@ class Advisor:
 
     # --- ladder (step 4) ---------------------------------------------------------------------
 
+    @property
+    def epoch_stockpile_t(self) -> float:
+        """The ROM stockpile on 1 January 2027 (``stockpile.start_t``): what a fresh Stand holds."""
+        return float(self.model.p("stockpile.start_t"))
+
+    def at_epoch(self, inputs: Inputs) -> Inputs:
+        """``inputs`` with the tonnages of the epoch: the opening ROM stockpile and no tailings
+        placed since 1 January 2027. The knobs (measures, disturbances) and the flooded levels stay."""
+        return replace(inputs, tailings_placed_t=0.0, stockpile_t=self.epoch_stockpile_t)
+
     def ladder_start(self, inputs: Inputs) -> cap.State:
-        """The baseline measure set under the current disturbances."""
-        return self.state(inputs).replace(**{knob: 0 for knob in cap.KNOBS})
+        """The baseline measure set under the current disturbances, with the tonnages of the epoch.
+
+        The ladder and its horizon start on 1 January 2027 (``at_epoch``), not from the stockpile
+        and tailings of the running Stand: the four targets read the same whenever they are looked
+        at. Only ``projection`` starts from the current tonnages."""
+        return self.state(self.at_epoch(inputs)).replace(**{knob: 0 for knob in cap.KNOBS})
 
     @staticmethod
     def _with_service(steps: List[Dict[str, Any]], schedule: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -522,9 +536,10 @@ class Advisor:
 
     def ladder(self, inputs: Inputs) -> List[Dict[str, Any]]:
         """For each target: the sequence from the baseline measure set under the current
-        disturbances, the figures of the state it ends in, its horizon and its economics."""
+        disturbances, the figures of the state it ends in, its horizon and its economics, all
+        from the tonnages of the epoch (``ladder_start``)."""
         start = self.ladder_start(inputs)
-        return [self.ladder_row(start, target, inputs.stockpile_t) for target in self.targets]
+        return [self.ladder_row(start, target, self.epoch_stockpile_t) for target in self.targets]
 
     # --- projection (step 5) -----------------------------------------------------------------
 
@@ -532,8 +547,10 @@ class Advisor:
         """The horizon of the current target from the current state: the stages of the current
         knob set and the remaining steps of the sequence come into service after their lead
         times from the epoch, the planner adds trucks and storage as depth and fill require, and
-        the mine is stepped through 2027-2036. With the full measure set of a target it equals
-        that target's ladder row (``horizon`` and ``economics``)."""
+        the mine is stepped through 2027-2036. It starts from the current ROM stockpile and
+        tailings placed (the Stand's «Прогноз … из текущего состояния»), so it follows the running
+        mine. With the full measure set of a target and the tonnages of the epoch it equals that
+        target's ladder row (``horizon`` and ``economics``)."""
         return dict(self._horizon(self.state(inputs), inputs.target_ktpa, inputs.stockpile_t))
 
     # --- effects (step 6) --------------------------------------------------------------------
@@ -557,7 +574,8 @@ class Advisor:
         ``before`` holds the knobs and the flooded levels before the change. Both sides are
         evaluated with the tonnages of ``after`` (stockpile, tailings placed), so that the list
         shows the change and not the drift of the running mine. With no ``before`` the list is
-        empty. A change of the target adds the economics of the new target.
+        empty. A change of the target adds the economics of the new target: its ladder row, from
+        the tonnages of the epoch like the ladder.
         """
         head = {"revision": after.revision, "label": after.label,
                 "before_revision": before.revision if before else None,
@@ -567,7 +585,7 @@ class Advisor:
         same_tonnages = replace(before, tailings_placed_t=after.tailings_placed_t, stockpile_t=after.stockpile_t)
         items = wording.effect_items(self.names, self._snapshot(same_tonnages), self._snapshot(after))
         if before.target_ktpa != after.target_ktpa:
-            row = self.ladder_row(self.ladder_start(after), after.target_ktpa, after.stockpile_t)
+            row = self.ladder_row(self.ladder_start(after), after.target_ktpa, self.epoch_stockpile_t)
             items.append(wording.economics_item(row))
         return dict(head, items=items)
 
@@ -616,7 +634,8 @@ class Advisor:
         ``measures_needed``, ``sequence`` (steps from the current state to the target),
         ``sequence_outcome``, ``conditions`` (disturbances no action removes), ``kpi`` (steady
         state), ``sustainable_baseline``, ``ladder`` (one row per target, with ``horizon`` and
-        ``economics``), ``projection`` (the horizon of the current state), ``effects``,
+        ``economics``, from the tonnages of the epoch), ``projection`` (the horizon of the current
+        state, with the current tonnages), ``effects``,
         ``calibration``. Every step of ``sequence`` and of the ladder carries the time it would
         really be in service (``lead_years``, ``in_service_year``, ``in_service_text``).
         """

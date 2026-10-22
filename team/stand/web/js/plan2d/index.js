@@ -11,8 +11,9 @@
 // card.js is the hover card.
 //
 // Address options of the page: ?plan=<x>,<z>,<px per metre> opens the plan at
-// that centre and scale; ?planhide=image,underground,legend starts with those
-// layers hidden.
+// that centre and scale; ?planhide=image,underground starts with those layers
+// hidden; the legend starts collapsed (it would cover the right edge of the
+// mine), ?planshow=legend opens it.
 
 import { NS, stateTone, unitCounts } from '../panels/dict.js';
 import { el, fmt, isNum } from '../panels/format.js';
@@ -60,6 +61,7 @@ function addressOptions() {
   return {
     view: at.length === 3 && at.every(Number.isFinite) && at[2] > 0 ? { cx: at[0], cz: at[1], k: at[2] } : null,
     hide: new Set((params.get('planhide') || '').split(',').filter(Boolean)),
+    show: new Set((params.get('planshow') || '').split(',').filter(Boolean)),
   };
 }
 
@@ -247,7 +249,7 @@ export async function mount(container, geometry) {
       viewport.resize(w, h);
       if (!sized) {
         sized = true;
-        legend.open(!options.hide.has('legend') && h >= 640);
+        legend.open(options.show.has('legend') && h >= 640);
         if (options.view) viewport.fit(boxAround(options.view), true, 0);
         else viewport.fit(M.home, true);
         if (pendingFocus) {
