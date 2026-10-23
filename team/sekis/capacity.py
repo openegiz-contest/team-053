@@ -91,7 +91,8 @@ __all__ = [
     "fans_running", "air_supply_m3s", "air_demand_m3s", "hold_units", "Hold", "air", "Air", "level_air", "LevelAir",
     "LEVEL_WORK", "LEVEL_LEAKAGE", "LEVEL_NONE",
     "fan_power_kw", "fan_pressure_pa", "fan_power_at_kw", "vod_limits_m3s", "vod_setpoint_m3s", "vod_split",
-    "dewatering", "Dewatering", "pump_power_kw", "pond_treatment", "PondTreatment",
+    "dewatering", "Dewatering", "flood_order", "flood_outlet_m3", "pump_power_kw", "pond_treatment",
+    "PondTreatment",
     "plant", "Plant", "PlantLine", "water_capacity_ktpa", "water_balance", "WaterBalance",
     "tailings", "Tailings", "DamFill", "recovery_pct", "gold_oz", "Gold", "stockpile_days_left",
     "calibration_checks", "CalibrationCheck", "calibration_basis", "out_of_sample_checks", "CALIBRATION_BASIS",
@@ -1053,6 +1054,34 @@ def vod_split(model: Model, total_m3s: float, fans: Iterable[str]) -> Dict[str, 
 
 # --- dewatering and ponds ----------------------------------------------------------------------
 
+def flood_order(model: Model) -> Tuple[Tuple[str, float], ...]:
+    """The levels that flood while the mine cannot pump its inflow out, lowest first, each with the
+    flood volume (m3 of water in the workings) above which it counts as flooded.
+
+    Every level with a ``water.flood_threshold_<level>_m3`` parameter takes part: the volume of the
+    workings below it and of its own (drives, accesses, crosscuts and the declines between levels,
+    at ``water.flood_section_m2``). Water rising in a mine with its main pumps dead keeps flooding
+    the levels upward in order of elevation, past the station's own level +150 m (nothing there
+    stops it), until it finds a way out by gravity: the TU2 portal on the floor of the old pit at
+    +320 m (``water.flood_outlet_m3``). So the mined-out +200 m and +250 m flood too, and the
+    ventilation level +320 m, at the outlet, stays dry.
+    """
+    rows = []
+    for level in sorted(model.levels, key=lambda lv: lv.elevation_m):
+        try:
+            volume = model.p(f"water.flood_threshold_{level.name.split('lvl-', 1)[-1]}_m3")
+        except KeyError:
+            continue
+        rows.append((level.name, float(volume)))
+    return tuple(rows)
+
+
+def flood_outlet_m3(model: Model) -> float:
+    """The most water the workings hold: filled to the TU2 portal at +320 m, beyond which the
+    inflow runs out into the old pit (``water.flood_outlet_m3``)."""
+    return float(model.p("water.flood_outlet_m3"))
+
+
 @dataclass(frozen=True)
 class Dewatering:
     """Dewatering link (spec 2.3 item 4, 2.7). Flows in m3/h.
@@ -1065,8 +1094,17 @@ class Dewatering:
     x2.54 now, x1.27 after the next failure). ``pumped_m3h`` and ``flood_rate_m3h`` are the
     steady state of the cascade with every pump that is allowed to run: what reaches the ponds
     and what stays underground.
-    ``limiting`` is true while a level is flooded; only then ``capacity_ktpa`` is finite: the
-    stoping capacity of the producing stopes on levels that are not flooded.
+    ``water_rising`` is true while the inflow exceeds what the pumps send up
+    (``flood_rate_m3h > 0``, e.g. 0 of 3 pumps of ps-p150): nothing then stops the water short
+    of the outlet, so ``levels_to_flood``, the levels of ``flood_order`` not flooded yet, lowest
+    first, will all flood; it is empty otherwise.
+    ``limiting`` is true while a level is flooded or the water is rising;
+    only then ``capacity_ktpa`` is finite: the stoping capacity of the producing stopes on the
+    levels that stay dry once the water has reached its final height (0 while the water is
+    rising: every producing level lies below the outlet, so a mine that cannot pump out its
+    inflow sustains no output). ``capacity_now_ktpa`` is the same for the levels flooded now
+    (``math.inf`` with none): what the mine still hoists in the hours before the water reaches
+    the next level.
     """
     inflow_m3h: float
     inflow_upper_m3h: float
@@ -1082,6 +1120,9 @@ class Dewatering:
     flooded_levels: Tuple[str, ...]
     limiting: bool
     capacity_ktpa: float
+    levels_to_flood: Tuple[str, ...] = ()
+    capacity_now_ktpa: float = math.inf
+    water_rising: bool = False
 
 
 def dewatering(model: Model, state: State) -> Dewatering:
@@ -1104,19 +1145,30 @@ def dewatering(model: Model, state: State) -> Dewatering:
     margin_lower = capacity_lower_norm / (lower * norm) if lower > 0 else math.inf
     # Water leaves the mine only through ps-p150; the lower share must first pass ps-m050.
     pumped = min(capacity_main, upper + min(capacity_lower, lower))
+    flood_rate = inflow - pumped
     flooded = _names(state.flooded_levels)
-    limiting = bool(flooded)
-    capacity = math.inf
+    # Water the pumps cannot send up keeps rising to the outlet: every level of the flood order
+    # not under water yet will be (flood_order). Compared station by station, not as
+    # inflow - pumped, which keeps a rounding residue of the split where the pumps keep up.
+    water_rising = capacity_lower < lower or capacity_main < upper + min(capacity_lower, lower)
+    rising = tuple(name for name, _ in flood_order(model) if name not in flooded) if water_rising else ()
+    limiting = bool(flooded) or water_rising
+    capacity = capacity_now = math.inf
     if limiting:
         st = stopes(model, state)
-        dry = [s for s in producing_stopes(model, state) if s.level not in flooded]
-        capacity = min(len(dry), st.n_producing) * st.per_stope_ktpa
+        producing = producing_stopes(model, state)
+        wet_now = set(flooded)
+        wet_final = wet_now | set(rising)
+        if wet_now:
+            capacity_now = min(sum(1 for s in producing if s.level not in wet_now), st.n_producing) * st.per_stope_ktpa
+        capacity = min(sum(1 for s in producing if s.level not in wet_final), st.n_producing) * st.per_stope_ktpa
     return Dewatering(
         inflow_m3h=inflow, inflow_upper_m3h=upper, inflow_lower_m3h=lower, capacity_main_m3h=capacity_main,
         capacity_lower_m3h=capacity_lower, margin=margin, margin_lower=margin_lower,
         standby_pumps=max(0, sound - p("water.ps_p150.pumps_working")), margin_next_failure=margin_next,
-        pumped_m3h=pumped,
-        flood_rate_m3h=inflow - pumped, flooded_levels=flooded, limiting=limiting, capacity_ktpa=capacity)
+        pumped_m3h=pumped, flood_rate_m3h=flood_rate, flooded_levels=flooded, limiting=limiting,
+        capacity_ktpa=capacity, levels_to_flood=rising, capacity_now_ktpa=capacity_now,
+        water_rising=water_rising)
 
 
 def pump_power_kw(model: Model, flow_m3h: float, head_m: float) -> float:
@@ -1405,7 +1457,7 @@ class Result:
     """Everything ``evaluate()`` computes for one state.
 
     capacity_ktpa      link -> capacity in kt/yr, unrounded, for the eight ``LINKS``; dewatering
-                       is ``math.inf`` unless a level is flooded
+                       is ``math.inf`` unless a level is flooded or the water is rising
     capacity_rounded   link -> capacity rounded to 1 kt/yr; ``None`` for a link that does not limit
     binding_link       link with the smallest rounded capacity; ties go to the earlier link of ``LINKS``
     achievable_ktpa    smallest unrounded capacity: the sustainable throughput of the chain

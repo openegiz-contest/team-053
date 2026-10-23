@@ -69,6 +69,8 @@ STATES = {
 KIND = {t["thingId"].split(":", 1)[1]: t["attributes"]["kind"] for t in REGISTRY["things"]}
 TRUCKS = [name for name, kind in KIND.items() if kind == "haul_truck"]
 STOPES = [name for name, kind in KIND.items() if kind == "stope"]
+#: Every level the water reaches below the TU2 portal, lowest first (capacity.flood_order).
+FLOOD_ORDER = ("lvl-m050", "lvl-000", "lvl-p050", "lvl-p100", "lvl-p150", "lvl-p200", "lvl-p250")
 
 
 def new_sim(seed=None, **knobs):
@@ -382,6 +384,32 @@ class TestSnapshot(SimCase):
 # ---------------------------------------------------------------------------------------------
 # time base and determinism
 # ---------------------------------------------------------------------------------------------
+
+class TestReadingNames(SimCase):
+    """A value that is computed is not named like one that is measured."""
+
+    def test_annual_rate_is_the_advisors_capacity_and_says_so(self):
+        sim = new_sim()
+        sim.advance(60)
+        ent = sim.snapshot()["enterprise"]
+        self.assertEqual(ent["annual_rate_ktpa"], round(sim.analytic.achievable_ktpa, 1))
+        thing = next(t for t in REGISTRY["things"] if t["thingId"] == "kz.sekis:enterprise")
+        description = thing["attributes"]["description"]
+        self.assertIn("annual_rate_ktpa — расчётная мощность по советнику, тыс. т/год", description)
+        self.assertIn("а не замер", description)
+        kind = next(t for t in REGISTRY["types"] if t["thingId"] == "kz.sekis.type:enterprise")
+        self.assertIn("расчётная мощность по советнику", kind["attributes"]["description"])
+        labels = (TEAM / "stand" / "web" / "js" / "panels" / "dict.js").read_text(encoding="utf-8")
+        self.assertIn("annual_rate_ktpa: 'Расчётная мощность по советнику (не замер)'", labels)
+        self.assertNotIn("Годовой темп добычи", labels)
+
+    def test_the_two_discharge_readings_are_one_value(self):
+        sim = new_sim(inflow_factor=2.18)
+        for _ in range(6 * 6):
+            sim.advance(10)
+            snap = sim.snapshot()
+            self.assertEqual(snap["water"]["discharge_m3h"], snap["mon-volchevka"]["discharge_m3h"])
+
 
 class TestTimeBase(SimCase):
     def test_compression_and_step(self):
@@ -1134,34 +1162,49 @@ class TestDisturbances(SimCase):
         self.assertEqual(sim.totals()["flood_volume_m3"], 0.0)
         self.assertEqual(sim.analytic.binding_link, "haulage")
 
-    def test_pump_station_fail_floods_the_lower_levels_and_drains_the_ponds(self):
+    def test_pump_station_fail_floods_the_levels_upward_and_drains_the_ponds(self):
         sim = new_sim()
         sim.advance(26 * 60)
         sim.apply_scenario({"pumps_failed_p150": 3})
         first = {}
         history = []
         sump = []                     # ps-p150 minute by minute: the sump fills within the first half hour
-        for minute in range(40 * 60):
+        producing = {}                # level -> producing stopes the minute before it floods
+        for minute in range(52 * 60):
+            before = {level: sum(1 for st in sim.mining.producing if st.level.name == level and not st.suspended())
+                      for level in FLOOD_ORDER}
             sim.advance(1)
             if minute < 30:
                 sump.append(dict(sim.snapshot()["ps-p150"]))
+            for level in FLOOD_ORDER:
+                if level not in first and sim.mining.levels[level].flooded:
+                    producing[level] = before[level]
             if minute % 10 and minute >= 60:       # every minute in the first hour, then every 10 minutes
-                continue
+                if not any(level not in first and sim.mining.levels[level].flooded for level in FLOOD_ORDER):
+                    continue
             snap = copy_snapshot(sim)
-            history.append(snap)
+            history.append((minute, snap))
             marks = {"sump_full": snap["ps-p150"]["sump_level_pct"] >= 100.0,
                      "flood": snap["mine"]["flood_volume_m3"] > 0.0,
-                     "lvl-m050": snap["lvl-m050"]["state"] == "flooded",
-                     "lvl-000": snap["lvl-000"]["state"] == "flooded",
                      "ponds_empty": snap["pond-upper"]["retention_h"] == 0.0,
-                     "plant_short": snap["plant"]["state"] == "water_limited"}
+                     "plant_short": snap["plant"]["state"] == "water_limited",
+                     "outlet": snap["mine"]["flood_volume_m3"] >= MODEL.p("water.flood_outlet_m3")}
+            marks.update({level: snap[level]["state"] == "flooded" for level in FLOOD_ORDER})
             for key, reached in marks.items():
                 if reached and key not in first:
                     first[key] = minute / 60
-        early = history[3]
+                    if key in FLOOD_ORDER:      # the level and every stope on it stop at once
+                        for name in STOPES:
+                            if sim.mining.by_name[name].level.name == key:
+                                self.assertEqual(snap[name]["state"], "flooded", name)
+                        self.assertEqual(snap[key]["active_stopes"], 0.0, key)
+        early = history[3][1]
         self.assertEqual(early["ps-p150"]["state"], "failed")
         self.assertEqual(early["ps-p150"]["pumps_available"], 0.0)
         self.assertEqual(early["ps-p150"]["pumped_m3h"], 0.0)
+        # dewatering binds from the first minute: the water will rise over every production level
+        self.assertEqual(early["enterprise"]["binding_link"], "dewatering")
+        self.assertEqual(early["enterprise"]["annual_rate_ktpa"], 0.0)
         # the sump rises and the hours to overflow count down, on the mine clock: the water stored
         # underground changes water.flood_compression (24) times faster during the episode
         rising = [r for r in sump if r["sump_level_pct"] < 100.0]
@@ -1171,37 +1214,58 @@ class TestDisturbances(SimCase):
         countdown = [r["hours_to_overflow"] for r in rising if r["hours_to_overflow"] > 0]
         self.assertGreater(countdown[0], 0.1)
         self.assertLess(countdown[-1], 0.05)
-        # order of events (hours after the failure)
-        self.assertEqual(set(first), {"sump_full", "flood", "lvl-m050", "lvl-000", "ponds_empty", "plant_short"})
+        # order of events (hours after the failure): the levels flood upward in order of elevation
+        self.assertEqual(set(first), {"sump_full", "flood", "ponds_empty", "plant_short", "outlet", *FLOOD_ORDER})
         self.assertLess(first["sump_full"], first["flood"])
         self.assertLess(first["flood"], first["lvl-m050"])
-        self.assertLess(first["lvl-m050"], first["lvl-000"])
+        times = [first[level] for level in FLOOD_ORDER]
+        self.assertEqual(times, sorted(times))
+        self.assertEqual(len(set(times)), len(times))
+        self.assertLess(first["lvl-p250"], first["outlet"])
         # first water within half an hour of the mine clock (half a real minute on the Stand), -50 m after
-        # 83 h of inflow and 0 m after 235 h, shown 24 times faster: about 3.5 h and 10 h
+        # 83 h of inflow and 0 m after 235 h, shown 24 times faster: about 3.5 h and 10 h; then about
+        # 6.6 h per level more, up to +250 m after about 43 h and the portal after about 47 h
         self.assertLess(first["flood"], 0.5, first)
         self.assertTrue(3.0 < first["lvl-m050"] < 4.0, first)
         self.assertTrue(9.0 < first["lvl-000"] < 11.0, first)
+        self.assertTrue(16.0 < first["lvl-p050"] < 17.5, first)
+        self.assertTrue(29.5 < first["lvl-p150"] < 31.0, first)
+        self.assertTrue(42.0 < first["lvl-p250"] < 44.0, first)
+        self.assertTrue(46.5 < first["outlet"] < 48.5, first)
         self.assertTrue(12 < first["ponds_empty"] < 30, first)
+        # each production level was still producing the minute before the water reached it
+        for level in ("lvl-000", "lvl-p050", "lvl-p100", "lvl-p150"):
+            self.assertGreater(producing[level], 0, level)
         # the pond reserve counts down in hours, then the plant slows
-        reserve = [h["pond-upper"]["retention_h"] + h["pond-lower"]["retention_h"] for h in history]
+        reserve = [h["pond-upper"]["retention_h"] + h["pond-lower"]["retention_h"] for _, h in history]
         self.assertGreater(reserve[0], 12.0)
         self.assertEqual(reserve[-1], 0.0)
         self.assertLessEqual(abs(first["plant_short"] - first["ponds_empty"]), 0.5)
-        last = history[-1]
+        last = history[-1][1]
         self.assertEqual(last["plant"]["feed_tph"], 0.0)
         self.assertEqual(last["water"]["state"], "deficit")
         self.assertTrue(all(last[f"plant-line-{n}"]["state"] in ("water_limited", "maintenance") for n in (1, 2, 3)))
-        for name in ("stp-000-1", "stp-000-2", "stp-000-3", "stp-m050-1"):
-            self.assertEqual(last[name]["state"], "flooded", name)
-        self.assertEqual(last["lvl-000"]["active_stopes"], 0.0)
-        self.assertNotEqual(last["stp-p050-1"]["state"], "flooded")
+        for name in STOPES:
+            if sim.mining.by_name[name].level.name in FLOOD_ORDER:
+                self.assertEqual(last[name]["state"], "flooded", name)
+        for level in FLOOD_ORDER:
+            self.assertEqual(last[level]["state"], "flooded", level)
+            self.assertEqual(last[level]["air_flow_m3s"], 0.0, level)
+        self.assertEqual(last["lvl-p320"]["state"], "ventilation")       # at the outlet: dry
         self.assertEqual(last["enterprise"]["binding_link"], "dewatering")
-        self.assertAlmostEqual(last["enterprise"]["annual_rate_ktpa"], 3 * 255.875, delta=0.1)
+        self.assertEqual(last["enterprise"]["annual_rate_ktpa"], 0.0)
         self.assertEqual(last["ps-m050"]["state"], "alarm_high")
-        self.assertGreater(last["mine"]["flood_volume_m3"], MODEL.p("water.flood_threshold_000_m3"))
-        # no truck is sent to a flooded stope
-        self.assertFalse(any(abs(last[n]["elevation"]) < 0.01 and last[n]["state"] in ("loading", "queue_load")
+        # the workings are full to the TU2 portal: the volume stops there, the rest runs into the pit
+        self.assertEqual(last["mine"]["flood_volume_m3"], MODEL.p("water.flood_outlet_m3"))
+        self.assertEqual(last["mine"]["flood_eta_min"], 0.0)             # nothing more floods
+        self.assertGreater(sim.totals()["water_to_pit_m3"], 0.0)
+        # no truck is sent to a flooded stope: none loads or queues underground; the idle ones wait at
+        # the ROM pad for broken ore (``queue_load`` at the surface)
+        self.assertFalse(any(last[n]["state"] in ("loading", "queue_load") and last[n]["elevation"] < 320.0
                              for n in TRUCKS))
+        hoisted = sim.ore_hoisted_t
+        sim.advance(60)
+        self.assertEqual(sim.ore_hoisted_t, hoisted)                     # nothing more is hoisted
         # undo: the pumps clear the flood and the mine comes back
         sim.apply_scenario({"pumps_failed_p150": 0})
         sim.advance(30)
@@ -1209,10 +1273,20 @@ class TestDisturbances(SimCase):
         self.assertEqual(snap["ps-p150"]["pumps_available"], 3.0)
         self.assertGreaterEqual(snap["ps-p150"]["pumps_running"], 1.0)   # the flood drains through both sumps
         self.assertGreater(snap["plant"]["feed_tph"], 0.0)
-        sim.run_days(4)
+        # pumped out at what ps-m050 sends up beyond its own inflow, 24 times faster: about 42 h
+        drained = None
+        for hour in range(1, 61):
+            sim.advance(60)
+            if sim.dewater.flood == 0.0 and drained is None:
+                drained = hour + 0.5
+        self.assertIsNotNone(drained)
+        self.assertTrue(40.0 < drained < 44.0, drained)
+        sim.run_days(1)
         snap = sim.snapshot()
         self.assertEqual(snap["mine"]["flood_volume_m3"], 0.0)
         self.assertEqual(snap["lvl-000"]["state"], "production")
+        self.assertEqual(snap["lvl-p150"]["state"], "production")
+        self.assertEqual(snap["lvl-p250"]["state"], "mined_out")
         self.assertEqual(snap["lvl-m050"]["state"], "development")
         self.assertNotEqual(snap["stp-000-1"]["state"], "flooded")
         self.assertEqual(snap["stp-m050-1"]["state"], "preparation")
@@ -1759,18 +1833,22 @@ class TestCountdowns(SimCase):
         sim.advance(26 * 60)
         self.assertEqual(sim.snapshot()["mine"]["flood_eta_min"], 0.0)       # nothing threatened
         sim.apply_scenario({"pumps_failed_p150": 3})
-        eta = {"lvl-m050": [], "lvl-000": []}
+        eta = {level: [] for level in FLOOD_ORDER}
         flooded = {}
-        for minute in range(0, 11 * 60):
-            snap = sim.snapshot(["mine", "lvl-m050", "lvl-000"])
-            for level in ("lvl-m050", "lvl-000"):
+        names = ["mine", *FLOOD_ORDER]
+        for minute in range(0, 49 * 60):
+            snap = sim.snapshot(names)
+            for level in FLOOD_ORDER:
                 if snap[level]["state"] == "flooded":
                     flooded.setdefault(level, minute)
             if snap["mine"]["flood_eta_min"] > 0:
-                level = "lvl-m050" if "lvl-m050" not in flooded else "lvl-000"
+                level = next(level for level in FLOOD_ORDER if level not in flooded)
                 eta[level].append((minute, snap["mine"]["flood_eta_min"]))
+            else:
+                # 0 only once nothing more will flood
+                self.assertEqual(set(flooded), set(FLOOD_ORDER), minute)
             sim.advance(1)
-        self.assertEqual(set(flooded), {"lvl-m050", "lvl-000"})
+        self.assertEqual(set(flooded), set(FLOOD_ORDER))
         self.assertEqual(sim.snapshot()["mine"]["flood_eta_min"], 0.0)       # every threshold passed
         for level, rows in eta.items():
             values = [value for _, value in rows]
@@ -1781,6 +1859,8 @@ class TestCountdowns(SimCase):
             actual = (flooded[level] - minute) / 60
             self.assertAlmostEqual(value, actual, delta=max(0.2, 0.03 * actual), msg=f"{level}: {rows[0]}")
         self.assertTrue(3.0 <= eta["lvl-m050"][0][1] <= 4.0, eta["lvl-m050"][0])   # about 3.5 min at x60
+        for level in FLOOD_ORDER[1:]:            # then 6-7 minutes per level, counted from the last one
+            self.assertTrue(6.0 <= eta[level][0][1] <= 7.0, (level, eta[level][0]))
 
     def test_outfall_minutes_to_permit_counts_down_in_the_flood(self):
         sim = new_sim()

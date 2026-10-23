@@ -43,10 +43,17 @@ class Dewatering:
         self.inflow_total = 0.0
         self.pumped_total = 0.0
         self.min_sump = min(self.v_main, self.v_lower)
-        self.flood_thresholds: Tuple[Tuple[str, float], ...] = (
-            ("lvl-m050", float(p("water.flood_threshold_m050_m3"))),
-            ("lvl-000", float(p("water.flood_threshold_000_m3"))),
-        )
+        # Levels flood upward in order of elevation at the volumes of their workings
+        # (``capacity.flood_order``): -50, 0, +50, +100, +150 m (the level of ps-p150 itself; the
+        # dead station does not stop the water), then the mined-out +200 and +250 m. Nothing stops
+        # the water below the lowest way out by gravity, the TU2 portal on the old pit floor at
+        # +320 m: once the workings hold ``flood_outlet`` (filled to +320 m) the further inflow
+        # runs out into the pit (``to_pit``), whose volume would take years to fill, so the flood
+        # volume stops there and the ventilation level +320 m stays dry.
+        self.flood_thresholds: Tuple[Tuple[str, float], ...] = cap.flood_order(sim.model)
+        self.flood_outlet = cap.flood_outlet_m3(sim.model)
+        #: Water that left the full workings through the TU2 portal into the old pit, m3.
+        self.to_pit = 0.0
         # Pumping bands of the two sumps (m3): from the stop level up to the level at which the last
         # pump of the cycle joins. Water inside the bands is what the pump cycle holds back for a
         # few hours; see ``levelled_m3``.
@@ -136,6 +143,9 @@ class Dewatering:
         over = max(0.0, self.v_lower - self.sump_lower)      # a full lower sump floods the mine
         self.v_lower -= over
         self.flood += over
+        if self.flood > self.flood_outlet:                  # filled to +320 m: out through the TU2 portal
+            self.to_pit += (self.flood - self.flood_outlet) / k
+            self.flood = self.flood_outlet
         if self.flood > 0.0 and self.v_lower < self.sump_lower:   # flood water drains back to the sump
             back = min(self.flood, self.sump_lower - self.v_lower)
             self.v_lower += back
@@ -175,7 +185,8 @@ class Dewatering:
 
     def hours_to_next_flooded_level(self) -> float:
         """Hours of the mine clock until the next level floods (``flood_thresholds`` in order),
-        0 when no level is threatened. A level is threatened while the inflow exceeds what the
+        0 when no level is threatened (the pumps keep up, or every level below the outlet is
+        flooded already). A level is threatened while the inflow exceeds what the
         pumps can send up (``capacity.Dewatering.flood_rate_m3h``); the free volume of both sumps
         and the flood volume still missing to the next threshold fill at that surplus. The
         storage moves ``flood_compression`` times faster than the mine clock once the episode is

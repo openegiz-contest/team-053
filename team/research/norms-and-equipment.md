@@ -8,7 +8,7 @@ Status key:
 - UNCONFIRMED: only a search-result snippet, a secondary source, or a figure from the team's own facts file. Not read by the scout in a primary source.
 - NOT FOUND: searched; no value in a usable source.
 
-Local downloads are in `C:/Users/Tomiris/AppData/Local/Temp/claude/C--Users-Tomiris-Documents-Project-Reels/41da68f5-9423-4917-b55f-c1fb7c4cc6f9/scratchpad/norms/` (HTML of FY2024 and FY2025 annual reports, H1 2026 report, H1 2022 report, FY2021 results, Q4 2021 results; a copy of the Permsc PDF). Untrusted, not executed.
+The source documents (HTML of the FY2024 and FY2025 annual reports, the H1 2026 report, the H1 2022 report, the FY2021 results, the Q4 2021 results; a copy of the Permsc PDF) were read from a working copy of the downloads that is not part of the repository; every source is cited below by its public address. Untrusted, not executed.
 
 ---
 
@@ -27,7 +27,7 @@ Local downloads are in `C:/Users/Tomiris/AppData/Local/Temp/claude/C--Users-Tomi
 | Point 782 | continuous monitoring of the air quantity supplied to workings where non-explosion-proof ICE machines run ("непрерывно осуществляется контроль за количеством подаваемого воздуха") | - | https://zakon.uchet.kz/rus/docs/V1400010247 | WebFetch quote of point 782 | CONFIRMED (WebFetch) |
 | Point 829 (air per person) | "из расчета не менее 6 м3 в минуту на каждого человека" | m3/min per person | https://zakon.uchet.kz/rus/docs/V1400010247 | WebFetch quote of point 829 | CONFIRMED (WebFetch) |
 | Reviewer's rule "about 5 m3/min per hp" | not found in any primary text read | m3/min per hp | - | Searches returned only a secondary article (see next row) | NOT FOUND in primary text |
-| Per-hp figures in a Russian article | numbers legible in the PDF text layer: 4,2-5; 4-7,7; 5,5; 5; 5; 5,3; 5 m3/min per hp. The article says the normative literature lacks a required rate per unit of ICE power. The country labels (Australia, Canada, China, USA, Russia) come from a search summary and are not legible in the PDF | m3/min per hp | https://journal.permsc.ru/index.php/echo/article/download/echo2020n3p21/1647/3003 | PDF text layer is largely garbled Cyrillic; numbers read from the copy in scratchpad/norms/permsc2020/article.txt | UNCONFIRMED (secondary; country mapping not verified) |
+| Per-hp figures in a Russian article | numbers legible in the PDF text layer: 4,2-5; 4-7,7; 5,5; 5; 5; 5,3; 5 m3/min per hp. The article says the normative literature lacks a required rate per unit of ICE power. The country labels (Australia, Canada, China, USA, Russia) come from a search summary and are not legible in the PDF | m3/min per hp | https://journal.permsc.ru/index.php/echo/article/download/echo2020n3p21/1647/3003 | PDF text layer is largely garbled Cyrillic; numbers read from the text layer of a working copy of the PDF (not in the repository) | UNCONFIRMED (secondary; country mapping not verified) |
 | Ontario, Reg. 854 s.183.1(1) Rule 2 | "0.06 m3/s per kilowatt engine power" (airflow = engine power x unit airflow requirement, for equipment without a CSA M424.2 certified airflow rate). Informally "100 CFM per brake horsepower rule" | m3/s per kW | https://www.ontario.ca/page/ventilation-requirements-diesel-powered-equipment-underground-mines (page published 13.10.2023, updated 15.12.2023). Regulation text https://www.ontario.ca/laws/regulation/900854 could not be fetched | WebFetch of the ontario.ca page quotes the 0.06 figure and the subsection 183.1(1) reference | CONFIRMED (WebFetch of official government page; regulation text not read directly) |
 | Ontario, Rule 3 | after-treatment device: the airflow determined in consultation with JHSC or HSR "may be lower than the airflow rate determined under Rule 1 or 2", based on emission tests after installing the device | - | same Ontario URL | WebFetch summary | CONFIRMED (WebFetch) |
 | California, 8 CCR section 7070 | fresh air in an air course "shall never be less than 100 cubic feet of air per minute per brake horsepower of the aggregate diesel equipment ... plus 200 cubic feet of air per minute for each employee" | cfm per bhp (approx. 0.063 m3/s per kW) | https://www.dir.ca.gov/Title8/7070.html | Search-result snippet only; dir.ca.gov was unreachable (connection refused) | UNCONFIRMED |
@@ -174,7 +174,7 @@ What cannot be concluded:
 | source | CAT AD30 | CAT AD45 | CAT R1300 | CAT R1700 | drill rigs | location |
 |---|---|---|---|---|---|---|
 | Brief (task text) | 5 | - | 4 | - | 2 | task text |
-| params.json fleet.base | 4 (line 211) | 1 (line 217, ASSUMPTION) | 3 (line 212) | 1 (line 222, ASSUMPTION) | 2 (line 227, ASSUMPTION) | C:\Users\Tomiris\Documents\Project\team-053\team\model\params.json |
+| params.json fleet.base | 4 (line 211) | 1 (line 217, ASSUMPTION) | 3 (line 212) | 1 (line 222, ASSUMPTION) | 2 (line 227, ASSUMPTION) | team/model/params.json |
 | registry.json entries | 4 | 8 | 3 | 7 (10 LHDs total) | 5 (4 Boomer S1D, 1 Boomer T1D) | registry.json lines 2112-2604 (haul trucks and LHDs) and 2853-2941 (drill rigs) |
 | OVOS D2 (team facts file A4) | 4 (CAT AD30 TU2, p.77) | - (cited as intended in D1 p.2) | 2 (CAT R1300 VHV 2, p.78) | - | Boomer S1D and T1D (p.31) | sekisovskoye-facts.md A4 |
 | im-mining 2020 release (secondary, team facts D3) | 3 | - | 3 | - | - | https://im-mining.com/?p=64026 (not fetched by scout) |

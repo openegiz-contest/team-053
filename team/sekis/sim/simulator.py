@@ -286,9 +286,12 @@ class Simulator:
     def mine_rate_tph(self, result: Optional[cap.Result] = None) -> float:
         """The analytic mine rate of a state as a mean over the day, t/h: the smallest of the
         haulage, ventilation, stopes and dewatering capacities spread over the working days (the
-        simulator runs every day as a working day, spec 2.1)."""
+        simulator runs every day as a working day, spec 2.1). Dewatering counts with the stopes
+        dry now (``capacity.Dewatering.capacity_now_ktpa``): while the water rises the mine still
+        hoists from the levels it has not reached, though it sustains nothing."""
         result = result or self.analytic
-        ktpa = min(result.capacity_ktpa[link] for link in ("haulage", "ventilation", "stopes", "dewatering"))
+        ktpa = min(min(result.capacity_ktpa[link] for link in ("haulage", "ventilation", "stopes")),
+                   result.dewatering.capacity_now_ktpa)
         return ktpa * cap.KILO / (self.p("regime.working_days") * cap.HOURS_PER_DAY)
 
     def restart_rates(self) -> None:
@@ -729,6 +732,7 @@ class Simulator:
             "water_pumped_m3": dewater.pumped_total,
             "water_in_sumps_m3": dewater.v_main + dewater.v_lower,
             "flood_volume_m3": dewater.flood,
+            "water_to_pit_m3": dewater.to_pit,
             "water_site_use_m3": water.total["site"],
             "water_plant_supply_m3": water.total["plant"],
             "water_reclaim_m3": water.total["reclaim"],

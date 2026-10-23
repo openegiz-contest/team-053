@@ -30,6 +30,9 @@ if str(TEAM) not in sys.path:
 from sekis import capacity as cap  # noqa: E402
 from sekis.advisor import Advisor, engine, service, wording  # noqa: E402
 
+#: Every level the water reaches below the TU2 portal, lowest first (capacity.flood_order).
+FLOOD_ORDER = ("lvl-m050", "lvl-000", "lvl-p050", "lvl-p100", "lvl-p150", "lvl-p200", "lvl-p250")
+
 PACKAGE = TEAM / "sekis" / "advisor"
 REGISTRY = TEAM / "model" / "registry.json"
 
@@ -816,18 +819,59 @@ class TestDisturbances(AdvisorCase):
     def test_pump_one_fail_changes_no_bar(self):
         self.assertEqual(self.caps(self.report(pumps_failed_p150=1)), self.caps(self.advisor.report(self.base)))
 
-    def test_pump_station_fail_binds_when_a_production_level_floods(self):
+    def test_pump_station_fail_binds_at_once(self):
+        # 0 of 3 pumps: the water rises to the TU2 portal at +320 m over every production level, so
+        # dewatering binds from the first minute at 0 kt/yr, not only once a level has flooded
         failed = self.inputs(pumps_failed_p150=3)
         report = self.advisor.report(failed)
-        self.assertEqual(report["binding_link"], "haulage")
+        self.assertEqual((report["binding_link"], report["achievable_ktpa"]), ("dewatering", 0))
         self.assertEqual(report["kpi"]["dewatering_margin"], 0.0)
+        self.assertEqual(report["kpi"]["gold_koz_year"], 0.0)
+        self.assertEqual(report["next_measure"]["measure"], "restore_pumps")
+        self.assertEqual(report["next_measure"]["set"], {"pumps_failed_p150": 0.0})
+        self.assertEqual(report["sequence_outcome"]["reached"], True)
+        self.assertEqual([s["link"] for s in report["sequence"]], ["dewatering", "haulage", "ventilation"])
+        detail = report["links"][4]["detail"]
+        self.assertIn("исправных насосов нет", detail)
+        self.assertIn("ТУ-2 (+320\u00a0м)", detail)
+        self.assertIn("следующим затопит гор. −50 м", detail)      # no countdown read: the level only
         flooded = self.advisor.report(replace(failed, flooded_levels=("lvl-000", "lvl-m050")))
-        self.assertEqual((flooded["binding_link"], flooded["achievable_ktpa"]), ("dewatering", 768))
+        self.assertEqual((flooded["binding_link"], flooded["achievable_ktpa"]), ("dewatering", 0))
         self.assertEqual(self.caps(flooded)["stopes"], 1024)
         self.assertEqual(flooded["next_measure"]["measure"], "restore_pumps")
-        self.assertEqual(flooded["next_measure"]["set"], {"pumps_failed_p150": 0.0})
         self.assertEqual(flooded["sequence_outcome"]["reached"], True)
-        self.assertEqual([s["link"] for s in flooded["sequence"]], ["dewatering", "haulage", "ventilation"])
+        self.assertIn("следующим затопит гор. +50 м", flooded["links"][4]["detail"])
+        # the pumps back, two levels still under water: the stopes left dry bind while they are pumped out
+        pumping = self.advisor.report(replace(self.inputs(), flooded_levels=("lvl-000", "lvl-m050")))
+        self.assertEqual((pumping["binding_link"], pumping["achievable_ktpa"]), ("dewatering", 768))
+        # the standby covers one failure, and one pump of two left carries the mean inflow
+        for count in (1, 2):
+            self.assertEqual(self.report(pumps_failed_p150=count)["binding_link"], "haulage", count)
+
+    def test_the_wait_to_the_next_flooded_level_is_named(self):
+        things = {"scenario": {"pumps_failed_p150": 3.0, "revision": 1.0}, "mine": {"flood_eta_min": 6.3},
+                  "lvl-m050": {"state": "flooded"}}
+        inputs = self.advisor.inputs_from_things(things)
+        self.assertEqual(inputs.flood_eta_min, 6.3)
+        report = self.advisor.report(inputs)
+        self.assertTrue(report["links"][4]["detail"].endswith("гор. 0 м затопит через ≈6 мин стенда"))
+        self.assertTrue(report["next_measure"]["text"].endswith("; пока насосы стоят, гор. 0 м затопит через ≈6 мин стенда"))
+        # the countdown drifting does not make a new report; it starting or ending does
+        later = self.advisor.inputs_from_things(dict(things, mine={"flood_eta_min": 2.0}))
+        self.assertEqual(later.key(), inputs.key())
+        done = self.advisor.inputs_from_things(dict(things, mine={"flood_eta_min": 0.0}))
+        self.assertNotEqual(done.key(), inputs.key())
+        # with every level below the portal flooded nothing more floods: no wait is named
+        wet = self.advisor.report(replace(inputs, flood_eta_min=0.0, flooded_levels=FLOOD_ORDER))
+        self.assertIn("выработки залиты до портала ТУ-2", wet["links"][4]["detail"])
+        self.assertNotIn("затопит", wet["links"][4]["detail"])
+
+    def test_the_ladder_of_the_base_knobs_is_unchanged(self):
+        # the four target cards from 1 January 2027 are those of the committed fixture of the Stand
+        fixture = json.loads((TEAM / "stand" / "fixtures" / "advisor.json").read_text(encoding="utf-8"))
+        ladder = json.loads(json.dumps(self.advisor.report(self.advisor.default_inputs())["ladder"]))
+        self.assertEqual([row["target_ktpa"] for row in ladder], [1000.0, 1200.0, 2000.0, 2500.0])
+        self.assertEqual(ladder, fixture["ladder"])
 
     def test_flood_inflow(self):
         report = self.report(inflow_factor=2.18)
@@ -1089,16 +1133,30 @@ class TestEffects(AdvisorCase):
 
     def test_flooding_and_recovery(self):
         failed = self.inputs(revision=2, pumps_failed_p150=3)
+        rising = self.by_id(self.advisor.effects(self.base, failed))
+        self.assertEqual(rising["cap_dewatering_ktpa"]["text"],
+                         "Водоотлив: насосы не откачивают приток, вода поднимается до портала ТУ-2 (+320\u00a0м); "
+                         "рудник затопит, добыча не обеспечена (0 тыс. т/год).")
+        self.assertEqual((rising["cap_dewatering_ktpa"]["before"], rising["cap_dewatering_ktpa"]["after"]), (None, 0))
         flooded = replace(failed, flooded_levels=("lvl-000", "lvl-m050"))
         items = self.by_id(self.advisor.effects(self.base, flooded))
+        self.assertEqual(items["cap_dewatering_ktpa"]["text"],
+                         "Водоотлив: насосы не откачивают приток, вода поднимается до портала ТУ-2 (+320\u00a0м); "
+                         "затоплены горизонты 0 м, −50 м; рудник затопит, добыча не обеспечена (0 тыс. т/год).")
+        # the pumps back with the levels under water: the stopes left dry while the water is pumped out
+        pumping = replace(self.base, revision=3, flooded_levels=("lvl-000", "lvl-m050"))
+        items = self.by_id(self.advisor.effects(self.base, pumping))
         self.assertEqual(items["cap_dewatering_ktpa"]["text"],
                          "Водоотлив: затоплены горизонты 0 м, −50 м, добыча из оставшихся блоков "
                          "ограничена 768 тыс. т/год.")
         self.assertEqual((items["cap_dewatering_ktpa"]["before"], items["cap_dewatering_ktpa"]["after"]), (None, 768))
-        dry = replace(self.base, revision=3)
+        dry = replace(self.base, revision=4)
         back = self.by_id(self.advisor.effects(flooded, dry))
         self.assertEqual(back["cap_dewatering_ktpa"]["text"], "Водоотлив: затопление снято, звено не ограничивает добычу.")
         self.assertEqual(back["cap_dewatering_ktpa"]["trend"], "better")
+        back = self.by_id(self.advisor.effects(failed, dry))
+        self.assertEqual(back["cap_dewatering_ktpa"]["text"],
+                         "Водоотлив: насосы снова откачивают приток, звено не ограничивает добычу.")
 
     def test_number_format(self):
         self.assertEqual(wording.num(1386.4), "1\u00a0386")
@@ -1159,7 +1217,7 @@ class TestTwinMessage(AdvisorCase):
         flooded = replace(self.inputs(pumps_failed_p150=3), flooded_levels=("lvl-000", "lvl-m050"))
         wet = self.check(self.advisor.envelope(self.advisor.report(flooded)))
         self.assertEqual((wet["binding_link"], wet["next_measure"], wet["cap_dewatering_ktpa"]),
-                         ("dewatering", "restore_pumps", 768.0))
+                         ("dewatering", "restore_pumps", 0.0))
         for knobs in (FULL[2500], dict(fan_vs2_off=1), dict(line_down=2), dict(grade_gpt=1.76, inflow_factor=2.18)):
             self.check(self.advisor.envelope(self.report(**knobs)))
 
@@ -1677,12 +1735,14 @@ class TestServiceLoop(ServiceCase):
     def test_flooded_level_is_reported_without_a_new_revision(self):
         self.source.scenario(pumps_failed_p150=3.0, revision=1.0)
         self.service.tick()
-        self.assertEqual(self.service.report["binding_link"], "haulage")
+        self.assertEqual(self.service.report["binding_link"], "dewatering")     # binds at once
+        self.assertNotIn("затоплены", self.service.report["links"][4]["detail"])
         self.source.things = dict(self.source.things, **{"lvl-m050": {"state": "flooded"},
                                                          "lvl-000": {"state": "flooded"}})
         self.clock.now += 1
         self.service.tick()
         self.assertEqual(self.service.report["binding_link"], "dewatering")
+        self.assertIn("затоплены горизонты 0 м, −50 м", self.service.report["links"][4]["detail"])
         self.assertEqual(len(self.publisher.messages), 2)
 
     def test_survives_a_source_that_does_not_answer(self):
@@ -1810,7 +1870,7 @@ class TestSources(AdvisorCase):
                               "features": {"revision": {"properties": {"value": 3.0}}}}]
 
         names = self.advisor.thing_names()
-        self.assertEqual(len(names), 3 + 12 + 4)   # scenario, stockpile, clock, the levels, the dams
+        self.assertEqual(len(names), 4 + 12 + 4)   # scenario, stockpile, clock, mine, the levels, the dams
         source = service.DittoSource(names, client=Client())
         self.assertEqual(source.read(), {"scenario": {"revision": 3.0}})
         self.assertEqual(len(calls), 1)

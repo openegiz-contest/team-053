@@ -20,6 +20,7 @@ import sys
 import time
 import unittest
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -32,6 +33,9 @@ from sekis import capacity as cap  # noqa: E402
 from sekis import geometry  # noqa: E402
 from sekis.advisor import Advisor  # noqa: E402
 from sekis.sim import Simulator  # noqa: E402
+
+#: Every level the water reaches below the TU2 portal, lowest first (capacity.flood_order).
+FLOOD_ORDER = ("lvl-m050", "lvl-000", "lvl-p050", "lvl-p100", "lvl-p150", "lvl-p200", "lvl-p250")
 
 REGISTRY = json.loads((TEAM / "model" / "registry.json").read_text(encoding="utf-8"))
 PARAMS = json.loads((TEAM / "model" / "params.json").read_text(encoding="utf-8"))
@@ -249,6 +253,17 @@ class TestFloodThresholds(unittest.TestCase):
         total = m050 + ramps + level0 * section
         self.assertAlmostEqual(total, MODEL.p("water.flood_threshold_000_m3"), delta=0.01 * total)
         self.assertGreater(MODEL.p("water.flood_threshold_m050_m3"), 10000)
+        # the same rule upward: both declines over the 50 m between levels, then the level's own workings
+        # (no crosscuts on the backfilled +200 m and +250 m), to the TU2 portal at +320 m
+        between = 2 * 50 * per_vm * section
+        for level in ("p050", "p100", "p150", "p200", "p250"):
+            drive, links = self.lengths(f"lvl-{level}")
+            own = (drive + sum(length for _, length in links["access"])
+                   + sum(length for _, length in links.get("crosscut", ()))) * section
+            total += between + own
+            self.assertAlmostEqual(total, MODEL.p(f"water.flood_threshold_{level}_m3"), delta=0.01 * total, msg=level)
+        total += 2 * (MODEL.p("decline.tu2.portal_m") - 250) * per_vm * section
+        self.assertAlmostEqual(total, MODEL.p("water.flood_outlet_m3"), delta=0.01 * total)
 
     def test_the_episode_is_compressed_and_the_stand_says_so(self):
         k = MODEL.p("water.flood_compression")
@@ -257,6 +272,8 @@ class TestFloodThresholds(unittest.TestCase):
         hours_000 = (free + MODEL.p("water.flood_threshold_000_m3")) / 197 / k
         self.assertTrue(3.0 < hours_m050 < 4.0)           # about 3.5 real minutes at 60x
         self.assertTrue(9.0 < hours_000 < 11.0)           # about 10 real minutes
+        hours_full = (free + MODEL.p("water.flood_outlet_m3")) / 197 / k
+        self.assertTrue(45.0 < hours_full < 50.0)         # filled to the TU2 portal after about 47 minutes
         scenarios = (TEAM / "stand" / "web" / "js" / "panels" / "scenarios.js").read_text(encoding="utf-8")
         self.assertIn("water.flood_compression", scenarios)
         self.assertIn("ускорен", scenarios)
@@ -330,9 +347,12 @@ class TestWaterBasis(unittest.TestCase):
                 self.assertAlmostEqual(snap["water"]["deficit_m3h"] - snap["water"]["site_use_m3h"],
                                        plant_all_lines, delta=1.0)
         self.assertTrue(values)
-        # the simulator still hoists the broken ore of the flooded days at about the baseline rate, so its site
-        # water sits near the advisor's figure for the station failure before the levels flood
-        self.assertAlmostEqual(statistics.median(values), kpi["water_deficit_all_lines_m3h"], delta=6.0)
+        # 36 h after the failure every production level is under water and nothing is hoisted: the
+        # simulator's deficit is the plant water of three lines, the advisor's figure once the levels flood
+        flooded = self.advisor.report(replace(self.advisor.default_inputs().with_knobs({"pumps_failed_p150": 3.0}),
+                                              flooded_levels=FLOOD_ORDER))["kpi"]
+        self.assertAlmostEqual(flooded["water_deficit_all_lines_m3h"], plant_all_lines, delta=0.5)
+        self.assertAlmostEqual(statistics.median(values), flooded["water_deficit_all_lines_m3h"], delta=6.0)
 
     def test_the_basis_is_named(self):
         kpi = self.kpi(inflow_factor=2.18)

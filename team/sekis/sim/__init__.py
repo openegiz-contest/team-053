@@ -95,7 +95,8 @@ Totals and calibration
         ``ore_hoisted_t``, ``ore_milled_t``, ``gold_oz``, ``tailings_placed_t``, the water volumes
         ``water_inflow_m3``, ``water_pumped_m3``, ``water_site_use_m3``, ``water_plant_supply_m3``,
         ``water_reclaim_m3``, ``water_extra_intake_m3``, ``water_discharge_m3``,
-        ``water_deficit_m3``; present stocks ``ore_broken_t``, ``ore_on_trucks_t``,
+        ``water_deficit_m3``, ``water_to_pit_m3`` (out of the workings filled to the TU2 portal
+        at +320 m into the old pit); present stocks ``ore_broken_t``, ``ore_on_trucks_t``,
         ``stockpile_t``, ``tailings_stored_t``, ``water_in_ponds_m3``, ``water_in_sumps_m3``,
         ``flood_volume_m3``; air ``air_supply_m3s``, ``air_demand_m3s``, ``air_demand_peak_m3s``;
         traffic ``truck_trips``, ``truck_cycle_mean_min``, ``bay_wait_min_per_trip``,
@@ -112,6 +113,13 @@ What the displayed values mean
       set beside the plant feed. ``rom-stockpile.inflow_tph`` keeps the rolling 2-hour mean
       (``sim.rate_window_h``) of the ore tipped on the pad, which swings with the truck loads and
       the shift pattern.
+    * ``enterprise.annual_rate_ktpa`` is not measured: it is the analytic capacity of the chain,
+      the advisor's (``analytic.achievable_ktpa``, kt/yr, with ``binding_link``; described on
+      the twin as «расчётная мощность по советнику»). The measured rates are ``ore_mined_tpd``
+      and ``ore_milled_tpd``. While the main pumps cannot keep up it is 0: the mine is flooding.
+    * ``water.discharge_m3h`` and ``mon-volchevka.discharge_m3h`` are one quantity, the rolling
+      1-hour mean of the discharge to the Volchevka; the publisher sends the two twins in the
+      same pass (``publish.PUBLISHED_TOGETHER``), so they never read differently on one screen.
     * Plant rates. ``plant.gold_poured_oz_day`` is the gold of the last 2 hours x 12;
       ``enterprise.ore_milled_tpd``, ``enterprise.gold_poured_oz_day`` and
       ``tailings.inflow_tpd`` are totals over the last 24 hours. ``plant.feed_tph`` and the line
@@ -162,8 +170,11 @@ What the displayed values mean
       (``capacity.level_air``).
     * Flood episode: while ps-p150 is out of action or water stands in the workings, the water
       stored underground (sumps and flood volume) changes ``water.flood_compression`` (24) times
-      faster than the mine clock; flows and the surface keep the mine clock. Levels flood at the
-      volumes of their workings (``water.flood_threshold_*``).
+      faster than the mine clock; flows and the surface keep the mine clock. Levels flood upward
+      at the volumes of their workings (``water.flood_threshold_*``, ``capacity.flood_order``):
+      -50, 0, +50, +100, +150, +200, +250 m; at ``water.flood_outlet_m3`` the workings are full
+      to the TU2 portal at +320 m and the further inflow runs out into the old pit.
+      ``mine.flood_eta_min`` counts down to each level in turn and is 0 once nothing more floods.
     * ``haul_truck.decline`` is the decline the truck works through (``none`` when parked; an
       empty truck on its way back to the pad shows the decline of its next trip);
       ``chainage_m`` is metres from the portal along the drawn decline, 0 off the decline.

@@ -116,6 +116,40 @@ def flooded_phrase(names: Mapping[str, str], levels: Sequence[str]) -> str:
     return "затоплены горизонты " + ", ".join(marks)
 
 
+def _level_marks(names: Mapping[str, str], levels: Sequence[str]) -> List[str]:
+    return [names.get(level, level).replace("Горизонт ", "", 1) for level in levels]
+
+
+def rising_phrase(names: Mapping[str, str], dewatering: cap.Dewatering) -> str:
+    """While the inflow exceeds what the pumps send up: «откачка 0 из притока 197 м³/ч: вода
+    поднимается до портала ТУ-2 (+320 м) и затопит горизонты −50 м, 0 м, …», or once every level
+    below the portal is flooded «… выработки залиты до портала ТУ-2 (+320 м), вода уходит в
+    карьер»; empty while the pumps keep up."""
+    if not dewatering.water_rising:
+        return ""
+    portal = _decline_label(names, "tu2")
+    text = f"откачка {num(dewatering.pumped_m3h)} из притока {num(dewatering.inflow_m3h)} {U_M3H}: "
+    if not dewatering.levels_to_flood:
+        return text + f"выработки залиты до портала {portal} (+320{NBSP}м), вода уходит в карьер"
+    marks = _level_marks(names, dewatering.levels_to_flood)
+    what = f"горизонт {marks[0]}" if len(marks) == 1 else "горизонты " + ", ".join(marks)
+    return text + f"вода поднимается до портала {portal} (+320{NBSP}м) и затопит {what}"
+
+
+def flood_eta_phrase(names: Mapping[str, str], dewatering: cap.Dewatering,
+                     flood_eta_min: Optional[float]) -> str:
+    """The next level the rising water reaches and the wait on the Stand clock, as the simulator
+    counts it (``mine.flood_eta_min``): «гор. −50 м затопит через ≈3 мин стенда»; without a
+    countdown only the level. Empty while the water is not rising."""
+    if not dewatering.levels_to_flood:
+        return ""
+    level = _level_marks(names, dewatering.levels_to_flood[:1])[0]
+    if flood_eta_min is None or flood_eta_min <= 0:
+        return f"следующим затопит гор. {level}"
+    wait = "меньше чем через минуту" if flood_eta_min < 1 else f"через ≈{num(round(flood_eta_min))} мин"
+    return f"гор. {level} затопит {wait} стенда"
+
+
 def _plural(count: int, one: str, few: str, many: str) -> str:
     """Russian noun form after a whole number: 1 насос, 2 насоса, 5 насосов."""
     if count % 10 == 1 and count % 100 != 11:
@@ -131,6 +165,8 @@ def reserve_phrase(dewatering: cap.Dewatering) -> str:
     if dewatering.standby_pumps > 0:
         count = dewatering.standby_pumps
         return f"резерв: {count} {_plural(count, 'насос', 'насоса', 'насосов')}"
+    if dewatering.capacity_main_m3h <= 0:
+        return "исправных насосов нет"
     return f"резерва нет: при отказе ещё одного насоса ×{num(dewatering.margin_next_failure, 2)}"
 
 
@@ -141,8 +177,12 @@ def decline_label(names: Mapping[str, str], key: str) -> str:
 
 # --- the state of each link ------------------------------------------------------------------
 
-def link_detail(model: cap.Model, names: Mapping[str, str], link: str, res: cap.Result) -> str:
-    """One line on what stands behind the capacity of a link in the evaluated state."""
+def link_detail(model: cap.Model, names: Mapping[str, str], link: str, res: cap.Result,
+                flood_eta_min: Optional[float] = None) -> str:
+    """One line on what stands behind the capacity of a link in the evaluated state.
+
+    ``flood_eta_min`` is the simulator's countdown to the next flooded level
+    (``mine.flood_eta_min``), named in the dewatering line while the water is rising."""
     state = res.state
     if link == "haulage":
         by_decline = ", ".join(f"{_decline_label(names, key)}: {count}"
@@ -162,9 +202,17 @@ def link_detail(model: cap.Model, names: Mapping[str, str], link: str, res: cap.
     if link == "development":
         return f"проходка уклонов {num(res.dev_advance_vm_per_year)} м по вертикали в год"
     if link == "dewatering":
-        text = f"запас производительности насосов ×{num(res.dewatering.margin, 2)}; {reserve_phrase(res.dewatering)}"
-        if res.dewatering.flooded_levels:
-            text += f"; {flooded_phrase(names, res.dewatering.flooded_levels)}"
+        dewatering = res.dewatering
+        rising = rising_phrase(names, dewatering)
+        if rising:                          # the water is rising: what it reaches and when
+            text = f"{reserve_phrase(dewatering)}; {rising}"
+            if dewatering.flooded_levels:
+                text += f"; {flooded_phrase(names, dewatering.flooded_levels)}"
+            eta = flood_eta_phrase(names, dewatering, flood_eta_min)
+            return f"{text}; {eta}" if eta else text
+        text = f"запас производительности насосов ×{num(dewatering.margin, 2)}; {reserve_phrase(dewatering)}"
+        if dewatering.flooded_levels:
+            text += f"; {flooded_phrase(names, dewatering.flooded_levels)}"
         return text
     if link == "plant":
         running = [line.number for line in res.plant.lines if line.state == "running"]
@@ -710,7 +758,7 @@ def effect_items(names: Mapping[str, str], before: Mapping[str, Any], after: Map
     """Sentences for the panel «Что изменилось» from two snapshots of the advisor.
 
     A snapshot holds ``target_ktpa``, ``binding_link``, ``achievable_ktpa``, ``capacities``
-    (link -> kt/yr or ``None``), ``measures_needed``, ``flooded_levels``, ``held_trucks``,
+    (link -> kt/yr or ``None``), ``measures_needed``, ``flooded_levels``, ``water_rising``, ``held_trucks``,
     ``held_lhds``, ``pumps_available``, ``pumps_total``, ``permit_exceeded`` and the KPI values of
     the report. Only values that differ at the precision they are shown with produce an item.
     """
@@ -732,14 +780,22 @@ def effect_items(names: Mapping[str, str], before: Mapping[str, Any], after: Map
         item_id, name = f"cap_{link}_ktpa", link_name(link)
         if old is None and new is None:
             continue
-        if old is None:
+        if old is None and after.get("water_rising"):
+            text = (f"{name}: насосы не откачивают приток, вода поднимается до портала "
+                    f"{_decline_label(names, 'tu2')} (+320{NBSP}м)")
+            if after["flooded_levels"]:
+                text += f"; {flooded_phrase(names, after['flooded_levels'])}"
+            items.append(_item(item_id, name, U_KTPA, old, new, WORSE,
+                               f"{text}; рудник затопит, добыча не обеспечена ({num(new)} {U_KTPA})."))
+        elif old is None:
             flooded = flooded_phrase(names, after["flooded_levels"])
             items.append(_item(item_id, name, U_KTPA, old, new, WORSE,
                                f"{name}: {flooded}, добыча из оставшихся блоков "
                                f"ограничена {num(new)} {U_KTPA}."))
         elif new is None:
+            gone = "затопление снято" if before["flooded_levels"] else "насосы снова откачивают приток"
             items.append(_item(item_id, name, U_KTPA, old, new, BETTER,
-                               f"{name}: затопление снято, звено не ограничивает добычу."))
+                               f"{name}: {gone}, звено не ограничивает добычу."))
         else:
             items.append(changed_value(item_id, name, ROSE_F, U_KTPA, 0, old, new,
                                        subject=f"Мощность звена «{name.lower()}»"))

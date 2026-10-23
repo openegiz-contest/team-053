@@ -129,7 +129,7 @@ class TestMessageRate(ServiceCase):
         self.assertLessEqual(max_in_any_second(times), 20)
         # the plan: every thing once per period of its tier
         periods = self.planner.periods()
-        planned = sum(1 / periods[self.sim.tier(name)] for name in self.planner._names)
+        planned = sum(1 / self.planner.period(name, periods) for name in self.planner._names)
         average = len(times) / 120
         self.assertAlmostEqual(average, planned, delta=0.15 * planned)
         self.assertLessEqual(average, 20)
@@ -154,6 +154,38 @@ class TestMessageRate(ServiceCase):
         self.assertEqual(self.publisher.messages, [])
         self.publisher.mode = "ok"
         self.run_loop(30)
+        self.assertLessEqual(max_in_any_second(self.times()), 20)
+
+
+class TestOneQuantityOneReading(ServiceCase):
+    """water.discharge_m3h and mon-volchevka.discharge_m3h are one quantity: they are published in
+    the same pass, so a screen never shows two values of it."""
+
+    def test_the_outfall_follows_the_water_balance_in_the_same_pass(self):
+        self.assertEqual(self.planner.period("mon-volchevka"), self.planner.period("water"))
+        self.assertEqual(self.planner.period("mon-volchevka"), 6.0)     # the medium tier of the water twin
+        self.sim.advance(26 * 60)                            # the ponds at the weir, as on a running Stand
+        self.scenario.write(revision=1.0, inflow_factor=2.18)  # the outfall climbs from 4 to over 200 m3/h
+        self.run_loop(240)
+        names = self.names()
+        self.assertEqual(names.count("water"), names.count("mon-volchevka"))
+        self.assertGreater(names.count("water"), 30)
+        for index, name in enumerate(names):
+            if name == "mon-volchevka":
+                self.assertEqual(names[index - 1], "water", index)
+        # the screen after every pass: the last value of each twin, as the Stand holds them
+        screen, values = {}, []
+        passes = {}
+        for t, topic, payload in self.publisher.messages:
+            passes.setdefault(t, []).append((topic.rsplit("/", 1)[-1], json.loads(payload)["value"]))
+        for t in sorted(passes):
+            for name, value in passes[t]:
+                if name in ("water", "mon-volchevka"):
+                    screen[name] = value["discharge_m3h"]["properties"]["value"]
+            if len(screen) == 2:
+                self.assertEqual(screen["water"], screen["mon-volchevka"], t)
+                values.append(screen["water"])
+        self.assertGreater(max(values) - min(values), 25.0)     # the mean moved: apart, they would disagree
         self.assertLessEqual(max_in_any_second(self.times()), 20)
 
 

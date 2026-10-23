@@ -1,7 +1,6 @@
 # Sekisovskoye: open spatial data for a real-surface 3D scene
 
-Scout research, 16 Oct 2026. Scratch root (not in repo):
-`C:/Users/Tomiris/AppData/Local/Temp/claude/C--Users-Tomiris-Documents-Project-Reels/41da68f5-9423-4917-b55f-c1fb7c4cc6f9/scratchpad/spatial/`
+Scout research, 16 Oct 2026. Scratch root: a working copy of the downloads and scripts, not part of the repository.
 (abbreviated below as `SCRATCH/`).
 
 Tags: **CONFIRMED** = seen by the scout in the downloaded data or in the fetched primary page; **UNCONFIRMED** = from a secondary source, a search snippet, from memory, or not checked.

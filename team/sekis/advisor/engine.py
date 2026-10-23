@@ -55,6 +55,7 @@ ADVISOR_THING = "advisor"
 SCENARIO_THING = "scenario"
 STOCKPILE_THING = "rom-stockpile"
 CLOCK_THING = "enterprise"
+MINE_THING = "mine"     # its flood_eta_min counts down to the next flooded level
 OUTFALL_THING = "mon-volchevka"
 TELEMETRY_TOPIC = f"telemetry/sekis/{ADVISOR_THING}"
 
@@ -119,6 +120,8 @@ class Inputs:
     tailings_placed_t  tailings placed since the epoch, t (stored now less stored at the epoch)
     stockpile_t        ROM stockpile, t
     sim_time           simulator clock, ISO 8601, or ``None``
+    flood_eta_min      minutes of the Stand until the next level floods, as the simulator counts
+                       them (``mine.flood_eta_min``); 0 when nothing is about to flood
     """
     knobs: Mapping[str, float]
     revision: int = 0
@@ -127,15 +130,18 @@ class Inputs:
     tailings_placed_t: float = 0.0
     stockpile_t: float = 0.0
     sim_time: Optional[str] = None
+    flood_eta_min: float = 0.0
 
     @property
     def target_ktpa(self) -> float:
         return float(self.knobs["target_ktpa"])
 
     def key(self) -> Tuple[Any, ...]:
-        """What a report depends on apart from slowly drifting tonnages: a new key means a new report."""
+        """What a report depends on apart from slowly drifting tonnages and the flood countdown (the
+        report is refreshed every 30 s anyway): a new key means a new report. The countdown
+        starting or ending is a new key, so the first report of a failure names the wait."""
         return (tuple(sorted((k, float(v)) for k, v in self.knobs.items())), self.revision, self.label,
-                tuple(sorted(self.flooded_levels)))
+                tuple(sorted(self.flooded_levels)), self.flood_eta_min > 0)
 
     def with_knobs(self, changes: Mapping[str, Any]) -> "Inputs":
         """Copy with some knobs replaced; names that are not knobs are ignored."""
@@ -234,8 +240,9 @@ class Advisor:
     # --- inputs ------------------------------------------------------------------------------
 
     def thing_names(self) -> List[str]:
-        """Things the advisor reads: the scenario, the levels, the dams, the stockpile, the clock."""
-        return ([SCENARIO_THING, STOCKPILE_THING, CLOCK_THING]
+        """Things the advisor reads: the scenario, the levels, the dams, the stockpile, the clock and
+        the mine (its flood countdown)."""
+        return ([SCENARIO_THING, STOCKPILE_THING, CLOCK_THING, MINE_THING]
                 + [level.name for level in self.model.levels] + list(self.model.dams))
 
     def inputs_from_things(self, things: Mapping[str, Mapping[str, Any]]) -> Inputs:
@@ -260,6 +267,7 @@ class Advisor:
                 placed += float(stored) - dam.stored_start_t
         stock = things.get(STOCKPILE_THING, {}).get("tonnes")
         sim_time = things.get(CLOCK_THING, {}).get("sim_time")
+        eta = things.get(MINE_THING, {}).get("flood_eta_min")
         return Inputs(
             knobs=knobs,
             revision=int(revision) if isinstance(revision, (int, float)) else 0,
@@ -267,7 +275,8 @@ class Advisor:
             flooded_levels=flooded,
             tailings_placed_t=max(0.0, placed),
             stockpile_t=float(stock) if isinstance(stock, (int, float)) else float(self.model.p("stockpile.start_t")),
-            sim_time=sim_time if isinstance(sim_time, str) else None)
+            sim_time=sim_time if isinstance(sim_time, str) else None,
+            flood_eta_min=float(eta) if isinstance(eta, (int, float)) and not isinstance(eta, bool) else 0.0)
 
     def default_inputs(self) -> Inputs:
         """The state at the epoch: default knobs, nothing flooded, the opening stockpile."""
@@ -374,11 +383,14 @@ class Advisor:
 
     def regime_rates(self, res: cap.Result) -> Dict[str, float]:
         """The rates the simulator runs a state at, t/h: ``mine_ktpa`` and ``hoist_tph`` (the
-        smallest mine link over the working days, 24 h a day), ``plant_tph`` (the plant capacity
+        smallest mine link over the working days, 24 h a day; dewatering with the stopes dry now,
+        ``capacity.Dewatering.capacity_now_ktpa``, since the mine hoists from the levels the water
+        has not reached yet), ``plant_tph`` (the plant capacity
         as a mean over its planned line stops) and ``all_lines_tph`` (every line of that capacity
         running); both plant rates are 0 when the tailings storage is full."""
         model, p = self.model, self.model.p
-        mine_ktpa = min(res.capacity_ktpa[link] for link in MINE_LINKS)
+        mine_ktpa = min(res.dewatering.capacity_now_ktpa if link == "dewatering" else res.capacity_ktpa[link]
+                        for link in MINE_LINKS)
         hoist_tph = mine_ktpa * cap.KILO / (p("regime.working_days") * cap.HOURS_PER_DAY)
         plant_tph = res.capacity_ktpa["plant"] * cap.KILO / model.hours_per_year
         if res.tailings.free_t <= 0:
@@ -457,8 +469,9 @@ class Advisor:
             "dewatering_reserve": wording.reserve_phrase(res.dewatering),
         }
 
-    def links(self, res: cap.Result) -> List[Dict[str, Any]]:
-        """The eight links in ranking order with their capacity, knob stage and a line of detail."""
+    def links(self, res: cap.Result, flood_eta_min: Optional[float] = None) -> List[Dict[str, Any]]:
+        """The eight links in ranking order with their capacity, knob stage and a line of detail
+        (the dewatering line names the next level the rising water reaches, and ``flood_eta_min``)."""
         rows = []
         for link in cap.LINKS:
             knob = cap.MEASURE_KNOBS.get(link)
@@ -467,7 +480,7 @@ class Advisor:
                    "knob": knob,
                    "stage": getattr(res.state, knob) if knob else None,
                    "stage_max": cap.knob_max(self.model, knob) if knob else None,
-                   "detail": wording.link_detail(self.model, self.names, link, res)}
+                   "detail": wording.link_detail(self.model, self.names, link, res, flood_eta_min)}
             rows.append(row)
         return rows
 
@@ -563,6 +576,7 @@ class Advisor:
         return {"target_ktpa": inputs.target_ktpa, "binding_link": res.binding_link,
                 "achievable_ktpa": achievable_rounded(res), "capacities": dict(res.capacity_rounded),
                 "measures_needed": len(plan.steps), "flooded_levels": tuple(res.dewatering.flooded_levels),
+                "water_rising": res.dewatering.water_rising,
                 "held_trucks": tuple(res.air.held_trucks), "held_lhds": tuple(res.air.held_lhds),
                 "pumps_total": pumps_total, "pumps_available": pumps_total - state.pumps_failed_p150,
                 "permit_exceeded": self.water_regime(res)[0].permit_state == "exceeded",
@@ -644,6 +658,10 @@ class Advisor:
         res = plan.start
         projection = self.projection(inputs)
         steps = self._with_service([step.to_dict() for step in plan.steps], projection["sequence_schedule"])
+        eta = wording.flood_eta_phrase(self.names, res.dewatering, inputs.flood_eta_min)
+        for step in steps:      # restoring the pumps: what happens meanwhile
+            if eta and step["knob"] == PUMPS_KNOB and step["kind"] == DISTURBANCE:
+                step["text"] += f"; пока насосы стоят, {eta}"
         return {
             "schema": SCHEMA,
             "report_revision": inputs.revision,
@@ -656,7 +674,7 @@ class Advisor:
             "binding_link": res.binding_link,
             "binding_link_name": wording.link_name(res.binding_link),
             "target_reached": achievable_rounded(res) >= inputs.target_ktpa,
-            "links": self.links(res),
+            "links": self.links(res, inputs.flood_eta_min),
             "next_measure": steps[0] if steps else None,
             "measures_needed": len(steps),
             "sequence": steps,

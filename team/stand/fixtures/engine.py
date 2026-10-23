@@ -127,8 +127,23 @@ def producing_stopes(knobs):
 
 
 def flooded_levels(knobs):
-    """The fixture shows the end state of a dead +150 m station at once."""
-    return ["lvl-m050", "lvl-000"] if stage(knobs, "pumps_failed_p150") >= 3 else []
+    """The fixture shows the end state of a dead +150 m station at once: the water has risen to
+    the TU2 portal at +320 m and every level of capacity.flood_order is flooded (-50 m up to
+    +250 m), as in the simulator about 43 minutes of the Stand after the failure."""
+    if stage(knobs, "pumps_failed_p150") < 3:
+        return []
+    return [name for name, _ in capacity.flood_order(_flood_model())]
+
+
+_FLOOD_MODEL = None
+
+
+def _flood_model():
+    """sekis.capacity's model, for the flood order (built once)."""
+    global _FLOOD_MODEL
+    if _FLOOD_MODEL is None:
+        _FLOOD_MODEL = capacity.load_model()
+    return _FLOOD_MODEL
 
 
 def truck_decline(model, knobs, truck):
@@ -184,13 +199,13 @@ def capacities(model, knobs, centroid=None, free_kt=None):
     sekis.capacity.evaluate in the shape this module works with."""
     res = capacity.evaluate(model.cap, capacity_state(model, knobs, centroid, free_kt))
     flooded = flooded_levels(knobs)
-    # A link that does not limit (dewatering without a flooded level) is shown as 0.
+    # A link that does not limit (dewatering while the pumps keep up) is shown as 0.
     caps = {link: float(res.capacity_rounded[link] or 0) for link in LINKS}
     binding = res.binding_link
     air = res.air
     return {
         "caps": caps, "binding": binding, "achievable": caps[binding],
-        "dewatering_limiting": bool(flooded), "dewatering_margin": round(res.dewatering.margin, 2),
+        "dewatering_limiting": res.dewatering.limiting, "dewatering_margin": round(res.dewatering.margin, 2),
         "air_supply": float(air.supply_m3s), "air_demand": round(air.demand_m3s, 1),
         "air_used": round(air.used_m3s, 1), "air_spare": round(air.spare_m3s, 1),
         # Units the hold rule of spec 2.6 keeps waiting for air, in holding order.
@@ -794,8 +809,9 @@ def build_state(model, base, knobs, revision=0, label="Базовый режим
                     power_kw=pump_kw(pump, p("water.head_ps_p150_m")) if on else 0.0,
                     hours_to_overflow=round(hours, 1))
     f("ps-m200")["state"] = "planned"
-    # the end state of a dead station: water over the 0 m level (params water.flood_threshold_000_m3)
-    flood_volume = round(1.1 * p("water.flood_threshold_000_m3")) if dead else 0.0
+    # the end state of a dead station: the workings full to the TU2 portal at +320 m
+    # (params water.flood_outlet_m3); nothing more floods, so mine.flood_eta_min stays 0
+    flood_volume = float(p("water.flood_outlet_m3")) if dead else 0.0
 
     # ---- plant, stockpile, tailings
     down = stage(knobs, "line_down")

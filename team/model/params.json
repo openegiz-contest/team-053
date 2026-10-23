@@ -454,6 +454,36 @@
     "unit": "m3",
     "source": "ASSUMPTION: level 0 m counts as flooded when the water has filled the -50 m workings (14 960 m3), the declines between -50 m and 0 m (TU1 50 m and TU2 34 m of depth at 8.26 m of ramp per vertical metre: 694 m x 18 m2 = 12 494 m3) and the 0 m workings (level drive 694 m + accesses from TU1 58 m and TU2 102 m + three crosscuts of 37 m = 966 m x 18 m2 = 17 381 m3): 44 835 m3 with the layout under the old pit; the threshold of 44 930 m3, set with the earlier layout, is kept (0.2 % apart). The voids of the open 0 m stopes lie above the level floor and fill only after the level is flooded"
   },
+  "water.flood_threshold_p050_m3": {
+    "value": 77250,
+    "unit": "m3",
+    "source": "ASSUMPTION: level +50 m counts as flooded when the water has filled everything up to the 0 m level (water.flood_threshold_000_m3, 44 930 m3), the declines between 0 m and +50 m (TU1 and TU2, 50 m of depth each at 8.26 m of ramp per vertical metre: 826 m x 18 m2 = 14 874 m3) and the +50 m workings (level drive 698 m + accesses from TU1 58 m and TU2 102 m + three crosscuts of 37 m = 969 m x 18 m2 = 17 446 m3; model/geometry.json): 77 250 m3. Same rule as the -50 m and 0 m thresholds: drives, accesses, crosscuts and declines at water.flood_section_m2; the open stope voids and the pore space of the waste backfill (FACT A1 'Backfill: waste rock returned') are not counted, so the water reaches each level no later than shown"
+  },
+  "water.flood_threshold_p100_m3": {
+    "value": 109500,
+    "unit": "m3",
+    "source": "ASSUMPTION: level +100 m counts as flooded at water.flood_threshold_p050_m3 (77 250 m3) + the declines between +50 m and +100 m (TU1 and TU2, 50 m of depth each: 14 874 m3) + the +100 m workings (level drive 694 m + accesses 58 m and 102 m + three crosscuts of 37 m = 966 m x 18 m2 = 17 381 m3): 109 500 m3; same rule as water.flood_threshold_p050_m3"
+  },
+  "water.flood_threshold_p150_m3": {
+    "value": 141820,
+    "unit": "m3",
+    "source": "ASSUMPTION: level +150 m (the level of the main pumping station ps-p150) counts as flooded at water.flood_threshold_p100_m3 (109 500 m3) + the declines between +100 m and +150 m (14 874 m3) + the +150 m workings (level drive 698 m + accesses 58 m and 102 m + three crosscuts of 37 m = 969 m x 18 m2 = 17 446 m3): 141 820 m3; same rule as water.flood_threshold_p050_m3. Once it is flooded no producing stope is left dry"
+  },
+  "water.flood_threshold_p200_m3": {
+    "value": 172080,
+    "unit": "m3",
+    "source": "ASSUMPTION: the mined-out level +200 m counts as flooded at water.flood_threshold_p150_m3 (141 820 m3) + the declines between +150 m and +200 m (14 874 m3) + its workings (level drive 694 m + accesses 58 m and 102 m = 855 m x 18 m2 = 15 383 m3; its stopes are backfilled and have no crosscut in model/geometry.json): 172 080 m3; same rule as water.flood_threshold_p050_m3"
+  },
+  "water.flood_threshold_p250_m3": {
+    "value": 201640,
+    "unit": "m3",
+    "source": "ASSUMPTION: the mined-out level +250 m counts as flooded at water.flood_threshold_p200_m3 (172 080 m3) + the declines between +200 m and +250 m (14 874 m3) + its workings (level drive 656 m + accesses 58 m and 102 m = 816 m x 18 m2 = 14 692 m3): 201 640 m3; same rule as water.flood_threshold_p050_m3"
+  },
+  "water.flood_outlet_m3": {
+    "value": 222470,
+    "unit": "m3",
+    "source": "ASSUMPTION: highest flood volume. With the main pumps dead the water rises until it finds a way out by gravity: the portal of TU2 at +320 m on the floor of the old pit (FACT A2 'Transport decline TU2: portal to bottom', pit.floor_m). The workings fill to +320 m: water.flood_threshold_p250_m3 (201 640 m3) + TU1 and TU2 between +250 m and +320 m (70 m of depth each at 8.26 m per vertical metre: 1 157 m x 18 m2 = 20 823 m3) = 222 470 m3; beyond that the inflow leaves through the portal into the pit (whose volume would take years of inflow to fill), so the ventilation level +320 m and TU1 above it stay dry"
+  },
   "water.flood_section_m2": {
     "value": 18.0,
     "unit": "m2",

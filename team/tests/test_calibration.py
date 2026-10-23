@@ -434,20 +434,51 @@ class TestScenarioEffects(ModelCase):
         self.assertEqual(res.dewatering.margin, self.base.dewatering.margin)
         self.assertAlmostEqual(self.base.dewatering.margin, 600 / (197 * 24 / 20))
 
-    def test_pump_station_failure_binds_when_a_production_level_floods(self):
+    def test_pump_station_failure_binds_at_once(self):
         failed = self.evaluate(pumps_failed_p150=3)
         self.assertEqual(failed.dewatering.margin, 0)
         self.assertAlmostEqual(failed.dewatering.flood_rate_m3h, 197)
-        self.assertFalse(failed.dewatering.limiting)
-        self.assertEqual(failed.binding_link, "haulage")
+        # nothing stops the water short of the TU2 portal at +320 m: every level of the flood order will
+        # flood, every producing stope with it, so the link binds at once and sustains nothing
+        self.assertTrue(failed.dewatering.water_rising)
+        self.assertTrue(failed.dewatering.limiting)
+        self.assertEqual(failed.dewatering.levels_to_flood, ("lvl-m050", "lvl-000", "lvl-p050", "lvl-p100", "lvl-p150", "lvl-p200", "lvl-p250"))
+        self.assertEqual(failed.binding_link, "dewatering")
+        self.assertEqual(failed.capacity_ktpa["dewatering"], 0.0)
+        self.assertEqual(failed.achievable_ktpa, 0.0)
+        self.assertEqual(failed.gold.oz_per_year, 0.0)
+        self.assertEqual(failed.dewatering.capacity_now_ktpa, math.inf)   # nothing is under water yet
         lower = self.evaluate(pumps_failed_p150=3, flooded_levels=("lvl-m050",))
-        self.assertTrue(lower.dewatering.limiting)
-        self.assertEqual(lower.binding_link, "haulage")  # no producing stope on the -50 m level
-        self.assertEqual(lower.capacity_rounded["dewatering"], lower.capacity_rounded["stopes"])
+        self.assertEqual(lower.dewatering.levels_to_flood[0], "lvl-000")
+        self.assertEqual(lower.capacity_ktpa["dewatering"], 0.0)
+        self.assertAlmostEqual(lower.dewatering.capacity_now_ktpa, 4 * 255.875)   # no producing stope at -50 m
         flooded = self.evaluate(pumps_failed_p150=3, flooded_levels=("kz.sekis:lvl-m050", "lvl-000"))
         self.assertEqual(flooded.binding_link, "dewatering")
-        self.assertAlmostEqual(flooded.capacity_ktpa["dewatering"], 3 * 255.875)
+        self.assertAlmostEqual(flooded.dewatering.capacity_now_ktpa, 3 * 255.875)
         self.assertAlmostEqual(flooded.capacity_ktpa["stopes"], 4 * 255.875)  # the stopes row keeps its value
+        # the pumps back, the two levels still under water: the stopes left dry until they are pumped out
+        pumping = self.evaluate(flooded_levels=("lvl-m050", "lvl-000"))
+        self.assertFalse(pumping.dewatering.water_rising)
+        self.assertEqual(pumping.dewatering.levels_to_flood, ())
+        self.assertAlmostEqual(pumping.capacity_ktpa["dewatering"], 3 * 255.875)
+        self.assertEqual(pumping.binding_link, "dewatering")
+        # the standby covers one failure and one pump left carries the mean inflow; not the design inflow
+        for knobs in (dict(pumps_failed_p150=1), dict(pumps_failed_p150=2), dict(inflow_factor=2.18)):
+            res = self.evaluate(**knobs)
+            self.assertFalse(res.dewatering.limiting, knobs)
+            self.assertEqual(res.capacity_ktpa["dewatering"], math.inf, knobs)
+        short = self.evaluate(pumps_failed_p150=2, inflow_factor=2.18)       # 300 of 430 m3/h
+        self.assertTrue(short.dewatering.water_rising)
+        self.assertEqual(short.binding_link, "dewatering")
+
+    def test_flood_order_runs_up_to_the_portal(self):
+        order = cap.flood_order(self.model)
+        self.assertEqual(tuple(name for name, _ in order), ("lvl-m050", "lvl-000", "lvl-p050", "lvl-p100", "lvl-p150", "lvl-p200", "lvl-p250"))
+        volumes = [volume for _, volume in order]
+        self.assertEqual(volumes, sorted(volumes))
+        self.assertLess(volumes[-1], cap.flood_outlet_m3(self.model))
+        self.assertEqual(self.model.p("decline.tu2.portal_m"), 320)          # the outlet: TU2 portal
+        self.assertEqual(self.model.p("pit.floor_m"), 320)                   # ... on the old pit floor
 
     def test_flood_inflow(self):
         res = self.evaluate(inflow_factor=2.18)

@@ -213,7 +213,7 @@ export const FEATURE_RU = {
   state: 'Состояние', sim_time: 'Время симуляции', sim_day: 'Сутки симуляции', shift: 'Смена',
   ore_mined_tpd: 'Выдача руды за 24 ч', ore_milled_tpd: 'Переработка руды за 24 ч',
   gold_poured_oz_day: 'Выплавка золота', gold_poured_total_oz: 'Золото с начала симуляции',
-  annual_rate_ktpa: 'Годовой темп добычи', binding_link: 'Узкое место',
+  annual_rate_ktpa: 'Расчётная мощность по советнику (не замер)', binding_link: 'Узкое место',
   ore_hoisted_tph: 'Выдача руды, среднее за 24 ч', ore_hoisted_today_t: 'Выдано руды с 08:00',
   ore_hoisted_total_t: 'Выдано руды всего', trucks_active: 'Самосвалов в рейсе',
   diesel_kw_active: 'Дизельная мощность в работе', air_supply_m3s: 'Располагаемая подача воздуха',

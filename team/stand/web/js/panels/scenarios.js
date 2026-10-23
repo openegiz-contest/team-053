@@ -94,11 +94,34 @@ function waitText(minutes) {
   return `через ≈${fmt(Math.round(minutes))} мин`;
 }
 
-/** After the pump station is back, the flooded levels are pumped out: 47 360 m³ in about 540 s of Stand time. */
-const PUMP_OUT_MIN = 9;
-const PUMP_OUT_M3 = '47 360';
+/**
+ * The levels the water floods while the main pumps cannot keep up, in the order it reaches them
+ * (capacity.flood_order), with the parameter of each threshold and its value as a fallback. Above
+ * water.flood_outlet_m3 the workings are full to the TU2 portal at +320 m and the water runs out
+ * into the old pit.
+ */
+const FLOOD_LEVELS = [
+  ['lvl-m050', 'гор. −50 м', 'water.flood_threshold_m050_m3', 14960],
+  ['lvl-000', 'гор. 0 м', 'water.flood_threshold_000_m3', 44930],
+  ['lvl-p050', 'гор. +50 м', 'water.flood_threshold_p050_m3', 77250],
+  ['lvl-p100', 'гор. +100 м', 'water.flood_threshold_p100_m3', 109500],
+  ['lvl-p150', 'гор. +150 м', 'water.flood_threshold_p150_m3', 141820],
+  ['lvl-p200', 'гор. +200 м', 'water.flood_threshold_p200_m3', 172080],
+  ['lvl-p250', 'гор. +250 м', 'water.flood_threshold_p250_m3', 201640],
+];
+const FLOOD_OUTLET_M3 = 222470;
 
-const FLOOD_LEVELS = [['lvl-m050', 'гор. −50 м'], ['lvl-000', 'гор. 0 м']];
+/**
+ * Minutes of the Stand to pump `volume` m³ out once the pumps run: the flood water drains to the
+ * −50 m sump and leaves at what ps-m050 pumps beyond its own inflow, `k` times faster than the
+ * mine clock (the simulator's rule; 47 360 m³ take about 9 min, 222 470 m³ about 42 min).
+ */
+function pumpOutMinutes(volume, inflow, value, k) {
+  const net = value('water.ps_m050.pumps', 2) * value('water.ps_m050.pump_m3h', 150)
+    - inflow * (1 - value('water.upper_share', 0.6));
+  const perMinute = net * k * value('sim.speedup', 60) / 60;
+  return perMinute > 0 ? volume / perMinute : null;
+}
 
 /**
  * The next consequence of a slow disturbance, live: [{ knob, text, tone }]. The simulator
@@ -121,8 +144,9 @@ function countdowns(things, knobs, k) {
   } else if (episode) {
     const flooded = FLOOD_LEVELS.filter(([name]) => f(name).state === 'flooded').map(([, label]) => label);
     if (flooded.length) {
+      const list = flooded.length > 1 ? `${flooded.slice(0, -1).join(', ')} и ${flooded.at(-1)}` : flooded[0];
       rows.push({ knob: 'pumps_failed_p150', tone: 'fail',
-        text: `${flooded.length > 1 ? 'затоплены' : 'затоплен'} ${flooded.join(' и ')}${fast}` });
+        text: `${flooded.length > 1 ? 'затоплены' : 'затоплен'} ${list}${fast}` });
     }
   }
   const outfall = f('mon-volchevka');
@@ -295,13 +319,19 @@ export function createScenarios({ onChanged }) {
       if (episode) {
         const value = (id, fallback) => (params && params[id] && isNum(params[id].value) ? params[id].value : fallback);
         const k = value('water.flood_compression', 24);
+        const thresholds = FLOOD_LEVELS.map(([, label, id, fallback]) => `${label} — ${fmt(value(id, fallback))}`)
+          .join(', ');
+        const volume = isNum(mine.flood_volume_m3) ? mine.flood_volume_m3 : 0;
+        const out = pumpOutMinutes(volume, isNum(mine.inflow_m3h) ? mine.inflow_m3h : 197, value, k);
+        const wait = out !== null && volume > 0 ? `около ${fmt(Math.max(1, Math.round(out)))} мин стенда` : null;
         setText(floodNote, `Затопление показано ускоренно: вода в зумпфах и выработках прибывает в ${fmt(k)} раза `
-          + `быстрее часов рудника (час на стенде — ${k === 24 ? 'сутки' : fmt(k) + ' ч'} притока). Пороги: гор. −50 м — `
-          + `${fmt(value('water.flood_threshold_m050_m3', 14960))} м³, гор. 0 м — ${fmt(value('water.flood_threshold_000_m3', 44930))} м³; `
+          + `быстрее часов рудника (час на стенде — ${k === 24 ? 'сутки' : fmt(k) + ' ч'} притока). `
+          + `Вода поднимается горизонт за горизонтом, пороги в м³: ${thresholds}; выше `
+          + `${fmt(value('water.flood_outlet_m3', FLOOD_OUTLET_M3))} м³ она уходит через портал ТУ-2 (+320 м) в карьер; `
           + 'приток, откачка и поверхность — по часам рудника. '
           + (station.state === 'failed'
-            ? 'После «Восстановить насосную +150» затопленные горизонты откачиваются около 9 мин стенда.'
-            : `Насосная работает, горизонты откачиваются: около ${PUMP_OUT_MIN} мин стенда (${PUMP_OUT_M3} → 0 м³); `
+            ? (wait ? `После «Восстановить насосную +150» вода откачивается ${wait} (${fmt(volume)} → 0 м³).` : '')
+            : `Насосная работает, горизонты откачиваются${wait ? `: ${wait} (${fmt(volume)} → 0 м³)` : ''}; `
               + 'пока идёт откачка, «Снять узкое место» только выводит сообщение.'));
       }
     }
