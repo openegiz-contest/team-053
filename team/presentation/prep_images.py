@@ -30,7 +30,7 @@ CROPS = {
     "s12_vs2_scene": ("vs2_3d_decl.png", (260, 454, 2128, 1760)),
     "s12_vs2_next": ("vs2_adv.png", (0, 750, 784, 1010)),
     "s12_ps_scene": ("ps_3d_water.png", (630, 1060, 1870, 1930)),
-    "s12_ps_next": ("ps3_adv.png", (0, 750, 784, 1045)),
+    "s12_ps_next": ("ps3_adv.png", (0, 750, 784, 1085)),
     "s13_vod": ("b_vod.png", None),
 }
 

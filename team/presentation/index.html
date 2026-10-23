@@ -373,7 +373,7 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
 <!-- 7 -->
 <section class="slide">
   <div class="kicker"><b>Калибровка</b> · модель против отчётов компании</div>
-  <h1>Модель сверена с отчётами компании: в допуске 13 из 13 расчётных проверок, 4 из 4 симулятора и 2 из 3 вне подгонки, одна справочная</h1>
+  <h1>Модель в допуске по 14 из 15 проверок: 9 из 9 с подгонкой, 4 из 5 независимых, тождество; C14 справочно, C15 вне допуска</h1>
   <div class="body" style="gap:24px">
     <div style="flex:1; min-width:0">
       <table class="t">
@@ -401,10 +401,10 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
     <div style="width:330px; flex:none; display:flex; flex-direction:column; gap:14px">
       <div class="card" style="padding:16px 18px; font-size:15.5px; line-height:1.42">
         <b>Основа проверки</b> (16 проверок)<br>
-        <span class="basis b-fit">подгонка</span> параметр подобран по этой цифре — 9;<br>
-        <span class="basis b-ind">независимая</span> цифра ни для чего не подбиралась — 6;<br>
-        <span class="basis b-id">тождество</span> выполняется по построению — 1.<br>
-        <span class="muted">Стенд считает строки: у C4, C5, C11 их несколько, всего 21. В допуске 19 из 20, справочно 1.</span>
+        <span class="basis b-fit">подгонка</span> параметр подобран по этой цифре — 9, в допуске 9;<br>
+        <span class="basis b-ind">независимая</span> цифра ни для чего не подбиралась — 6, в допуске 4, C14 справочно, C15 вне;<br>
+        <span class="basis b-id">тождество</span> выполняется по построению — 1, в допуске 1.<br>
+        <span class="muted">Стенд группирует те же строки по виду проверки (у C4, C5, C11 их несколько, всего 21): расчётные 13 из 13, симулятор 4 из 4, вне подгонки 2 из 3, справочно 1.</span>
       </div>
       <div class="callout cfail" style="font-size:15.5px; line-height:1.42">
         <b>C15 вне допуска.</b> В 2024&nbsp;г. добыто 750&nbsp;045&nbsp;т, а переработано 593&nbsp;612&nbsp;т: руды хватало, но фабрика работала ниже паспортной мощности двух линий, которую принимает модель.
@@ -611,7 +611,7 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
     </div>
     <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:11px">
       <div class="callout cwarn" style="font-size:16.5px; line-height:1.42; padding:11px 16px"><b>Воздух — критический путь.</b> Самосвалы и ПДМ советник вводит только вместе с воздухом для них: самосвалы № 6–7 и пятый блок ждут вентилятор ВПВ (с 2028&nbsp;г.), самосвалы с № 8 и блоки с шестого — ствол ВС-3 (2,5 года, с середины 2029&nbsp;г.). Фабрика перерабатывает 1&nbsp;004&nbsp;тыс.&nbsp;т в 2027&nbsp;г. (добыча 910 и рудный склад) и 1&nbsp;200 в 2028&nbsp;г.: линии № 4–5 — с 2029&nbsp;г. В 2029&nbsp;г. узкое звено — откатка: 1&nbsp;712 при 2,0 и 1&nbsp;962 при 2,5.</div>
-      <div class="callout" style="font-size:16.5px; line-height:1.42; padding:11px 16px"><b>Глубина требует самосвалов.</b> Центр добычи при 2,0&nbsp;млн&nbsp;т опускается с +57&nbsp;м в 2027&nbsp;г. до −272&nbsp;м в 2036&nbsp;г.; при парке 7 / 10 / 12 машин каждые ≈88 / 58 / 47&nbsp;м понижения отнимают тоннаж одного самосвала. Для 2,0&nbsp;млн&nbsp;т к 2034&nbsp;г. нужно 15 самосвалов — три AD45 сверх реестра. С 2036&nbsp;г. воздуха на новые самосвалы нет: рудник выдаёт 1&nbsp;965&nbsp;тыс.&nbsp;т/год, фабрику добирает рудный склад (94,4 → 38,4&nbsp;тыс.&nbsp;т за год).</div>
+      <div class="callout" style="font-size:16.5px; line-height:1.42; padding:11px 16px"><b>Глубина требует самосвалов.</b> Центр добычи при 2,0&nbsp;млн&nbsp;т опускается с +57&nbsp;м в 2027&nbsp;г. до −272&nbsp;м в 2036&nbsp;г.; при парке 7 / 10 / 12 машин каждые ≈88 / 58 / 47&nbsp;м понижения отнимают тоннаж одного самосвала. Для 2,0&nbsp;млн&nbsp;т к 2034&nbsp;г. нужно 15 самосвалов — три AD45 сверх реестра. С 2036&nbsp;г. воздуха на новые самосвалы нет: рудник выдаёт за год 1&nbsp;944&nbsp;тыс.&nbsp;т (темп падает с 1&nbsp;965 до 1&nbsp;923&nbsp;тыс.&nbsp;т/год), до 2&nbsp;000 фабрику добирает рудный склад: 94,3&nbsp;тыс.&nbsp;т на конец 2035&nbsp;г. → 38,4 на конец 2036&nbsp;г.</div>
       <div class="callout cfail" style="font-size:16.5px; line-height:1.42; padding:11px 16px"><b>2,5&nbsp;млн&nbsp;т — предел воздуха.</b> При подаче 667&nbsp;м³/с после ствола ВС-3 в работе 14 самосвалов — два AD45 сверх реестра; на следующие воздуха нет, а других ступеней вентиляции в модели нет. Ближе всего к цели — 2030&nbsp;г.: 2&nbsp;479&nbsp;тыс.&nbsp;т; дальше откатка падает с глубиной до 1&nbsp;783&nbsp;тыс.&nbsp;т в 2036&nbsp;г.</div>
       <div class="callout" style="border-left-color:#9fb3c8; font-size:16.5px; line-height:1.42; padding:11px 16px"><b>Хвосты — на допущениях.</b> Свободно 3,2&nbsp;млн&nbsp;т на 2027&nbsp;г., новая карта 6&nbsp;млн&nbsp;т (с середины 2028&nbsp;г.), вторая и третья ступени по 6&nbsp;млн&nbsp;т — допущения, проект не опубликован. При 2,0&nbsp;млн&nbsp;т ступени нужны с середины 2032 и 2035&nbsp;г., при 2,5 — с начала 2032 и 2035&nbsp;г. Заполнение дамбы № 4 (90&nbsp;%) не опубликовано — от него зависят эти сроки.</div>
     </div>
@@ -627,21 +627,21 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
   <div class="body" style="gap:20px">
     <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:10px">
       <div class="stephead"><b>Закрыт уклон ТУ-2</b></div>
-      <div style="height:330px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge r">ТУ-2: «закрыт · на уклоне: 0»</span><img src="img/s12_tu2_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="ТУ-2 закрыт"></div>
+      <div style="height:300px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge r">ТУ-2: «закрыт · на уклоне: 0»</span><img src="img/s12_tu2_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="ТУ-2 закрыт"></div>
       <img class="shot" src="img/s12_tu2_next.jpg" style="width:100%" alt="Советник: открыть уклон ТУ-2">
       <div style="font-size:16px; line-height:1.4">ТУ-2 красный, самосвалы № 1–4 переходят на ТУ-1. Откатка <b>926 → 834</b>, золото <b>51,9 → 46,7</b>&nbsp;тыс.&nbsp;унц./год.</div>
     </div>
     <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:10px">
       <div class="stephead"><b>Отказ вентилятора ВС-2</b></div>
-      <div style="height:330px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge y">ВС-2: «отказ · 0 м³/с»</span><img src="img/s12_vs2_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="Вентилятор ВС-2 отказал"></div>
+      <div style="height:300px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge y">ВС-2: «отказ · 0 м³/с»</span><img src="img/s12_vs2_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="Вентилятор ВС-2 отказал"></div>
       <img class="shot" src="img/s12_vs2_next.jpg" style="width:100%" alt="Советник: восстановить вентилятор ВС-2">
       <div style="font-size:16px; line-height:1.4">Подача <b>322 → 252</b>&nbsp;м³/с; самосвалы № 3–5 и ПДМ № 4 ждут воздуха. Вентиляция — <b>374</b>&nbsp;тыс.&nbsp;т/год, узкое звено.</div>
     </div>
     <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:10px">
       <div class="stephead"><b>Обесточена насосная +150</b></div>
-      <div style="height:330px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge b">гор. −50 и 0&nbsp;м: «затопление»; водосборники 100&nbsp;%</span><img src="img/s12_ps_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="Насосная +150 обесточена"></div>
+      <div style="height:300px; overflow:hidden; border-radius:6px; border:1px solid var(--line); position:relative"><span class="badge b">гор. −50 и 0&nbsp;м: «затопление»; водосборники 100&nbsp;%</span><img src="img/s12_ps_scene.jpg" style="width:100%; height:100%; object-fit:cover; display:block" alt="Насосная +150 обесточена"></div>
       <img class="shot" src="img/s12_ps_next.jpg" style="width:100%" alt="Советник: восстановить насосную">
-      <div style="font-size:16px; line-height:1.4">Гор. −50&nbsp;м затоплен через 3,5&nbsp;мин, гор. 0&nbsp;м — через 10&nbsp;мин (подземная вода — в 24 раза быстрее; на деле 83 и 235&nbsp;ч). Дефицит воды фабрики <b>192,8</b>&nbsp;м³/ч, после затопления — <b>181,8</b>. После отмены откачка — около 9&nbsp;мин.</div>
+      <div style="font-size:16px; line-height:1.4">Вода поднимается до портала ТУ-2 (+320&nbsp;м): −50&nbsp;м затоплен через 3,4&nbsp;мин, 0&nbsp;м — через 9,8, все до +250&nbsp;м — к 43-й (×24; на деле ≈47&nbsp;сут). Узкое звено сразу — водоотлив (<b>0</b>&nbsp;тыс.&nbsp;т/год), первый шаг — насосы. Откачка после отмены — до 42&nbsp;мин.</div>
     </div>
   </div>
   <div class="foot"><span class="where">Где смотреть: <b>Стенд → «Сценарии» → «Нарушения»</b>; «Рудник» → ракурсы «Уклоны» и «Водоотлив»; отмена — та же кнопка, «Шаг назад» или «Сброс»</span><span class="pg">12 / 15</span></div>
@@ -654,7 +654,7 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
   <div class="body" style="gap:26px">
     <div style="flex:0 0 760px; display:flex; flex-direction:column; gap:8px">
       <img class="shot" src="img/s13_vod.jpg" style="width:760px" alt="Стенд: вентиляция по потребности">
-      <div class="cap"><b>Стенд → «Вентиляция по потребности»</b>: подача против нужного машинам в работе, мощность против проектного режима, экономия с 08:00 и за 24&nbsp;ч, воздух по горизонтам, режим каждого вентилятора; кнопка выключает модуль. На снимке — подаётся 298 из 322&nbsp;м³/с, машинам в работе нужно 281&nbsp;м³/с, 886&nbsp;кВт; экономия за последние 24&nbsp;ч стенда — 4&nbsp;525&nbsp;кВт·ч (сутки различаются; среднее за 60&nbsp;сут — 5&nbsp;666).</div>
+      <div class="cap"><b>Стенд → «Вентиляция по потребности»</b>: подача против нужного машинам в работе, мощность против проектного режима, экономия с 08:00 и за 24&nbsp;ч, воздух по горизонтам, режим каждого вентилятора; кнопка выключает модуль. На снимке — подаётся 295 из 322&nbsp;м³/с, машинам в работе нужно 281&nbsp;м³/с, 859&nbsp;кВт; экономия за последние 24&nbsp;ч стенда — 4&nbsp;426&nbsp;кВт·ч (сутки различаются; среднее за 60&nbsp;сут — 5&nbsp;666).</div>
     </div>
     <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:14px">
       <div style="display:flex; align-items:flex-end; gap:18px">
@@ -720,7 +720,7 @@ table.t tr.wn td { background: rgba(242, 220, 92, 0.06); }
 <!-- 15 -->
 <section class="slide">
   <div class="kicker"><b>Запуск</b> · чистая Ubuntu 24.04 с Docker Engine и Compose v2</div>
-  <h1>Три команды — и стенд работает: запуск с нуля занял 4,2 минуты</h1>
+  <h1>Три команды — и стенд работает: запуск с нуля занял 2,6 минуты</h1>
   <div class="body" style="gap:30px">
     <div style="flex:0 0 700px; display:flex; flex-direction:column; gap:16px">
       <pre class="cmd"><span class="c"># из корня репозитория</span>
@@ -728,11 +728,11 @@ sudo apt-get update &amp;&amp; sudo apt-get install -y make
 make stand
 make stand-smoke</pre>
       <div class="kpis" style="grid-template-columns: 1.25fr 1fr 1fr">
-        <div class="kpi"><div class="l">make stand с нуля</div><div class="v num" style="font-size:42px; white-space:nowrap">252<small>с</small></div><div class="s">отдельная виртуальная машина: Ubuntu&nbsp;24.04.5, 8&nbsp;vCPU, 16&nbsp;ГБ</div></div>
+        <div class="kpi"><div class="l">make stand с нуля</div><div class="v num" style="font-size:42px; white-space:nowrap">156<small>с</small></div><div class="s">отдельная виртуальная машина: Ubuntu&nbsp;24.04.5, 8&nbsp;vCPU, 16&nbsp;ГБ</div></div>
         <div class="kpi"><div class="l">make stand-smoke</div><div class="v num" style="font-size:42px; white-space:nowrap">14–31<small>с</small></div><div class="s">стенд, Ditto, InfluxDB, советник, сценарий</div></div>
-        <div class="kpi"><div class="l">Память</div><div class="v num" style="font-size:42px">≈4<small>ГБ</small></div><div class="s">пик при запуске 3&nbsp;971&nbsp;МиБ, вся машина</div></div>
+        <div class="kpi"><div class="l">Память</div><div class="v num" style="font-size:42px">≈4<small>ГБ</small></div><div class="s">пик при запуске 3&nbsp;990&nbsp;МиБ, вся машина</div></div>
       </div>
-      <p class="dim" style="font-size:15.5px; line-height:1.45; margin:0">Ещё: 601 модульный тест (около 140&nbsp;с). Запуск с нуля и 60-минутный прогон — на той же машине 22 октября: ноль перезапусков и ошибок в журналах, поток MQTT до 18,0 сообщения в секунду при пределе 20.</p>
+      <p class="dim" style="font-size:15.5px; line-height:1.45; margin:0">Ещё: 607 модульных тестов (около 140&nbsp;с). Запуск с нуля и 60-минутный прогон — на той же машине 23 октября: ноль перезапусков и ошибок в журналах, поток MQTT до 18,0 сообщения в секунду при пределе 20.</p>
       <div class="card" style="padding:16px 20px">
         <div class="stephead" style="margin-bottom:10px"><b>С чего начать на стенде</b></div>
         <ul class="clean" style="font-size:17px">
